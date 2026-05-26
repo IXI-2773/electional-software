@@ -13,6 +13,9 @@ class PythonInterfaceTest(unittest.TestCase):
         self.assertIn("Traditional Lilly", html)
         self.assertIn("Paris, France", html)
         self.assertIn("No JavaScript required for this screen.", html)
+        self.assertIn("Python now owns the interface and chart calculations.", html)
+        self.assertIn("Candidate windows", html)
+        self.assertIn("Astronomy Engine Python", html)
         self.assertNotIn("<script", html.lower())
 
     def test_render_app_falls_back_to_defaults(self) -> None:

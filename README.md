@@ -6,7 +6,8 @@ A private work-in-progress application for electional astrology: transits, aspec
 
 - Static browser app, no build step required yet.
 - Python backend migration has started under `backend/electional`.
-- Python now serves an initial no-JavaScript interface at `http://127.0.0.1:8765/`.
+- Python now serves a no-JavaScript interface at `http://127.0.0.1:8765/`.
+- The Python interface calculates timezone conversion, ephemeris, angles, houses, aspects, dignity, and ranked windows server-side.
 - Electional workspace UI with date, location, objective, and aspect filters.
 - Domain modules for aspect definitions and transit-window scaffolding.
 - Professional ephemeris module powered by Astronomy Engine.
@@ -64,4 +65,4 @@ Run the Python API:
 & "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m backend.electional.server
 ```
 
-The next migration step is moving ephemeris and house-angle calculations from browser JavaScript into Python.
+The next migration step is retiring the legacy static JavaScript UI once the Python interface has feature parity.

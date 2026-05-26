@@ -8,6 +8,9 @@ The current Python slice includes:
 - Electional presets inspired by the Capricorn Prometheus reference inventory.
 - Classical essential dignity scoring.
 - Electional window scoring.
+- IANA timezone conversion.
+- Astronomy Engine Python ephemeris.
+- ASC, MC, DSC, IC, Whole Sign houses, and angularity.
 - A small standard-library JSON API.
 - A server-rendered Python interface at `/`.
 
@@ -32,4 +35,4 @@ Endpoints:
 - `GET /api/presets`
 - `POST /api/score`
 
-`POST /api/score` currently expects already-calculated positions. Ephemeris and house calculation are still running in the browser and should be moved into Python in a later migration slice.
+`POST /api/score` still accepts already-calculated positions for bridge compatibility. The Python-rendered app route now calculates timezone conversion, ephemeris, house angles, aspects, dignity, scoring, and candidate windows server-side.

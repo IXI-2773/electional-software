@@ -7,6 +7,7 @@ from math import floor
 
 import astronomy
 
+from .systems import apply_zodiac_system
 from .time_utils import astronomy_time_string
 
 ZODIAC_SIGNS = (
@@ -90,11 +91,12 @@ def get_ecliptic_coordinates(body_name: str, moment: datetime) -> dict[str, floa
     }
 
 
-def get_planet_positions(moment: datetime) -> list[dict[str, object]]:
+def get_planet_positions(moment: datetime, zodiac_system_id: str = "tropical") -> list[dict[str, object]]:
     positions = []
     for planet in PLANET_MODELS:
         coordinates = get_ecliptic_coordinates(str(planet["astronomy_body"]), moment)
-        longitude = normalize_degrees(float(coordinates["longitude"]))
+        tropical_longitude = normalize_degrees(float(coordinates["longitude"]))
+        longitude = apply_zodiac_system(tropical_longitude, moment, zodiac_system_id)
         positions.append(
             {
                 "id": planet["id"],
@@ -102,6 +104,7 @@ def get_planet_positions(moment: datetime) -> list[dict[str, object]]:
                 "astronomyBody": planet["astronomy_body"],
                 "latitude": coordinates["latitude"],
                 "longitude": longitude,
+                "tropicalLongitude": tropical_longitude,
                 "distanceAu": coordinates["distanceAu"],
                 "zodiac": get_zodiac_position(longitude),
             }

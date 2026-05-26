@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from backend.electional.aspects import detect_aspects
+from backend.electional.lots import calculate_lots, lot_longitude
 from backend.electional.presets import (
     apply_dignities,
     filter_positions_for_preset,
@@ -79,6 +80,29 @@ class ElectionalCoreTest(unittest.TestCase):
         self.assertIsInstance(score, int)
         self.assertGreaterEqual(score, 10)
         self.assertLessEqual(score, 99)
+
+    def test_lot_longitude_wraps_around_zodiac(self) -> None:
+        self.assertEqual(lot_longitude(350, 20, 40), 330)
+        self.assertEqual(lot_longitude(10, 350, 20), 340)
+
+    def test_calculate_lots_returns_fortune_and_spirit(self) -> None:
+        positions = [
+            {**position("Sun", 120, "Leo"), "house": 10},
+            {**position("Moon", 90, "Cancer"), "house": 9},
+        ]
+        angles = [
+            {"id": "asc", "name": "Ascendant", "shortName": "ASC", "longitude": 30},
+            {"id": "mc", "name": "Midheaven", "shortName": "MC", "longitude": 120},
+            {"id": "dsc", "name": "Descendant", "shortName": "DSC", "longitude": 210},
+            {"id": "ic", "name": "Imum Coeli", "shortName": "IC", "longitude": 300},
+        ]
+        house_cusps = [{"house": index + 1, "longitude": index * 30} for index in range(12)]
+
+        lots = calculate_lots(positions, angles, house_cusps, "equal-house")
+
+        self.assertEqual([lot["name"] for lot in lots], ["Part of Fortune", "Part of Spirit"])
+        self.assertEqual(lots[0]["longitude"], 0)
+        self.assertEqual(lots[0]["formula"], "ASC + Moon - Sun")
 
 
 if __name__ == "__main__":

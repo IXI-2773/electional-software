@@ -16,6 +16,8 @@ This folder appears to be a Capricorn Astrology Software / Prometheus settings l
 | Point Configurations | 34 | Point sets such as 7 planets, 10 planets, Asc/MC, Chiron, Part of Fortune, nodes, asteroids, bright stars, and house cusps. |
 | Arabic Parts Configurations | 17 | Al-Biruni, Ptolemy, Brunacci-Onorati, horary, lunar phase, and house-topic lots. |
 | Rulership Configurations | 9 | Traditional, Modern, Bonatti, Lilly, Omar, Ptolemy, day/night, Vedic, and Astrodynes rulership presets. |
+| Astrology Systems | 2+ | Zodiac system references, including Zodiac13 configurations and a Lahiri 13 file. Useful direction for sidereal/Lahiri support. |
+| Astrology Settings | 2 | Large binary settings profiles. These confirm the app should treat systems/settings as first-class selectable profiles. |
 | Display Schemes | 14 | Visual themes, including nebula/sombrero-style display references. |
 | Planetarium Configurations | 11 | Planetarium-style views and overlays. |
 | Primary Directions | 18 | Direction-related configurations and a separate `Primary Directions.zip`. |
@@ -39,6 +41,13 @@ Traditional astrology rules:
 - `Rulership Configurations\Traditional - Lilly.rl_conf`
 - `Rulership Configurations\Traditional - Bonatti.rl_conf`
 - `Rulership Configurations\Traditional - Ptolemy.rl_conf`
+
+System settings:
+
+- `Astrology Systems\Zodiac13 Configurations\Default.zodiac13_conf`
+- `Astrology Systems\Zodiac13 Configurations\Lahiri 13.zodiac13_conf`
+- `Astrology Settings\default.astrology_settings`
+- `Astrology Settings\New.astrology_settings`
 
 Wheel/page style references:
 
@@ -67,6 +76,8 @@ Wheel/page style references:
 - Add a `Traditional` mode using Lilly/Bonatti/Ptolemy rulership and dignity presets.
 - Add a `Transit 1 degree` electional scoring preset.
 - Add UI theme choices inspired by `classic`, `black`, `Euro`, and `traditional` wheel designs.
-- Add Arabic Parts as optional electional targets, especially Fortune, Spirit, 10th-house lots, and horary lots.
+- Add Arabic Parts as optional electional targets, especially Fortune, Spirit, 10th-house lots, and horary lots. Fortune and Spirit are now implemented as first Lots.
 - Add page modes: `Wheel`, `Wheel + Aspectarian`, `Medieval Data`, and `Transit Search`.
 - Add point-set presets for `7 Classical`, `10 Planets`, `Planets + Nodes`, and `Planets + Fortune`.
+- Keep sidereal systems prominent, with Lahiri as the first implemented sidereal mode and tropical preserved as an optional comparison system.
+- Add major house systems incrementally. Whole Sign and Equal House are simple foundations; Topocentric/Polich-Page and Koch are now modeled as the first quadrant-style house systems.

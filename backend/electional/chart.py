@@ -7,10 +7,12 @@ from typing import Iterable
 
 from .aspects import detect_aspects
 from .ephemeris import ENGINE_NAME, format_zodiac_position, get_planet_positions
-from .houses import calculate_angles, enrich_positions_with_houses
+from .houses import calculate_angles, calculate_house_cusps, enrich_positions_with_houses
 from .locations import LocationPreset
+from .lots import calculate_lots
 from .presets import apply_dignities, filter_positions_for_preset, get_preset
 from .scoring import score_window
+from .systems import ayanamsha_for_system, get_house_system, get_zodiac_system
 from .time_utils import format_in_timezone, zoned_time_to_utc
 
 WINDOW_OFFSETS = (0, 2, 4, 6, 8, 10)
@@ -34,16 +36,32 @@ def describe_window(detected_aspects: list[dict[str, object]], positions: list[d
     return f"Strongest contact: {strongest['label']} with {strongest['orbText']} orb."
 
 
-def build_snapshot_for_moment(moment: datetime, location: LocationPreset, preset: object, aspects: Iterable[str]) -> dict[str, object]:
-    angles = calculate_angles(moment, location.latitude, location.longitude)
-    base_positions = enrich_positions_with_houses(get_planet_positions(moment), angles)
+def build_snapshot_for_moment(
+    moment: datetime,
+    location: LocationPreset,
+    preset: object,
+    aspects: Iterable[str],
+    zodiac_system_id: str = "tropical",
+    house_system_id: str = "whole-sign",
+) -> dict[str, object]:
+    zodiac_system = get_zodiac_system(zodiac_system_id)
+    house_system = get_house_system(house_system_id)
+    angles = calculate_angles(moment, location.latitude, location.longitude, zodiac_system.id)
+    house_cusps = calculate_house_cusps(moment, location.latitude, location.longitude, zodiac_system.id, house_system.id)
+    base_positions = enrich_positions_with_houses(get_planet_positions(moment, zodiac_system.id), angles, house_system.id, house_cusps)
     positions = apply_dignities(base_positions, preset)
+    lots = calculate_lots(positions, angles, house_cusps, house_system.id)
     detected = detect_aspects(filter_positions_for_preset(positions, preset), aspects, preset.aspect_orbs)
 
     return {
         "date": moment,
         "formattedTime": format_in_timezone(moment, location.timezone),
         "engine": ENGINE_NAME,
+        "zodiacSystem": zodiac_system,
+        "houseSystem": house_system,
+        "houseCusps": house_cusps,
+        "lots": lots,
+        "ayanamsha": ayanamsha_for_system(moment, zodiac_system.id),
         "preset": preset,
         "angles": angles,
         "positions": positions,
@@ -74,11 +92,13 @@ def build_snapshot(
     location: LocationPreset,
     preset_id: str,
     selected_aspects: Iterable[str] | None = None,
+    zodiac_system_id: str = "tropical",
+    house_system_id: str = "whole-sign",
 ) -> dict[str, object]:
     preset = get_preset(preset_id)
     aspects = tuple(selected_aspects or preset.aspect_ids)
     moment = zoned_time_to_utc(date_text, time_text, location.timezone)
-    return build_snapshot_for_moment(moment, location, preset, aspects)
+    return build_snapshot_for_moment(moment, location, preset, aspects, zodiac_system_id, house_system_id)
 
 
 def build_transit_windows(
@@ -87,6 +107,8 @@ def build_transit_windows(
     location: LocationPreset,
     preset_id: str,
     selected_aspects: Iterable[str] | None = None,
+    zodiac_system_id: str = "tropical",
+    house_system_id: str = "whole-sign",
 ) -> list[dict[str, object]]:
     base_moment = zoned_time_to_utc(date_text, time_text, location.timezone)
     preset = get_preset(preset_id)
@@ -95,7 +117,7 @@ def build_transit_windows(
 
     for offset in WINDOW_OFFSETS:
         moment = base_moment + timedelta(hours=offset)
-        snapshot = build_snapshot_for_moment(moment, location, preset, aspects)
+        snapshot = build_snapshot_for_moment(moment, location, preset, aspects, zodiac_system_id, house_system_id)
         windows.append(snapshot_to_window(snapshot, location))
 
     return sorted(windows, key=lambda item: int(item["score"]), reverse=True)
@@ -107,19 +129,28 @@ def build_election_report(
     location: LocationPreset,
     preset_id: str,
     selected_aspects: Iterable[str] | None = None,
+    zodiac_system_id: str = "tropical",
+    house_system_id: str = "whole-sign",
 ) -> dict[str, object]:
     """Build the input chart and ranked windows without recalculating the base moment twice."""
 
     base_moment = zoned_time_to_utc(date_text, time_text, location.timezone)
     preset = get_preset(preset_id)
     aspects = tuple(selected_aspects or preset.aspect_ids)
-    snapshot = build_snapshot_for_moment(base_moment, location, preset, aspects)
+    snapshot = build_snapshot_for_moment(base_moment, location, preset, aspects, zodiac_system_id, house_system_id)
     windows = [snapshot_to_window(snapshot, location)]
 
     for offset in WINDOW_OFFSETS:
         if offset == 0:
             continue
-        window_snapshot = build_snapshot_for_moment(base_moment + timedelta(hours=offset), location, preset, aspects)
+        window_snapshot = build_snapshot_for_moment(
+            base_moment + timedelta(hours=offset),
+            location,
+            preset,
+            aspects,
+            zodiac_system_id,
+            house_system_id,
+        )
         windows.append(snapshot_to_window(window_snapshot, location))
 
     return {

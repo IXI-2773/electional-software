@@ -12,9 +12,10 @@ The current Python slice includes:
 - Astronomy Engine Python ephemeris.
 - ASC, MC, DSC, IC, Whole Sign houses, and angularity.
 - A small standard-library JSON API.
-- A server-rendered Python interface at `/`.
+- A native Python desktop interface.
+- A server-rendered diagnostic interface at `/`.
 
-The legacy browser UI has been retired to `legacy/static-js-ui` for reference only. New features should target the Python backend and Python-rendered interface.
+The legacy browser UI has been retired to `legacy/static-js-ui` for reference only. New features should target the Python backend and native desktop interface.
 
 ## Run Tests
 
@@ -22,7 +23,13 @@ The legacy browser UI has been retired to `legacy/static-js-ui` for reference on
 & "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m unittest discover backend\tests
 ```
 
-## Run API
+## Run Desktop App
+
+```powershell
+& "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" desktop_app.py
+```
+
+## Run Diagnostic API
 
 ```powershell
 & "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m backend.electional.server

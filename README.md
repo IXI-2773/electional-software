@@ -5,8 +5,8 @@ A private work-in-progress application for electional astrology: transits, aspec
 ## Current Foundation
 
 - Python is now the primary application runtime.
-- The primary interface is server-rendered by Python at `http://127.0.0.1:8765/`.
-- The Python interface requires no browser JavaScript.
+- The primary interface is a native Python desktop application.
+- The desktop UI requires no browser and no browser JavaScript.
 - Python calculates timezone conversion, ephemeris, ASC/MC/DSC/IC, Whole Sign houses, aspects, dignity, scoring, and ranked windows server-side.
 - The previous static JavaScript UI has been retired into `legacy/static-js-ui` for reference only.
 
@@ -18,15 +18,17 @@ Install dependencies:
 & "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m pip install -r requirements.txt
 ```
 
-Run the Python app:
+Run the native desktop application:
+
+```powershell
+& "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" desktop_app.py
+```
+
+Optional diagnostic server:
 
 ```powershell
 & "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m backend.electional.server
 ```
-
-Open:
-
-`http://127.0.0.1:8765/`
 
 ## Tests
 
@@ -56,4 +58,4 @@ The retired browser-only JavaScript implementation is archived at:
 
 `legacy/static-js-ui`
 
-It remains useful for comparison during migration, but new work should target the Python backend and Python-rendered interface.
+It remains useful for comparison during migration, but new work should target the Python backend and native desktop application.

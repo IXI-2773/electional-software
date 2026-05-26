@@ -210,6 +210,7 @@ legend {
 .positions-section,
 .angles-section,
 .detected-section,
+.validation-section,
 .aspect-library {
   margin-top: 30px;
 }
@@ -342,6 +343,48 @@ legend {
   grid-column: 1 / -1;
 }
 
+.validation-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr)) repeat(3, minmax(140px, 0.5fr));
+  gap: 12px;
+}
+
+.validation-summary,
+.validation-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 250, 241, 0.88);
+  padding: 15px;
+}
+
+.validation-summary {
+  display: grid;
+  gap: 6px;
+}
+
+.validation-summary.pass {
+  border-color: rgba(13, 107, 98, 0.46);
+}
+
+.validation-summary.fail {
+  border-color: rgba(183, 93, 74, 0.5);
+}
+
+.validation-summary span,
+.validation-summary small,
+.validation-row span {
+  color: var(--muted);
+  font-family: "Trebuchet MS", sans-serif;
+  font-size: 0.86rem;
+}
+
+.validation-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .aspect-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -391,6 +434,7 @@ legend {
 
   .summary-grid,
   .coordinate-grid,
+  .validation-panel,
   .timeline-card {
     grid-template-columns: 1fr;
   }

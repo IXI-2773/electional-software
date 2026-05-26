@@ -18,6 +18,8 @@ const positionTimestamp = document.querySelector("#positionTimestamp");
 const positionGrid = document.querySelector("#positionGrid");
 const angleGrid = document.querySelector("#angleGrid");
 const detectedGrid = document.querySelector("#detectedGrid");
+const validationSource = document.querySelector("#validationSource");
+const validationPanel = document.querySelector("#validationPanel");
 
 dateInput.value = new Date().toISOString().slice(0, 10);
 
@@ -149,6 +151,34 @@ function renderDetectedAspects(snapshot) {
   }).join("");
 }
 
+function renderValidation() {
+  const report = window.ElectionalValidation.runJplValidation();
+  const angleReport = window.ElectionalValidation.runAngleSanityValidation();
+  const worstBodies = [...report.bodies]
+    .sort((first, second) => Math.abs(second.longitudeDelta) - Math.abs(first.longitudeDelta))
+    .slice(0, 3);
+
+  validationSource.textContent = `${report.source} / tolerance ${report.tolerance} deg`;
+  validationPanel.innerHTML = `
+    <article class="validation-summary ${report.pass ? "pass" : "fail"}">
+      <span>${report.label}</span>
+      <strong>${report.pass ? "Pass" : "Review"}</strong>
+      <small>Max longitude delta: ${report.maxLongitudeDelta.toFixed(4)} deg</small>
+    </article>
+    <article class="validation-summary ${angleReport.pass ? "pass" : "fail"}">
+      <span>${angleReport.label}</span>
+      <strong>${angleReport.pass ? "Pass" : "Review"}</strong>
+      <small>ASC ${window.ElectionalEphemeris.formatZodiacPosition(angleReport.ascendant.zodiac)} / MC ${window.ElectionalEphemeris.formatZodiacPosition(angleReport.midheaven.zodiac)}</small>
+    </article>
+    ${worstBodies.map((body) => `
+      <article class="validation-row">
+        <strong>${body.name}</strong>
+        <span>${body.longitudeDelta >= 0 ? "+" : ""}${body.longitudeDelta.toFixed(4)} deg</span>
+      </article>
+    `).join("")}
+  `;
+}
+
 function render() {
   const state = getFormState();
   const windows = window.ElectionalTransits.buildTransitWindows(state);
@@ -162,6 +192,7 @@ function render() {
   renderPositions(snapshot, state);
   renderAngles(snapshot);
   renderDetectedAspects(snapshot);
+  renderValidation();
   renderAspectLibrary(state.aspects);
 }
 

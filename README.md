@@ -14,7 +14,18 @@ A private work-in-progress application for electional astrology: transits, aspec
 
 ## Accuracy Note
 
-Planetary positions now use Astronomy Engine's browser library for geocentric true ecliptic coordinates. Angles are calculated from sidereal time, true obliquity, latitude, and longitude. The next accuracy step is validating app outputs against an external astrology reference before relying on final electional judgment.
+Planetary positions now use Astronomy Engine's browser library for geocentric true ecliptic coordinates. Angles are calculated from sidereal time, true obliquity, latitude, and longitude. The next accuracy step is cross-checking the house angles against a second astrology-specific calculator before relying on final electional judgment.
+
+## Validation
+
+The app includes a validation panel that compares a fixed chart against NASA/JPL Horizons observer ecliptic longitude/latitude output. Current fixture:
+
+- Chart: May 26, 2026 at 9:00 AM, Los Angeles, CA
+- UTC: May 26, 2026 at 16:00
+- Source: NASA/JPL Horizons API, observer quantity 31
+- Current max longitude delta: 0.0032 degrees
+
+The same panel also runs an angle sanity check for the Los Angeles morning chart to guard against flipped ASC/DSC orientation.
 
 ## Open Locally
 

@@ -58,7 +58,9 @@ function getWholeSignHouse(longitude, ascendantLongitude) {
 function calculateAngles({ date, latitude, longitude }) {
   const localSiderealDegrees = getLocalSiderealDegrees(date, longitude);
   const obliquity = getObliquity(date);
-  const ascendant = calculateAscendant(localSiderealDegrees, latitude, obliquity);
+  const ascendant = window.ElectionalEphemeris.normalizeDegrees(
+    calculateAscendant(localSiderealDegrees, latitude, obliquity) + 180,
+  );
   const midheaven = calculateMidheaven(localSiderealDegrees, obliquity);
 
   return [

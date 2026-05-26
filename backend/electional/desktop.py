@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 import math
 import tkinter as tk
 from tkinter import messagebox, ttk
+from zoneinfo import ZoneInfo
 
 from .chart import build_snapshot, build_transit_windows, format_angle, format_position
-from .locations import LOCATION_PRESETS, get_location
+from .locations import LOCATION_PRESETS, LocationPreset, get_location
 from .presets import ELECTIONAL_PRESETS
+from .time_utils import normalize_time_text
 
 PLANET_LABELS = {
     "Sun": "Su",
@@ -40,6 +42,8 @@ SIGN_COLORS = (
     "#b25aa1",
 )
 
+OBJECTIVES = ("Launch or publish", "Meeting or negotiation", "Creative work", "Relationship timing", "Travel departure")
+
 
 def planet_abbreviation(name: str) -> str:
     """Return a compact planet label suitable for the chart wheel."""
@@ -56,6 +60,45 @@ def wheel_degrees(longitude: float, ascendant_longitude: float) -> float:
 def _polar(center_x: float, center_y: float, radius: float, degrees: float) -> tuple[float, float]:
     radians = math.radians(degrees)
     return center_x + math.cos(radians) * radius, center_y - math.sin(radians) * radius
+
+
+def validate_election_inputs(date_text: str, time_text: str, latitude_text: str, longitude_text: str, timezone_text: str) -> list[str]:
+    errors = []
+    try:
+        datetime.strptime(date_text.strip(), "%Y-%m-%d")
+    except ValueError:
+        errors.append("Date must use YYYY-MM-DD.")
+
+    try:
+        normalize_time_text(time_text)
+    except ValueError as exc:
+        errors.append(str(exc))
+
+    try:
+        latitude = float(latitude_text)
+        if not -90 <= latitude <= 90:
+            errors.append("Latitude must be between -90 and 90.")
+    except ValueError:
+        errors.append("Latitude must be a number.")
+
+    try:
+        longitude = float(longitude_text)
+        if not -180 <= longitude <= 180:
+            errors.append("Longitude must be between -180 and 180.")
+    except ValueError:
+        errors.append("Longitude must be a number.")
+
+    try:
+        ZoneInfo(timezone_text.strip() or "UTC")
+    except Exception:
+        errors.append("Time zone must be a valid IANA name like America/Los_Angeles.")
+
+    return errors
+
+
+def build_custom_location(name: str, latitude_text: str, longitude_text: str, timezone_text: str) -> LocationPreset:
+    label = name.strip() or "Custom Location"
+    return LocationPreset("custom", label, float(latitude_text), float(longitude_text), timezone_text.strip() or "UTC")
 
 
 class ElectionalDesktopApp:
@@ -162,16 +205,27 @@ class ElectionalDesktopApp:
         self.natal_summary.pack(anchor="w")
 
         today = date.today()
+        default_location = LOCATION_PRESETS[0]
         self.date_var = tk.StringVar(value=today.strftime("%Y-%m-%d"))
         self.time_var = tk.StringVar(value="09:00")
-        self.location_var = tk.StringVar(value=LOCATION_PRESETS[0].name)
+        self.location_var = tk.StringVar(value=default_location.name)
+        self.location_name_var = tk.StringVar(value=default_location.name)
+        self.latitude_var = tk.StringVar(value=f"{default_location.latitude:.4f}")
+        self.longitude_var = tk.StringVar(value=f"{default_location.longitude:.4f}")
+        self.timezone_var = tk.StringVar(value=default_location.timezone)
         self.objective_var = tk.StringVar(value="Launch or publish")
         self.preset_var = tk.StringVar(value=ELECTIONAL_PRESETS[1].name)
+        self.validation_var = tk.StringVar(value="Validation: waiting for first calculation")
 
         self._labeled_entry("Election date", self.date_var)
         self._labeled_entry("Start time", self.time_var)
-        self._labeled_combo("Location preset", self.location_var, [location.name for location in LOCATION_PRESETS])
-        self._labeled_combo("Objective", self.objective_var, ["Launch or publish", "Begin a relationship", "Sign agreement", "Travel departure"])
+        self.location_combo = self._labeled_combo("Location preset", self.location_var, [location.name for location in LOCATION_PRESETS])
+        self.location_combo.bind("<<ComboboxSelected>>", self._load_selected_location)
+        self._labeled_entry("Location name", self.location_name_var)
+        self._labeled_entry("Latitude", self.latitude_var)
+        self._labeled_entry("Longitude", self.longitude_var)
+        self._labeled_entry("Time zone", self.timezone_var)
+        self._labeled_combo("Objective", self.objective_var, list(OBJECTIVES))
         self._labeled_combo("Electional model", self.preset_var, [preset.name for preset in ELECTIONAL_PRESETS])
 
         aspect_box = ttk.LabelFrame(self.left_panel, text="Aspect focus", style="Panel.TLabelframe", padding=10)
@@ -183,16 +237,33 @@ class ElectionalDesktopApp:
             ttk.Checkbutton(aspect_box, text=aspect_id.title(), variable=var).pack(anchor="w", pady=2)
 
         ttk.Button(self.left_panel, text="Calculate Election", command=self.calculate).pack(fill=tk.X, pady=(2, 0))
+        tk.Label(
+            self.left_panel,
+            textvariable=self.validation_var,
+            bg="#efc58e",
+            fg="#005d62",
+            justify=tk.LEFT,
+            wraplength=250,
+            font=("Segoe UI", 9, "bold"),
+        ).pack(anchor="w", pady=(10, 0))
 
     def _labeled_entry(self, label: str, variable: tk.StringVar) -> None:
         ttk.Label(self.left_panel, text=label, style="Small.TLabel").pack(anchor="w", pady=(10, 3))
         entry = tk.Entry(self.left_panel, textvariable=variable, bg="#ffe7b7", relief=tk.SOLID, bd=1, font=("Segoe UI", 10, "bold"))
         entry.pack(fill=tk.X, ipady=7)
 
-    def _labeled_combo(self, label: str, variable: tk.StringVar, values: list[str]) -> None:
+    def _labeled_combo(self, label: str, variable: tk.StringVar, values: list[str]) -> ttk.Combobox:
         ttk.Label(self.left_panel, text=label, style="Small.TLabel").pack(anchor="w", pady=(10, 3))
         combo = ttk.Combobox(self.left_panel, textvariable=variable, values=values, state="readonly")
         combo.pack(fill=tk.X, ipady=5)
+        return combo
+
+    def _load_selected_location(self, _event: object | None = None) -> None:
+        location = self.locations_by_name.get(self.location_var.get(), get_location(None))
+        self.location_name_var.set(location.name)
+        self.latitude_var.set(f"{location.latitude:.4f}")
+        self.longitude_var.set(f"{location.longitude:.4f}")
+        self.timezone_var.set(location.timezone)
 
     def _build_number_strip(self) -> None:
         for text in ("5\n6\n12", "11\n1\n3", "6\n8"):
@@ -250,13 +321,34 @@ class ElectionalDesktopApp:
         return text
 
     def calculate(self) -> None:
-        location = self.locations_by_name.get(self.location_var.get(), get_location(None))
         preset = self.presets_by_name.get(self.preset_var.get(), ELECTIONAL_PRESETS[1])
         selected_aspects = [aspect for aspect, var in self.aspect_vars.items() if var.get()]
+        errors = validate_election_inputs(
+            self.date_var.get(),
+            self.time_var.get(),
+            self.latitude_var.get(),
+            self.longitude_var.get(),
+            self.timezone_var.get(),
+        )
+        if errors:
+            message = "Validation failed:\n" + "\n".join(f"- {error}" for error in errors)
+            self.validation_var.set(message)
+            self.status_var.set("Validation: failed. Fix the highlighted input values and calculate again.")
+            messagebox.showerror("Electional validation failed", message)
+            return
+
+        location = build_custom_location(
+            self.location_name_var.get(),
+            self.latitude_var.get(),
+            self.longitude_var.get(),
+            self.timezone_var.get(),
+        )
+        normalized_time = normalize_time_text(self.time_var.get())
+        self.time_var.set(normalized_time)
 
         try:
-            snapshot = build_snapshot(self.date_var.get(), self.time_var.get(), location, preset.id, selected_aspects)
-            windows = build_transit_windows(self.date_var.get(), self.time_var.get(), location, preset.id, selected_aspects)
+            snapshot = build_snapshot(self.date_var.get(), normalized_time, location, preset.id, selected_aspects)
+            windows = build_transit_windows(self.date_var.get(), normalized_time, location, preset.id, selected_aspects)
         except Exception as exc:  # pragma: no cover - exercised manually through the desktop UI.
             messagebox.showerror("Electional calculation failed", str(exc))
             return
@@ -271,6 +363,7 @@ class ElectionalDesktopApp:
             )
         )
         self.score_var.set(str(windows[0]["score"] if windows else snapshot["score"]))
+        self.validation_var.set("Validation: Pass")
         self.status_var.set(
             f"Location: {location.name}    Chart time: {snapshot['formattedTime']}    Validation: Pass    Engine: {snapshot['engine']}"
         )

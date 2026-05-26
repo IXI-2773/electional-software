@@ -6,7 +6,7 @@ from backend.electional.chart import build_snapshot, build_transit_windows
 from backend.electional.ephemeris import get_planet_positions
 from backend.electional.houses import calculate_angles
 from backend.electional.locations import get_location
-from backend.electional.time_utils import zoned_time_to_utc
+from backend.electional.time_utils import normalize_time_text, zoned_time_to_utc
 
 
 class PythonChartEngineTest(unittest.TestCase):
@@ -14,6 +14,10 @@ class PythonChartEngineTest(unittest.TestCase):
         moment = zoned_time_to_utc("2026-05-26", "09:00", "America/Los_Angeles")
 
         self.assertEqual(moment.isoformat(), "2026-05-26T16:00:00+00:00")
+
+    def test_time_parser_accepts_desktop_am_pm_input(self) -> None:
+        self.assertEqual(normalize_time_text("09:00 AM"), "09:00")
+        self.assertEqual(normalize_time_text("9:30 PM"), "21:30")
 
     def test_ephemeris_matches_jpl_fixture_tolerance(self) -> None:
         moment = zoned_time_to_utc("2026-05-26", "09:00", "America/Los_Angeles")

@@ -1,6 +1,6 @@
 # Electional Python Backend
 
-This is the beginning of the migration from browser-only JavaScript toward a Python-owned application.
+This is the Python-owned application backend for Electional Software.
 
 The current Python slice includes:
 
@@ -14,7 +14,7 @@ The current Python slice includes:
 - A small standard-library JSON API.
 - A server-rendered Python interface at `/`.
 
-The legacy browser UI still exists as a fallback while the Python interface grows. The migration path is to move calculation and display into Python in layers until the JavaScript interface can be retired.
+The legacy browser UI has been retired to `legacy/static-js-ui` for reference only. New features should target the Python backend and Python-rendered interface.
 
 ## Run Tests
 

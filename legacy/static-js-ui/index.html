@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Electional Software</title>
+    <link rel="stylesheet" href="../../styles.css" />
+  </head>
+  <body>
+    <header class="top-ribbon" aria-label="Application tools">
+      <div class="app-title">Electional Software</div>
+      <nav class="menu-strip" aria-label="Main sections">
+        <span>Chart</span>
+        <span>Selected Chart</span>
+        <span>View Page</span>
+        <span>Search</span>
+        <span>Utility</span>
+        <span>Configuration Editors</span>
+        <span>Astro Mapping</span>
+      </nav>
+      <div class="tool-strip" aria-label="Electional tools">
+        <button type="button">New Chart</button>
+        <button type="button">Transits</button>
+        <button type="button">Electional Search</button>
+        <button type="button">Void Course</button>
+        <button type="button">Bounds</button>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="Electional controls">
+        <div class="brand">
+          <p class="eyebrow">Natal Chart</p>
+          <h1 id="chartTitle">Election chart</h1>
+          <div class="chart-meta" id="chartMeta"></div>
+        </div>
+
+        <form class="control-panel" id="electionForm">
+          <label>
+            Election date
+            <input id="dateInput" type="date" name="date" />
+          </label>
+
+          <label>
+            Start time
+            <input id="timeInput" type="time" name="time" value="09:00" />
+          </label>
+
+          <label>
+            Location preset
+            <select id="locationPresetInput" name="locationPreset">
+              <option value="los-angeles">Los Angeles, CA</option>
+              <option value="new-york">New York, NY</option>
+              <option value="london">London, UK</option>
+              <option value="paris">Paris, France</option>
+              <option value="tokyo">Tokyo, Japan</option>
+              <option value="sydney">Sydney, Australia</option>
+              <option value="custom">Custom location</option>
+            </select>
+          </label>
+
+          <label>
+            Location name
+            <input id="locationInput" type="text" name="location" value="Los Angeles, CA" autocomplete="off" />
+          </label>
+
+          <div class="coordinate-grid">
+            <label>
+              Latitude
+              <input id="latitudeInput" type="number" name="latitude" value="34.0522" step="0.0001" min="-90" max="90" />
+            </label>
+
+            <label>
+              Longitude
+              <input id="longitudeInput" type="number" name="longitude" value="-118.2437" step="0.0001" min="-180" max="180" />
+            </label>
+          </div>
+
+          <label>
+            Time zone
+            <select id="timezoneInput" name="timezone">
+              <option value="America/Los_Angeles">America/Los_Angeles</option>
+              <option value="America/New_York">America/New_York</option>
+              <option value="Europe/London">Europe/London</option>
+              <option value="Europe/Paris">Europe/Paris</option>
+              <option value="Asia/Tokyo">Asia/Tokyo</option>
+              <option value="Australia/Sydney">Australia/Sydney</option>
+              <option value="UTC">UTC</option>
+            </select>
+          </label>
+
+          <label>
+            Objective
+            <select id="objectiveInput" name="objective">
+              <option value="launch">Launch or publish</option>
+              <option value="meeting">Meeting or negotiation</option>
+              <option value="creative">Creative work</option>
+              <option value="relationship">Relationship timing</option>
+            </select>
+          </label>
+
+          <label>
+            Electional preset
+            <select id="presetInput" name="presetId">
+              <option value="transit-1-degree">Transit 1 Degree</option>
+              <option value="traditional-lilly">Traditional Lilly</option>
+              <option value="medieval-electional">Medieval Electional</option>
+            </select>
+          </label>
+
+          <fieldset>
+            <legend>Aspect focus</legend>
+            <label class="check-row">
+              <input type="checkbox" name="aspect" value="conjunction" checked />
+              Conjunctions
+            </label>
+            <label class="check-row">
+              <input type="checkbox" name="aspect" value="trine" checked />
+              Trines
+            </label>
+            <label class="check-row">
+              <input type="checkbox" name="aspect" value="sextile" checked />
+              Sextiles
+            </label>
+            <label class="check-row">
+              <input type="checkbox" name="aspect" value="square" checked />
+              Squares
+            </label>
+            <label class="check-row">
+              <input type="checkbox" name="aspect" value="opposition" />
+              Oppositions
+            </label>
+          </fieldset>
+        </form>
+      </aside>
+
+      <section class="workspace" aria-live="polite">
+        <section class="chart-board">
+          <div class="chart-left-rail" aria-label="House groups">
+            <div class="house-badge">5<br />6<br />12</div>
+            <div class="house-badge">11<br />1<br />3</div>
+            <div class="house-badge">6<br />8</div>
+          </div>
+
+          <section class="wheel-panel" aria-label="Astrology chart wheel">
+            <div class="wheel-header">
+              <div>
+                <p class="eyebrow">Radix + electional transits</p>
+                <h2 id="workspaceTitle">Election chart wheel</h2>
+              </div>
+              <div class="score-card">
+                <span id="bestScore">--</span>
+                <small>top window score</small>
+              </div>
+            </div>
+            <div class="wheel-frame" id="chartWheel"></div>
+          </section>
+
+          <aside class="inspector" aria-label="Chart data panels">
+            <section class="summary-grid" aria-label="Election summary">
+              <article>
+                <span>Benefic</span>
+                <strong id="beneficCount">--</strong>
+              </article>
+              <article>
+                <span>Stress</span>
+                <strong id="stressCount">--</strong>
+              </article>
+              <article>
+                <span>Aspects</span>
+                <strong id="trackedCount">--</strong>
+              </article>
+              <article>
+                <span>Timezone</span>
+                <strong id="timezoneLabel">--</strong>
+              </article>
+              <article>
+                <span>Angular</span>
+                <strong id="angularCount">--</strong>
+              </article>
+              <article>
+                <span>Preset</span>
+                <strong id="presetLabel">--</strong>
+              </article>
+              <article>
+                <span>Orb mode</span>
+                <strong id="orbLabel">--</strong>
+              </article>
+            </section>
+
+            <section class="timeline-section panel-block">
+              <div class="section-heading">
+                <h3>Candidate windows</h3>
+                <p>Ranked by active aspects.</p>
+              </div>
+              <div class="timeline" id="timeline"></div>
+            </section>
+
+            <section class="positions-section panel-block">
+              <div class="section-heading">
+                <h3>Planets</h3>
+                <p id="positionTimestamp">Astronomy Engine geocentric ecliptic</p>
+              </div>
+              <div class="position-grid" id="positionGrid"></div>
+            </section>
+
+            <section class="angles-section panel-block">
+              <div class="section-heading">
+                <h3>Angles</h3>
+                <p>Whole Sign houses.</p>
+              </div>
+              <div class="angle-grid" id="angleGrid"></div>
+            </section>
+
+            <section class="detected-section panel-block">
+              <div class="section-heading">
+                <h3>Detected aspects</h3>
+                <p>Inside selected orbs.</p>
+              </div>
+              <div class="detected-grid" id="detectedGrid"></div>
+            </section>
+
+            <section class="validation-section panel-block">
+              <div class="section-heading">
+                <h3>Validation</h3>
+                <p id="validationSource">Independent ephemeris check</p>
+              </div>
+              <div class="validation-panel" id="validationPanel"></div>
+            </section>
+          </aside>
+        </section>
+      </section>
+    </main>
+
+    <footer class="status-bar" aria-label="Application status">
+      <span>Location: <strong id="statusLocation">--</strong></span>
+      <span>Chart time: <strong id="statusTime">--</strong></span>
+      <span>Preset: <strong id="statusPreset">--</strong></span>
+      <span>Backend: <strong id="statusBackend">--</strong></span>
+      <span>Validation: <strong id="statusValidation">--</strong></span>
+      <span>Engine: <strong>Astronomy Engine</strong></span>
+    </footer>
+
+    <script src="vendor/astronomy.browser.min.js"></script>
+    <script src="src/domain/aspects.js"></script>
+    <script src="src/domain/timezone.js"></script>
+    <script src="src/domain/ephemeris.js"></script>
+    <script src="src/domain/houses.js"></script>
+    <script src="src/domain/presets.js"></script>
+    <script src="src/services/python-backend.js"></script>
+    <script src="src/domain/validation.js"></script>
+    <script src="src/domain/transits.js"></script>
+    <script src="src/app.js"></script>
+  </body>
+</html>

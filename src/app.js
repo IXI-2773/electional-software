@@ -6,7 +6,6 @@ const latitudeInput = document.querySelector("#latitudeInput");
 const longitudeInput = document.querySelector("#longitudeInput");
 const timezoneInput = document.querySelector("#timezoneInput");
 const timeline = document.querySelector("#timeline");
-const aspectGrid = document.querySelector("#aspectGrid");
 const bestScore = document.querySelector("#bestScore");
 const beneficCount = document.querySelector("#beneficCount");
 const stressCount = document.querySelector("#stressCount");
@@ -20,8 +19,32 @@ const angleGrid = document.querySelector("#angleGrid");
 const detectedGrid = document.querySelector("#detectedGrid");
 const validationSource = document.querySelector("#validationSource");
 const validationPanel = document.querySelector("#validationPanel");
+const chartWheel = document.querySelector("#chartWheel");
+const chartTitle = document.querySelector("#chartTitle");
+const chartMeta = document.querySelector("#chartMeta");
 
 dateInput.value = new Date().toISOString().slice(0, 10);
+
+const ZODIAC_GLYPHS = ["♈", "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓"];
+const PLANET_GLYPHS = {
+  Sun: "☉",
+  Moon: "☽",
+  Mercury: "☿",
+  Venus: "♀",
+  Mars: "♂",
+  Jupiter: "♃",
+  Saturn: "♄",
+  Uranus: "♅",
+  Neptune: "♆",
+  Pluto: "♇",
+};
+const ASPECT_COLORS = {
+  conjunction: "#283047",
+  trine: "#1c8f7a",
+  sextile: "#2279a8",
+  square: "#b54e64",
+  opposition: "#8b3e8a",
+};
 
 function getFormState() {
   const data = new FormData(form);
@@ -50,17 +73,128 @@ function applyLocationPreset() {
   timezoneInput.value = preset.timezone;
 }
 
-function renderAspectLibrary(selectedAspects) {
-  aspectGrid.innerHTML = window.ElectionalAspects.ASPECTS.map((aspect) => {
-    const isSelected = selectedAspects.includes(aspect.id);
+function polarPoint(center, radius, degrees) {
+  const radians = degrees * Math.PI / 180;
+  return {
+    x: center + radius * Math.cos(radians),
+    y: center + radius * Math.sin(radians),
+  };
+}
+
+function longitudeToWheelDegrees(longitude, ascendantLongitude) {
+  return 180 - window.ElectionalEphemeris.normalizeDegrees(longitude - ascendantLongitude);
+}
+
+function annularSectorPath(center, innerRadius, outerRadius, startDegrees, endDegrees) {
+  const startOuter = polarPoint(center, outerRadius, startDegrees);
+  const endOuter = polarPoint(center, outerRadius, endDegrees);
+  const startInner = polarPoint(center, innerRadius, endDegrees);
+  const endInner = polarPoint(center, innerRadius, startDegrees);
+  const largeArc = Math.abs(endDegrees - startDegrees) > 180 ? 1 : 0;
+
+  return [
+    `M ${startOuter.x.toFixed(2)} ${startOuter.y.toFixed(2)}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${endOuter.x.toFixed(2)} ${endOuter.y.toFixed(2)}`,
+    `L ${startInner.x.toFixed(2)} ${startInner.y.toFixed(2)}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${endInner.x.toFixed(2)} ${endInner.y.toFixed(2)}`,
+    "Z",
+  ].join(" ");
+}
+
+function lineForLongitude(longitude, ascendantLongitude, innerRadius, outerRadius, className) {
+  const center = 300;
+  const degrees = longitudeToWheelDegrees(longitude, ascendantLongitude);
+  const inner = polarPoint(center, innerRadius, degrees);
+  const outer = polarPoint(center, outerRadius, degrees);
+  return `<line class="${className}" x1="${inner.x.toFixed(2)}" y1="${inner.y.toFixed(2)}" x2="${outer.x.toFixed(2)}" y2="${outer.y.toFixed(2)}" />`;
+}
+
+function renderChartWheel(snapshot) {
+  const center = 300;
+  const ascendant = snapshot.angles.find((angle) => angle.id === "asc");
+  const zodiacOuter = 282;
+  const zodiacInner = 238;
+  const houseOuter = 238;
+  const houseInner = 150;
+  const aspectRadius = 118;
+  const planetRadius = 207;
+
+  const zodiacSegments = ZODIAC_GLYPHS.map((glyph, index) => {
+    const start = longitudeToWheelDegrees(index * 30, ascendant.longitude);
+    const end = longitudeToWheelDegrees((index + 1) * 30, ascendant.longitude);
+    const labelPoint = polarPoint(center, 260, longitudeToWheelDegrees(index * 30 + 15, ascendant.longitude));
     return `
-      <article class="aspect-card">
-        <span>${aspect.angle} degrees / ${aspect.defaultOrb} degree orb</span>
-        <strong>${aspect.name}${isSelected ? " - tracked" : ""}</strong>
-        <p>${aspect.meaning}</p>
-      </article>
+      <path class="zodiac-sector zodiac-${index}" d="${annularSectorPath(center, zodiacInner, zodiacOuter, end, start)}" />
+      <text class="zodiac-label" x="${labelPoint.x.toFixed(2)}" y="${labelPoint.y.toFixed(2)}">${glyph}</text>
     `;
   }).join("");
+
+  const houseSegments = Array.from({ length: 12 }, (_, index) => {
+    const start = ascendant.longitude + index * 30;
+    const end = ascendant.longitude + (index + 1) * 30;
+    const labelPoint = polarPoint(center, 183, longitudeToWheelDegrees(start + 15, ascendant.longitude));
+    return `
+      <path class="house-sector house-${index}" d="${annularSectorPath(center, houseInner, houseOuter, longitudeToWheelDegrees(end, ascendant.longitude), longitudeToWheelDegrees(start, ascendant.longitude))}" />
+      <text class="house-label" x="${labelPoint.x.toFixed(2)}" y="${labelPoint.y.toFixed(2)}">${index + 1}</text>
+    `;
+  }).join("");
+
+  const signLines = Array.from({ length: 12 }, (_, index) => {
+    return lineForLongitude(index * 30, ascendant.longitude, zodiacInner, zodiacOuter, "sign-line");
+  }).join("");
+
+  const houseLines = Array.from({ length: 12 }, (_, index) => {
+    return lineForLongitude(ascendant.longitude + index * 30, ascendant.longitude, houseInner, houseOuter, "house-line");
+  }).join("");
+
+  const angleLines = snapshot.angles.map((angle) => {
+    return lineForLongitude(angle.longitude, ascendant.longitude, 88, zodiacOuter, `angle-line ${angle.id}`);
+  }).join("");
+
+  const angleLabels = snapshot.angles.map((angle) => {
+    const point = polarPoint(center, 248, longitudeToWheelDegrees(angle.longitude, ascendant.longitude));
+    return `<text class="angle-label ${angle.id}" x="${point.x.toFixed(2)}" y="${point.y.toFixed(2)}">${angle.shortName}</text>`;
+  }).join("");
+
+  const aspectLines = snapshot.detectedAspects.map((aspect) => {
+    const first = snapshot.positions.find((planet) => planet.name === aspect.bodies[0]);
+    const second = snapshot.positions.find((planet) => planet.name === aspect.bodies[1]);
+    const firstPoint = polarPoint(center, aspectRadius, longitudeToWheelDegrees(first.longitude, ascendant.longitude));
+    const secondPoint = polarPoint(center, aspectRadius, longitudeToWheelDegrees(second.longitude, ascendant.longitude));
+    const color = ASPECT_COLORS[aspect.aspectId] || "#8b7c6f";
+    return `<line class="aspect-line" style="--aspect-color:${color}" x1="${firstPoint.x.toFixed(2)}" y1="${firstPoint.y.toFixed(2)}" x2="${secondPoint.x.toFixed(2)}" y2="${secondPoint.y.toFixed(2)}" />`;
+  }).join("");
+
+  const planetMarkers = snapshot.positions.map((planet) => {
+    const point = polarPoint(center, planetRadius, longitudeToWheelDegrees(planet.longitude, ascendant.longitude));
+    const tickStart = polarPoint(center, 226, longitudeToWheelDegrees(planet.longitude, ascendant.longitude));
+    const tickEnd = polarPoint(center, 238, longitudeToWheelDegrees(planet.longitude, ascendant.longitude));
+    return `
+      <line class="planet-tick" x1="${tickStart.x.toFixed(2)}" y1="${tickStart.y.toFixed(2)}" x2="${tickEnd.x.toFixed(2)}" y2="${tickEnd.y.toFixed(2)}" />
+      <g class="planet-marker ${planet.isAngular ? "angular" : ""}" transform="translate(${point.x.toFixed(2)} ${point.y.toFixed(2)})">
+        <circle r="12" />
+        <text y="5">${PLANET_GLYPHS[planet.name] || planet.name.slice(0, 2)}</text>
+      </g>
+    `;
+  }).join("");
+
+  chartWheel.innerHTML = `
+    <svg class="wheel-svg" viewBox="0 0 600 600" role="img" aria-label="Electional astrology chart wheel">
+      <circle class="outer-disc" cx="${center}" cy="${center}" r="${zodiacOuter}" />
+      ${zodiacSegments}
+      ${signLines}
+      ${houseSegments}
+      ${houseLines}
+      <circle class="aspect-disc" cx="${center}" cy="${center}" r="${aspectRadius}" />
+      ${aspectLines}
+      ${angleLines}
+      ${planetMarkers}
+      ${angleLabels}
+      <circle class="center-disc" cx="${center}" cy="${center}" r="75" />
+      <text class="center-title" x="${center}" y="${center - 6}">Election</text>
+      <text class="center-subtitle" x="${center}" y="${center + 17}">${window.ElectionalEphemeris.engine}</text>
+    </svg>
+  `;
 }
 
 function renderTimeline(windows) {
@@ -191,15 +325,22 @@ function render() {
   const snapshot = window.ElectionalTransits.buildElectionSnapshot(state);
   const objectiveLabel = form.elements.objective.selectedOptions[0].textContent;
 
+  chartTitle.textContent = "Natal Chart";
+  chartMeta.innerHTML = `
+    <span>${state.date} ${state.time}</span>
+    <span>${state.location}</span>
+    <span>${state.latitude.toFixed(4)}, ${state.longitude.toFixed(4)}</span>
+    <span>${state.timezone}</span>
+  `;
   workspaceTitle.textContent = `${objectiveLabel} windows near ${state.location}`;
   timezoneLabel.textContent = state.timezone.replaceAll("_", " ");
   renderSummary(windows);
+  renderChartWheel(snapshot);
   renderTimeline(windows);
   renderPositions(snapshot, state);
   renderAngles(snapshot);
   renderDetectedAspects(snapshot);
   renderValidation();
-  renderAspectLibrary(state.aspects);
 }
 
 locationPresetInput.addEventListener("change", () => {

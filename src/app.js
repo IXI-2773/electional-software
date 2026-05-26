@@ -1,11 +1,17 @@
 const form = document.querySelector("#electionForm");
 const dateInput = document.querySelector("#dateInput");
+const locationPresetInput = document.querySelector("#locationPresetInput");
+const locationInput = document.querySelector("#locationInput");
+const latitudeInput = document.querySelector("#latitudeInput");
+const longitudeInput = document.querySelector("#longitudeInput");
+const timezoneInput = document.querySelector("#timezoneInput");
 const timeline = document.querySelector("#timeline");
 const aspectGrid = document.querySelector("#aspectGrid");
 const bestScore = document.querySelector("#bestScore");
 const beneficCount = document.querySelector("#beneficCount");
 const stressCount = document.querySelector("#stressCount");
 const trackedCount = document.querySelector("#trackedCount");
+const timezoneLabel = document.querySelector("#timezoneLabel");
 const workspaceTitle = document.querySelector("#workspaceTitle");
 const positionTimestamp = document.querySelector("#positionTimestamp");
 const positionGrid = document.querySelector("#positionGrid");
@@ -19,9 +25,25 @@ function getFormState() {
     date: data.get("date"),
     time: data.get("time"),
     location: data.get("location"),
+    latitude: Number(data.get("latitude")),
+    longitude: Number(data.get("longitude")),
+    timezone: data.get("timezone"),
     objective: data.get("objective"),
     aspects: data.getAll("aspect"),
   };
+}
+
+function applyLocationPreset() {
+  const preset = window.ElectionalTimezone.LOCATION_PRESETS[locationPresetInput.value];
+
+  if (!preset) {
+    return;
+  }
+
+  locationInput.value = preset.name;
+  latitudeInput.value = preset.latitude;
+  longitudeInput.value = preset.longitude;
+  timezoneInput.value = preset.timezone;
 }
 
 function renderAspectLibrary(selectedAspects) {
@@ -79,14 +101,8 @@ function renderSummary(windows) {
   trackedCount.textContent = uniqueTracked.size;
 }
 
-function renderPositions(snapshot) {
-  positionTimestamp.textContent = snapshot.date.toLocaleString([], {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+function renderPositions(snapshot, state) {
+  positionTimestamp.textContent = `${window.ElectionalTimezone.formatInTimezone(snapshot.date, state.timezone)} / ${window.ElectionalEphemeris.engine}`;
 
   positionGrid.innerHTML = snapshot.positions.map((planet) => `
     <article class="position-row">
@@ -125,12 +141,18 @@ function render() {
   const objectiveLabel = form.elements.objective.selectedOptions[0].textContent;
 
   workspaceTitle.textContent = `${objectiveLabel} windows near ${state.location}`;
+  timezoneLabel.textContent = state.timezone.replaceAll("_", " ");
   renderSummary(windows);
   renderTimeline(windows);
-  renderPositions(snapshot);
+  renderPositions(snapshot, state);
   renderDetectedAspects(snapshot);
   renderAspectLibrary(state.aspects);
 }
+
+locationPresetInput.addEventListener("change", () => {
+  applyLocationPreset();
+  render();
+});
 
 form.addEventListener("input", render);
 render();

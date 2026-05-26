@@ -14,17 +14,17 @@ const ZODIAC_SIGNS = [
 ];
 
 const PLANET_MODELS = [
-  { id: "sun", name: "Sun", j2000Longitude: 280.46, dailyMotion: 0.98564736 },
-  { id: "moon", name: "Moon", j2000Longitude: 218.32, dailyMotion: 13.176396 },
-  { id: "mercury", name: "Mercury", j2000Longitude: 252.25, dailyMotion: 4.09233445 },
-  { id: "venus", name: "Venus", j2000Longitude: 181.98, dailyMotion: 1.60213034 },
-  { id: "mars", name: "Mars", j2000Longitude: 355.43, dailyMotion: 0.52402068 },
-  { id: "jupiter", name: "Jupiter", j2000Longitude: 34.35, dailyMotion: 0.08308529 },
-  { id: "saturn", name: "Saturn", j2000Longitude: 50.08, dailyMotion: 0.03344414 },
+  { id: "sun", name: "Sun", astronomyBody: "Sun" },
+  { id: "moon", name: "Moon", astronomyBody: "Moon" },
+  { id: "mercury", name: "Mercury", astronomyBody: "Mercury" },
+  { id: "venus", name: "Venus", astronomyBody: "Venus" },
+  { id: "mars", name: "Mars", astronomyBody: "Mars" },
+  { id: "jupiter", name: "Jupiter", astronomyBody: "Jupiter" },
+  { id: "saturn", name: "Saturn", astronomyBody: "Saturn" },
+  { id: "uranus", name: "Uranus", astronomyBody: "Uranus" },
+  { id: "neptune", name: "Neptune", astronomyBody: "Neptune" },
+  { id: "pluto", name: "Pluto", astronomyBody: "Pluto" },
 ];
-
-const J2000 = Date.UTC(2000, 0, 1, 12, 0, 0);
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 function normalizeDegrees(value) {
   return ((value % 360) + 360) % 360;
@@ -41,17 +41,43 @@ function getZodiacPosition(longitude) {
   };
 }
 
-function getPlanetPositions(date) {
-  const daysSinceJ2000 = (date.getTime() - J2000) / DAY_MS;
+function getEclipticCoordinates(bodyName, date) {
+  if (!window.Astronomy) {
+    throw new Error("Astronomy Engine is not loaded.");
+  }
 
+  const body = window.Astronomy.Body[bodyName];
+
+  if (bodyName === "Sun") {
+    const sun = window.Astronomy.SunPosition(date);
+    return {
+      latitude: sun.elat,
+      longitude: sun.elon,
+      distanceAu: sun.vec ? sun.vec.Length() : null,
+    };
+  }
+
+  const vector = window.Astronomy.GeoVector(body, date, true);
+  const ecliptic = window.Astronomy.Ecliptic(vector);
+
+  return {
+    latitude: ecliptic.elat,
+    longitude: ecliptic.elon,
+    distanceAu: ecliptic.vec ? ecliptic.vec.Length() : null,
+  };
+}
+
+function getPlanetPositions(date) {
   return PLANET_MODELS.map((planet) => {
-    const longitude = normalizeDegrees(planet.j2000Longitude + planet.dailyMotion * daysSinceJ2000);
-    const zodiac = getZodiacPosition(longitude);
+    const coordinates = getEclipticCoordinates(planet.astronomyBody, date);
+    const longitude = normalizeDegrees(coordinates.longitude);
 
     return {
       ...planet,
+      latitude: coordinates.latitude,
       longitude,
-      zodiac,
+      distanceAu: coordinates.distanceAu,
+      zodiac: getZodiacPosition(longitude),
     };
   });
 }
@@ -62,6 +88,7 @@ function formatPosition(planet) {
 }
 
 window.ElectionalEphemeris = {
+  engine: "Astronomy Engine",
   PLANET_MODELS,
   ZODIAC_SIGNS,
   formatPosition,

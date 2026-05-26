@@ -7,8 +7,8 @@ const OBJECTIVE_WEIGHTS = {
 
 const WINDOW_OFFSETS = [0, 2, 4, 6, 8, 10];
 
-function buildDate(date, time) {
-  return new Date(`${date}T${time || "09:00"}`);
+function buildDate(date, time, timezone) {
+  return window.ElectionalTimezone.zonedTimeToUtc(date, time, timezone || "UTC");
 }
 
 function getToneCounts(detectedAspects) {
@@ -47,9 +47,9 @@ function describeWindow(detectedAspects) {
   return `Strongest contact: ${strongest.label} with ${strongest.orbText} orb.`;
 }
 
-function buildElectionSnapshot({ date, time, aspects }) {
+function buildElectionSnapshot({ date, time, timezone, aspects }) {
   const selectedAspects = aspects.length ? aspects : ["conjunction", "trine", "square"];
-  const chartDate = buildDate(date, time);
+  const chartDate = buildDate(date, time, timezone);
   const positions = window.ElectionalEphemeris.getPlanetPositions(chartDate);
   const detectedAspects = window.ElectionalAspects.detectAspects(positions, selectedAspects);
 
@@ -60,10 +60,10 @@ function buildElectionSnapshot({ date, time, aspects }) {
   };
 }
 
-function buildTransitWindows({ date, time, objective, aspects }) {
+function buildTransitWindows({ date, time, timezone, objective, aspects }) {
   const selectedAspects = aspects.length ? aspects : ["conjunction", "trine", "square"];
   const preferred = OBJECTIVE_WEIGHTS[objective] ?? OBJECTIVE_WEIGHTS.launch;
-  const baseDate = buildDate(date, time);
+  const baseDate = buildDate(date, time, timezone);
 
   return WINDOW_OFFSETS.map((offsetHours) => {
     const windowDate = new Date(baseDate);
@@ -82,7 +82,11 @@ function buildTransitWindows({ date, time, objective, aspects }) {
       detectedAspects,
       note: describeWindow(detectedAspects),
       score,
-      time: windowDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+      time: new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone || "UTC",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(windowDate),
       title,
     };
   }).sort((first, second) => second.score - first.score);

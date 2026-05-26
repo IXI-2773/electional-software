@@ -89,6 +89,12 @@ h3 {
   gap: 18px;
 }
 
+.coordinate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 label,
 fieldset {
   display: grid;
@@ -167,7 +173,7 @@ legend {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 30px;
 }
@@ -197,6 +203,7 @@ legend {
 
 .summary-grid strong {
   font-size: 1.9rem;
+  overflow-wrap: anywhere;
 }
 
 .timeline-section,
@@ -363,6 +370,7 @@ legend {
   }
 
   .summary-grid,
+  .coordinate-grid,
   .timeline-card {
     grid-template-columns: 1fr;
   }

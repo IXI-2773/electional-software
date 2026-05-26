@@ -49,6 +49,39 @@ function scoreWindow(detectedAspects, preferredAspects, positions, preset) {
   return Math.round(Math.max(10, Math.min(99, rawScore)));
 }
 
+async function scoreWithTransitionBackend({ presetId, selectedAspects, positions, preset, preferred }) {
+  try {
+    const response = await window.ElectionalPythonBackend.scorePositions({
+      presetId,
+      aspects: selectedAspects,
+      positions,
+    });
+
+    return {
+      detectedAspects: response.detectedAspects,
+      positions: response.positions,
+      preset: response.preset,
+      score: response.score,
+      scoringEngine: "Python API",
+    };
+  } catch (error) {
+    const dignifiedPositions = window.ElectionalPresets.applyDignities(positions, preset);
+    const detectedAspects = window.ElectionalAspects.detectAspects(
+      window.ElectionalPresets.filterPositionsForPreset(dignifiedPositions, preset),
+      selectedAspects,
+      { aspectOrbs: preset.aspectOrbs },
+    );
+
+    return {
+      detectedAspects,
+      positions: dignifiedPositions,
+      preset,
+      score: scoreWindow(detectedAspects, preferred, dignifiedPositions, preset),
+      scoringEngine: "JavaScript fallback",
+    };
+  }
+}
+
 function describeWindow(detectedAspects, positions, preset) {
   const scoringPositions = preset
     ? window.ElectionalPresets.filterPositionsForPreset(positions, preset)
@@ -69,34 +102,38 @@ function describeWindow(detectedAspects, positions, preset) {
   return `Strongest contact: ${strongest.label} with ${strongest.orbText} orb.`;
 }
 
-function buildElectionSnapshot({ date, time, timezone, latitude, longitude, aspects, presetId }) {
+async function buildElectionSnapshot({ date, time, timezone, latitude, longitude, objective, aspects, presetId }) {
   const preset = window.ElectionalPresets.getPreset(presetId);
   const selectedAspects = aspects.length ? aspects : preset.aspectIds;
+  const preferred = preset.preferredAspects.length
+    ? preset.preferredAspects
+    : OBJECTIVE_WEIGHTS[objective] ?? OBJECTIVE_WEIGHTS.launch;
   const chartDate = buildDate(date, time, timezone);
   const angles = window.ElectionalHouses.calculateAngles({ date: chartDate, latitude, longitude });
-  const positions = window.ElectionalPresets.applyDignities(
-    window.ElectionalHouses.enrichPositionsWithHouses(
-      window.ElectionalEphemeris.getPlanetPositions(chartDate),
-      angles,
-    ),
-    preset,
+  const basePositions = window.ElectionalHouses.enrichPositionsWithHouses(
+    window.ElectionalEphemeris.getPlanetPositions(chartDate),
+    angles,
   );
-  const detectedAspects = window.ElectionalAspects.detectAspects(
-    window.ElectionalPresets.filterPositionsForPreset(positions, preset),
+
+  const scored = await scoreWithTransitionBackend({
+    presetId,
     selectedAspects,
-    { aspectOrbs: preset.aspectOrbs },
-  );
+    positions: basePositions,
+    preset,
+    preferred,
+  });
 
   return {
     angles,
     date: chartDate,
-    preset,
-    positions,
-    detectedAspects,
+    detectedAspects: scored.detectedAspects,
+    preset: scored.preset,
+    positions: scored.positions,
+    scoringEngine: scored.scoringEngine,
   };
 }
 
-function buildTransitWindows({ date, time, timezone, latitude, longitude, objective, aspects, presetId }) {
+async function buildTransitWindows({ date, time, timezone, latitude, longitude, objective, aspects, presetId }) {
   const preset = window.ElectionalPresets.getPreset(presetId);
   const selectedAspects = aspects.length ? aspects : preset.aspectIds;
   const preferred = preset.preferredAspects.length
@@ -104,23 +141,16 @@ function buildTransitWindows({ date, time, timezone, latitude, longitude, object
     : OBJECTIVE_WEIGHTS[objective] ?? OBJECTIVE_WEIGHTS.launch;
   const baseDate = buildDate(date, time, timezone);
 
-  return WINDOW_OFFSETS.map((offsetHours) => {
+  const windows = await Promise.all(WINDOW_OFFSETS.map(async (offsetHours) => {
     const windowDate = new Date(baseDate);
     windowDate.setHours(baseDate.getHours() + offsetHours);
     const angles = window.ElectionalHouses.calculateAngles({ date: windowDate, latitude, longitude });
-    const positions = window.ElectionalPresets.applyDignities(
-      window.ElectionalHouses.enrichPositionsWithHouses(
-        window.ElectionalEphemeris.getPlanetPositions(windowDate),
-        angles,
-      ),
-      preset,
+    const basePositions = window.ElectionalHouses.enrichPositionsWithHouses(
+      window.ElectionalEphemeris.getPlanetPositions(windowDate),
+      angles,
     );
-    const detectedAspects = window.ElectionalAspects.detectAspects(
-      window.ElectionalPresets.filterPositionsForPreset(positions, preset),
-      selectedAspects,
-      { aspectOrbs: preset.aspectOrbs },
-    );
-    const score = scoreWindow(detectedAspects, preferred, positions, preset);
+    const scored = await scoreWithTransitionBackend({ presetId, selectedAspects, positions: basePositions, preset, preferred });
+    const score = scored.score;
 
     const title = score >= 76
       ? "High-priority election"
@@ -129,12 +159,13 @@ function buildTransitWindows({ date, time, timezone, latitude, longitude, object
         : "Use with caution";
 
     return {
-      detectedAspects,
       angles,
-      note: describeWindow(detectedAspects, positions, preset),
-      preset,
-      positions,
+      detectedAspects: scored.detectedAspects,
+      note: describeWindow(scored.detectedAspects, scored.positions, scored.preset),
+      preset: scored.preset,
+      positions: scored.positions,
       score,
+      scoringEngine: scored.scoringEngine,
       time: new Intl.DateTimeFormat("en-US", {
         timeZone: timezone || "UTC",
         hour: "numeric",
@@ -142,7 +173,9 @@ function buildTransitWindows({ date, time, timezone, latitude, longitude, object
       }).format(windowDate),
       title,
     };
-  }).sort((first, second) => second.score - first.score);
+  }));
+
+  return windows.sort((first, second) => second.score - first.score);
 }
 
 window.ElectionalTransits = {

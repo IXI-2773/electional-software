@@ -28,7 +28,9 @@ const chartMeta = document.querySelector("#chartMeta");
 const statusLocation = document.querySelector("#statusLocation");
 const statusTime = document.querySelector("#statusTime");
 const statusPreset = document.querySelector("#statusPreset");
+const statusBackend = document.querySelector("#statusBackend");
 const statusValidation = document.querySelector("#statusValidation");
+let renderToken = 0;
 
 dateInput.value = new Date().toISOString().slice(0, 10);
 
@@ -342,10 +344,20 @@ function renderValidation() {
   return report.pass && angleReport.pass && swissAngleReport.pass;
 }
 
-function render() {
+async function render() {
+  const currentRenderToken = renderToken + 1;
+  renderToken = currentRenderToken;
   const state = getFormState();
-  const windows = window.ElectionalTransits.buildTransitWindows(state);
-  const snapshot = window.ElectionalTransits.buildElectionSnapshot(state);
+  statusBackend.textContent = "Calculating...";
+  const [windows, snapshot] = await Promise.all([
+    window.ElectionalTransits.buildTransitWindows(state),
+    window.ElectionalTransits.buildElectionSnapshot(state),
+  ]);
+
+  if (currentRenderToken !== renderToken) {
+    return;
+  }
+
   const preset = snapshot.preset;
   const objectiveLabel = form.elements.objective.selectedOptions[0].textContent;
 
@@ -368,6 +380,7 @@ function render() {
   statusLocation.textContent = state.location;
   statusTime.textContent = window.ElectionalTimezone.formatInTimezone(snapshot.date, state.timezone);
   statusPreset.textContent = preset.name;
+  statusBackend.textContent = snapshot.scoringEngine;
   statusValidation.textContent = validationPasses ? "Pass" : "Review";
 }
 

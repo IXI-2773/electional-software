@@ -49,6 +49,7 @@ The first Python slice now mirrors core electional logic:
 - Classical essential dignity scoring.
 - Electional window scoring.
 - Standard-library JSON API skeleton.
+- The browser app now calls the Python API for preset scoring when it is running, and falls back to JavaScript if it is not.
 
 Run tests:
 

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Electional Software</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="Electional controls">
+        <div class="brand">
+          <p class="eyebrow">Electional Software</p>
+          <h1>Transit timing desk</h1>
+        </div>
+
+        <form class="control-panel" id="electionForm">
+          <label>
+            Election date
+            <input id="dateInput" type="date" name="date" />
+          </label>
+
+          <label>
+            Start time
+            <input id="timeInput" type="time" name="time" value="09:00" />
+          </label>
+
+          <label>
+            Location
+            <input
+              id="locationInput"
+              type="text"
+              name="location"
+              value="Los Angeles, CA"
+              autocomplete="off"
+            />
+          </label>
+
+          <label>
+            Objective
+            <select id="objectiveInput" name="objective">
+              <option value="launch">Launch or publish</option>
+              <option value="meeting">Meeting or negotiation</option>
+              <option value="creative">Creative work</option>
+              <option value="relationship">Relationship timing</option>
+            </select>
+          </label>
+
+          <fieldset>
+            <legend>Aspect focus</legend>
+            <label class="check-row">
+              <input type="checkbox" name="aspect" value="conjunction" checked />
+              Conjunctions
+            </label>
+            <label class="check-row">
+              <input type="checkbox" name="aspect" value="trine" checked />
+              Trines
+            </label>
+            <label class="check-row">
+              <input type="checkbox" name="aspect" value="square" checked />
+              Squares
+            </label>
+            <label class="check-row">
+              <input type="checkbox" name="aspect" value="opposition" />
+              Oppositions
+            </label>
+          </fieldset>
+        </form>
+      </aside>
+
+      <section class="workspace" aria-live="polite">
+        <header class="workspace-header">
+          <div>
+            <p class="eyebrow">Daily election scan</p>
+            <h2 id="workspaceTitle">Best windows for your objective</h2>
+          </div>
+          <div class="score-card">
+            <span id="bestScore">--</span>
+            <small>top window score</small>
+          </div>
+        </header>
+
+        <section class="summary-grid" aria-label="Election summary">
+          <article>
+            <span>Benefic support</span>
+            <strong id="beneficCount">--</strong>
+          </article>
+          <article>
+            <span>Stress patterns</span>
+            <strong id="stressCount">--</strong>
+          </article>
+          <article>
+            <span>Tracked aspects</span>
+            <strong id="trackedCount">--</strong>
+          </article>
+        </section>
+
+        <section class="timeline-section">
+          <div class="section-heading">
+            <h3>Candidate windows</h3>
+            <p>Placeholder scoring until we connect the astronomy engine.</p>
+          </div>
+          <div class="timeline" id="timeline"></div>
+        </section>
+
+        <section class="aspect-library">
+          <div class="section-heading">
+            <h3>Aspect library</h3>
+            <p>Core definitions we will build calculations around.</p>
+          </div>
+          <div class="aspect-grid" id="aspectGrid"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="src/domain/aspects.js"></script>
+    <script src="src/domain/transits.js"></script>
+    <script src="src/app.js"></script>
+  </body>
+</html>

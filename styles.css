@@ -173,7 +173,7 @@ legend {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 14px;
   margin-bottom: 30px;
 }
@@ -208,6 +208,7 @@ legend {
 
 .timeline-section,
 .positions-section,
+.angles-section,
 .detected-section,
 .aspect-library {
   margin-top: 30px;
@@ -278,6 +279,7 @@ legend {
 }
 
 .position-grid,
+.angle-grid,
 .detected-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -285,6 +287,7 @@ legend {
 }
 
 .position-row,
+.angle-card,
 .detected-card,
 .empty-state {
   border: 1px solid var(--line);
@@ -295,16 +298,33 @@ legend {
 
 .position-row {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
 .position-row span,
+.position-row small,
+.angle-card span,
 .detected-card span,
 .empty-state span {
   color: var(--muted);
   font-family: "Trebuchet MS", sans-serif;
   font-size: 0.86rem;
+}
+
+.position-row small {
+  display: block;
+  margin-top: 4px;
+}
+
+.angle-card {
+  display: grid;
+  gap: 8px;
+}
+
+.angle-card strong {
+  font-size: 1.15rem;
 }
 
 .detected-card {

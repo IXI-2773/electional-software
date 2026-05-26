@@ -10,10 +10,11 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Professional ephemeris module powered by Astronomy Engine.
 - Location presets with latitude, longitude, and IANA timezone handling.
 - Aspect detection and ranked electional windows based on selected aspect types.
+- Ascendant, Midheaven, Descendant, IC, Whole Sign house placement, and angularity scoring.
 
 ## Accuracy Note
 
-Planetary positions now use Astronomy Engine's browser library for geocentric true ecliptic coordinates. The next accuracy step is adding house/angle calculation from location, then validating app outputs against an external astrology reference before relying on final electional judgment.
+Planetary positions now use Astronomy Engine's browser library for geocentric true ecliptic coordinates. Angles are calculated from sidereal time, true obliquity, latitude, and longitude. The next accuracy step is validating app outputs against an external astrology reference before relying on final electional judgment.
 
 ## Open Locally
 

@@ -12,9 +12,11 @@ const beneficCount = document.querySelector("#beneficCount");
 const stressCount = document.querySelector("#stressCount");
 const trackedCount = document.querySelector("#trackedCount");
 const timezoneLabel = document.querySelector("#timezoneLabel");
+const angularCount = document.querySelector("#angularCount");
 const workspaceTitle = document.querySelector("#workspaceTitle");
 const positionTimestamp = document.querySelector("#positionTimestamp");
 const positionGrid = document.querySelector("#positionGrid");
+const angleGrid = document.querySelector("#angleGrid");
 const detectedGrid = document.querySelector("#detectedGrid");
 
 dateInput.value = new Date().toISOString().slice(0, 10);
@@ -99,6 +101,7 @@ function renderSummary(windows) {
   beneficCount.textContent = benefic;
   stressCount.textContent = stress;
   trackedCount.textContent = uniqueTracked.size;
+  angularCount.textContent = topWindow ? topWindow.positions.filter((planet) => planet.isAngular).length : "--";
 }
 
 function renderPositions(snapshot, state) {
@@ -106,8 +109,20 @@ function renderPositions(snapshot, state) {
 
   positionGrid.innerHTML = snapshot.positions.map((planet) => `
     <article class="position-row">
-      <strong>${planet.name}</strong>
+      <div>
+        <strong>${planet.name}</strong>
+        <small>House ${planet.house}${planet.isAngular ? ` / ${planet.closestAngle.shortName}` : ""}</small>
+      </div>
       <span>${window.ElectionalEphemeris.formatPosition(planet)}</span>
+    </article>
+  `).join("");
+}
+
+function renderAngles(snapshot) {
+  angleGrid.innerHTML = snapshot.angles.map((angle) => `
+    <article class="angle-card">
+      <span>${angle.name}</span>
+      <strong>${window.ElectionalHouses.formatAngle(angle)}</strong>
     </article>
   `).join("");
 }
@@ -145,6 +160,7 @@ function render() {
   renderSummary(windows);
   renderTimeline(windows);
   renderPositions(snapshot, state);
+  renderAngles(snapshot);
   renderDetectedAspects(snapshot);
   renderAspectLibrary(state.aspects);
 }

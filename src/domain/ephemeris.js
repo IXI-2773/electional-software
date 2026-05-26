@@ -82,9 +82,13 @@ function getPlanetPositions(date) {
   });
 }
 
+function formatZodiacPosition(zodiac) {
+  const minute = String(zodiac.minute).padStart(2, "0");
+  return `${zodiac.degree} ${zodiac.sign} ${minute}`;
+}
+
 function formatPosition(planet) {
-  const minute = String(planet.zodiac.minute).padStart(2, "0");
-  return `${planet.zodiac.degree} ${planet.zodiac.sign} ${minute}`;
+  return formatZodiacPosition(planet.zodiac);
 }
 
 window.ElectionalEphemeris = {
@@ -94,5 +98,6 @@ window.ElectionalEphemeris = {
   formatPosition,
   getPlanetPositions,
   getZodiacPosition,
+  formatZodiacPosition,
   normalizeDegrees,
 };

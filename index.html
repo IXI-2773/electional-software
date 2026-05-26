@@ -133,6 +133,10 @@
             <span>Chart timezone</span>
             <strong id="timezoneLabel">--</strong>
           </article>
+          <article>
+            <span>Angular bodies</span>
+            <strong id="angularCount">--</strong>
+          </article>
         </section>
 
         <section class="timeline-section">
@@ -149,6 +153,14 @@
             <p id="positionTimestamp">Astronomy Engine geocentric ecliptic</p>
           </div>
           <div class="position-grid" id="positionGrid"></div>
+        </section>
+
+        <section class="angles-section">
+          <div class="section-heading">
+            <h3>Angles and houses</h3>
+            <p>Whole Sign houses with angular proximity.</p>
+          </div>
+          <div class="angle-grid" id="angleGrid"></div>
         </section>
 
         <section class="detected-section">
@@ -173,6 +185,7 @@
     <script src="src/domain/aspects.js"></script>
     <script src="src/domain/timezone.js"></script>
     <script src="src/domain/ephemeris.js"></script>
+    <script src="src/domain/houses.js"></script>
     <script src="src/domain/transits.js"></script>
     <script src="src/app.js"></script>
   </body>

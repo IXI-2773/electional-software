@@ -57,6 +57,10 @@
               Trines
             </label>
             <label class="check-row">
+              <input type="checkbox" name="aspect" value="sextile" checked />
+              Sextiles
+            </label>
+            <label class="check-row">
               <input type="checkbox" name="aspect" value="square" checked />
               Squares
             </label>
@@ -98,9 +102,25 @@
         <section class="timeline-section">
           <div class="section-heading">
             <h3>Candidate windows</h3>
-            <p>Placeholder scoring until we connect the astronomy engine.</p>
+            <p>Ranked by active aspects near the selected time.</p>
           </div>
           <div class="timeline" id="timeline"></div>
+        </section>
+
+        <section class="positions-section">
+          <div class="section-heading">
+            <h3>Planet positions</h3>
+            <p id="positionTimestamp">Selected chart moment</p>
+          </div>
+          <div class="position-grid" id="positionGrid"></div>
+        </section>
+
+        <section class="detected-section">
+          <div class="section-heading">
+            <h3>Detected aspects</h3>
+            <p>Current chart contacts inside the selected orbs.</p>
+          </div>
+          <div class="detected-grid" id="detectedGrid"></div>
         </section>
 
         <section class="aspect-library">
@@ -114,6 +134,7 @@
     </main>
 
     <script src="src/domain/aspects.js"></script>
+    <script src="src/domain/ephemeris.js"></script>
     <script src="src/domain/transits.js"></script>
     <script src="src/app.js"></script>
   </body>

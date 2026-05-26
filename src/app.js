@@ -7,6 +7,9 @@ const beneficCount = document.querySelector("#beneficCount");
 const stressCount = document.querySelector("#stressCount");
 const trackedCount = document.querySelector("#trackedCount");
 const workspaceTitle = document.querySelector("#workspaceTitle");
+const positionTimestamp = document.querySelector("#positionTimestamp");
+const positionGrid = document.querySelector("#positionGrid");
+const detectedGrid = document.querySelector("#detectedGrid");
 
 dateInput.value = new Date().toISOString().slice(0, 10);
 
@@ -36,12 +39,11 @@ function renderAspectLibrary(selectedAspects) {
 
 function renderTimeline(windows) {
   timeline.innerHTML = windows.map((transitWindow) => {
-    const tags = transitWindow.aspects
-      .map((id) => window.ElectionalAspects.getAspectById(id))
-      .filter(Boolean)
+    const tags = transitWindow.detectedAspects
+      .slice(0, 4)
       .map((aspect) => {
         const tone = aspect.tone === "stress" ? " stress" : "";
-        return `<span class="tag${tone}">${aspect.name}</span>`;
+        return `<span class="tag${tone}">${aspect.label}</span>`;
       })
       .join("");
 
@@ -54,36 +56,79 @@ function renderTimeline(windows) {
         </div>
         <div class="tag-row">
           <span class="tag">Score ${transitWindow.score}</span>
-          ${tags}
+          ${tags || '<span class="tag muted-tag">No close contacts</span>'}
         </div>
       </article>
     `;
   }).join("");
 }
 
-function renderSummary(windows, selectedAspects) {
+function renderSummary(windows) {
   const topWindow = windows.reduce((best, current) => {
     return current.score > best.score ? current : best;
   }, windows[0]);
+  const allDetected = windows.flatMap((transitWindow) => transitWindow.detectedAspects);
+  const uniqueTracked = new Set(allDetected.map((aspect) => aspect.aspectId));
 
-  const selectedDefinitions = selectedAspects.map(window.ElectionalAspects.getAspectById).filter(Boolean);
-  const benefic = selectedDefinitions.filter((aspect) => aspect.tone === "support").length;
-  const stress = selectedDefinitions.filter((aspect) => aspect.tone === "stress").length;
+  const benefic = allDetected.filter((aspect) => aspect.tone === "support").length;
+  const stress = allDetected.filter((aspect) => aspect.tone === "stress").length;
 
   bestScore.textContent = topWindow ? topWindow.score : "--";
   beneficCount.textContent = benefic;
   stressCount.textContent = stress;
-  trackedCount.textContent = selectedAspects.length;
+  trackedCount.textContent = uniqueTracked.size;
+}
+
+function renderPositions(snapshot) {
+  positionTimestamp.textContent = snapshot.date.toLocaleString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  positionGrid.innerHTML = snapshot.positions.map((planet) => `
+    <article class="position-row">
+      <strong>${planet.name}</strong>
+      <span>${window.ElectionalEphemeris.formatPosition(planet)}</span>
+    </article>
+  `).join("");
+}
+
+function renderDetectedAspects(snapshot) {
+  if (!snapshot.detectedAspects.length) {
+    detectedGrid.innerHTML = `
+      <article class="empty-state">
+        <strong>No selected aspects in orb</strong>
+        <span>Try enabling more aspect types or changing the time.</span>
+      </article>
+    `;
+    return;
+  }
+
+  detectedGrid.innerHTML = snapshot.detectedAspects.map((aspect) => {
+    const tone = aspect.tone === "stress" ? " stress" : "";
+    return `
+      <article class="detected-card${tone}">
+        <strong>${aspect.label}</strong>
+        <span>${aspect.orbText} orb / ${aspect.exactAngle} deg exact</span>
+      </article>
+    `;
+  }).join("");
 }
 
 function render() {
   const state = getFormState();
   const windows = window.ElectionalTransits.buildTransitWindows(state);
+  const snapshot = window.ElectionalTransits.buildElectionSnapshot(state);
   const objectiveLabel = form.elements.objective.selectedOptions[0].textContent;
 
   workspaceTitle.textContent = `${objectiveLabel} windows near ${state.location}`;
-  renderSummary(windows, state.aspects);
+  renderSummary(windows);
   renderTimeline(windows);
+  renderPositions(snapshot);
+  renderDetectedAspects(snapshot);
   renderAspectLibrary(state.aspects);
 }
 

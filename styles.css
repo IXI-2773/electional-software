@@ -200,6 +200,8 @@ legend {
 }
 
 .timeline-section,
+.positions-section,
+.detected-section,
 .aspect-library {
   margin-top: 30px;
 }
@@ -261,6 +263,56 @@ legend {
 .tag.stress {
   background: rgba(183, 93, 74, 0.13);
   color: var(--rose);
+}
+
+.muted-tag {
+  background: rgba(93, 105, 102, 0.12);
+  color: var(--muted);
+}
+
+.position-grid,
+.detected-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.position-row,
+.detected-card,
+.empty-state {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 250, 241, 0.88);
+  padding: 15px;
+}
+
+.position-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.position-row span,
+.detected-card span,
+.empty-state span {
+  color: var(--muted);
+  font-family: "Trebuchet MS", sans-serif;
+  font-size: 0.86rem;
+}
+
+.detected-card {
+  display: grid;
+  gap: 8px;
+}
+
+.detected-card.stress {
+  border-color: rgba(183, 93, 74, 0.42);
+}
+
+.empty-state {
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
 }
 
 .aspect-grid {

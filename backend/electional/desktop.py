@@ -27,22 +27,45 @@ PLANET_LABELS = {
 }
 
 SIGN_LABELS = ("Ar", "Ta", "Ge", "Ca", "Le", "Vi", "Li", "Sc", "Sg", "Cp", "Aq", "Pi")
-SIGN_COLORS = (
-    "#d6657f",
-    "#c9a66f",
-    "#28b7a7",
-    "#b6c89a",
-    "#f4bb74",
-    "#f1d9a7",
-    "#27b4a7",
-    "#af579f",
-    "#f2a968",
-    "#c5a06b",
-    "#28b2b2",
-    "#b25aa1",
-)
-
 OBJECTIVES = ("Launch or publish", "Meeting or negotiation", "Creative work", "Relationship timing", "Travel departure")
+
+PALETTE = {
+    "app_bg": "#d8dfe8",
+    "title_bar": "#ef9eab",
+    "top_bar": "#233e7d",
+    "top_bar_dark": "#152858",
+    "ribbon": "#e8a7af",
+    "ribbon_panel": "#f0bcc2",
+    "panel": "#fff3c8",
+    "panel_alt": "#fff9df",
+    "panel_line": "#6f7783",
+    "canvas": "#eee6ca",
+    "canvas_grid": "#ddd5bd",
+    "chart_disc": "#e3dcc7",
+    "chart_inner": "#f7edd1",
+    "chart_line": "#646b71",
+    "text": "#151923",
+    "muted": "#4e5965",
+    "accent": "#006875",
+    "score": "#005f67",
+    "support": "#148b9b",
+    "stress": "#d75a7b",
+}
+
+SIGN_COLORS = (
+    "#ef6b86",
+    "#d8c36e",
+    "#22c3b1",
+    "#b6d7a8",
+    "#f0b46a",
+    "#d4d8bd",
+    "#22b8b0",
+    "#c0569f",
+    "#f1976d",
+    "#bfc7ba",
+    "#30b8c3",
+    "#c968ad",
+)
 
 
 def planet_abbreviation(name: str) -> str:
@@ -123,28 +146,30 @@ class ElectionalDesktopApp:
         self.calculate()
 
     def _configure_style(self) -> None:
-        self.root.configure(bg="#d98c65")
+        self.root.configure(bg=PALETTE["app_bg"])
         style = ttk.Style()
         style.theme_use("clam")
-        style.configure(".", font=("Segoe UI", 10), background="#efc58e")
-        style.configure("Top.TFrame", background="#263c79")
-        style.configure("Ribbon.TFrame", background="#d1845e")
-        style.configure("Panel.TFrame", background="#efc58e", relief="solid", borderwidth=1)
-        style.configure("Panel.TLabelframe", background="#efc58e", bordercolor="#805b32")
-        style.configure("Panel.TLabelframe.Label", background="#efc58e", foreground="#004e52", font=("Segoe UI", 9, "bold"))
-        style.configure("Title.TLabel", background="#efc58e", foreground="#1b160f", font=("Segoe UI", 18, "bold"))
-        style.configure("Small.TLabel", background="#efc58e", foreground="#4f4336", font=("Segoe UI", 9))
-        style.configure("Accent.TLabel", background="#efc58e", foreground="#00666b", font=("Segoe UI", 9, "bold"))
-        style.configure("Score.TLabel", background="#f6d9a6", foreground="#005d62", font=("Segoe UI", 30, "bold"))
-        style.configure("TButton", background="#e8a480", foreground="#1b160f", padding=(12, 6))
-        style.map("TButton", background=[("active", "#f0bb95")])
-        style.configure("TCheckbutton", background="#efc58e", foreground="#4f4336")
-        style.configure("TCombobox", fieldbackground="#ffe7b7", background="#e8a480")
+        style.configure(".", font=("Segoe UI", 10), background=PALETTE["panel"])
+        style.configure("Top.TFrame", background=PALETTE["top_bar"])
+        style.configure("Ribbon.TFrame", background=PALETTE["ribbon"])
+        style.configure("Workbench.TFrame", background=PALETTE["app_bg"])
+        style.configure("Panel.TFrame", background=PALETTE["panel"], relief="solid", borderwidth=1)
+        style.configure("RibbonPanel.TFrame", background=PALETTE["ribbon_panel"], relief="ridge", borderwidth=1)
+        style.configure("Panel.TLabelframe", background=PALETTE["panel"], bordercolor=PALETTE["panel_line"])
+        style.configure("Panel.TLabelframe.Label", background=PALETTE["panel"], foreground=PALETTE["accent"], font=("Segoe UI", 9, "bold"))
+        style.configure("Title.TLabel", background=PALETTE["panel"], foreground=PALETTE["text"], font=("Segoe UI", 18, "bold"))
+        style.configure("Small.TLabel", background=PALETTE["panel"], foreground=PALETTE["muted"], font=("Segoe UI", 9))
+        style.configure("Accent.TLabel", background=PALETTE["panel"], foreground=PALETTE["accent"], font=("Segoe UI", 9, "bold"))
+        style.configure("Score.TLabel", background=PALETTE["panel_alt"], foreground=PALETTE["score"], font=("Segoe UI", 30, "bold"))
+        style.configure("TButton", background="#f1c5ca", foreground=PALETTE["text"], padding=(12, 6), bordercolor="#8b6a82")
+        style.map("TButton", background=[("active", "#f8d7db")])
+        style.configure("TCheckbutton", background=PALETTE["panel"], foreground=PALETTE["muted"])
+        style.configure("TCombobox", fieldbackground=PALETTE["panel_alt"], background=PALETTE["ribbon_panel"], foreground=PALETTE["text"])
 
     def _build_layout(self) -> None:
         self._build_top_bars()
 
-        shell = ttk.Frame(self.root, style="Ribbon.TFrame", padding=(12, 10, 12, 8))
+        shell = ttk.Frame(self.root, style="Workbench.TFrame", padding=(12, 10, 12, 8))
         shell.pack(fill=tk.BOTH, expand=True)
         shell.columnconfigure(2, weight=1)
         shell.rowconfigure(0, weight=1)
@@ -172,39 +197,73 @@ class ElectionalDesktopApp:
             self.root,
             textvariable=self.status_var,
             anchor="w",
-            bg="#f4d293",
-            fg="#1c2530",
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["text"],
             font=("Segoe UI", 9),
             padx=10,
         )
         status.pack(fill=tk.X, side=tk.BOTTOM)
 
     def _build_top_bars(self) -> None:
-        title_bar = tk.Frame(self.root, bg="#ef9bab", height=24)
+        title_bar = tk.Frame(self.root, bg=PALETTE["title_bar"], height=24)
         title_bar.pack(fill=tk.X)
         tk.Label(
             title_bar,
             text="Electional Software",
-            bg="#ef9bab",
-            fg="#141d42",
+            bg=PALETTE["title_bar"],
+            fg=PALETTE["top_bar_dark"],
             font=("Segoe UI", 9, "bold"),
         ).pack()
 
         menu = ttk.Frame(self.root, style="Top.TFrame", padding=(12, 5))
         menu.pack(fill=tk.X)
         for item in ("Chart", "Selected Chart", "View Page", "Search", "Utility", "Configuration Editors", "Astro Mapping"):
-            tk.Label(menu, text=item, bg="#263c79", fg="white", font=("Segoe UI", 9, "bold"), padx=13).pack(side=tk.LEFT)
+            tk.Label(menu, text=item, bg=PALETTE["top_bar"], fg="white", font=("Segoe UI", 9, "bold"), padx=13).pack(side=tk.LEFT)
 
         ribbon = ttk.Frame(self.root, style="Ribbon.TFrame", padding=(10, 8))
         ribbon.pack(fill=tk.X)
-        for item in ("New Chart", "Transits", "Electional Search", "Void Course", "Bounds"):
-            ttk.Button(ribbon, text=item).pack(side=tk.LEFT, padx=(0, 7))
+        groups = (
+            ("Database", ("New Chart", "Save", "Ask")),
+            ("Transits and Progressions", ("Transits", "Primary Directions")),
+            ("Electional", ("Electional Search", "Void Course")),
+            ("Utility", ("Bounds", "Heliacal Search")),
+        )
+        for group_title, items in groups:
+            group = ttk.Frame(ribbon, style="RibbonPanel.TFrame", padding=(8, 6))
+            group.pack(side=tk.LEFT, padx=(0, 8))
+            row = ttk.Frame(group, style="RibbonPanel.TFrame")
+            row.pack()
+            for item in items:
+                self._ribbon_button(row, item).pack(side=tk.LEFT, padx=3)
+            tk.Label(
+                group,
+                text=group_title,
+                bg=PALETTE["ribbon_panel"],
+                fg=PALETTE["top_bar_dark"],
+                font=("Segoe UI", 8),
+            ).pack(fill=tk.X, pady=(4, 0))
+
+    def _ribbon_button(self, parent: tk.Widget, label: str) -> tk.Frame:
+        button = tk.Frame(parent, bg=PALETTE["ribbon_panel"], padx=3, pady=2)
+        icon = tk.Canvas(button, width=30, height=26, bg=PALETTE["ribbon_panel"], highlightthickness=0)
+        icon.create_oval(5, 3, 25, 23, fill=PALETTE["panel_alt"], outline=PALETTE["top_bar_dark"], width=1)
+        icon.create_text(15, 13, text=label[:1], fill=PALETTE["top_bar_dark"], font=("Segoe UI", 9, "bold"))
+        icon.pack()
+        tk.Label(
+            button,
+            text=label.replace(" ", "\n", 1),
+            bg=PALETTE["ribbon_panel"],
+            fg=PALETTE["text"],
+            font=("Segoe UI", 8),
+            justify=tk.CENTER,
+        ).pack()
+        return button
 
     def _build_left_controls(self) -> None:
         card = ttk.Frame(self.left_panel, style="Panel.TFrame", padding=12)
         card.pack(fill=tk.X, pady=(0, 12))
         ttk.Label(card, text="NATAL CHART", style="Accent.TLabel").pack(anchor="w")
-        ttk.Label(card, text="Natal Chart", background="#efc58e", font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(6, 4))
+        ttk.Label(card, text="Natal Chart", background=PALETTE["panel"], font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(6, 4))
         self.natal_summary = ttk.Label(card, text="", style="Small.TLabel", justify=tk.LEFT)
         self.natal_summary.pack(anchor="w")
 
@@ -244,8 +303,8 @@ class ElectionalDesktopApp:
         tk.Label(
             self.left_panel,
             textvariable=self.validation_var,
-            bg="#efc58e",
-            fg="#005d62",
+            bg=PALETTE["panel"],
+            fg=PALETTE["score"],
             justify=tk.LEFT,
             wraplength=250,
             font=("Segoe UI", 9, "bold"),
@@ -253,7 +312,7 @@ class ElectionalDesktopApp:
 
     def _labeled_entry(self, label: str, variable: tk.StringVar) -> None:
         ttk.Label(self.left_panel, text=label, style="Small.TLabel").pack(anchor="w", pady=(10, 3))
-        entry = tk.Entry(self.left_panel, textvariable=variable, bg="#ffe7b7", relief=tk.SOLID, bd=1, font=("Segoe UI", 10, "bold"))
+        entry = tk.Entry(self.left_panel, textvariable=variable, bg=PALETTE["panel_alt"], relief=tk.SOLID, bd=1, font=("Segoe UI", 10, "bold"))
         entry.pack(fill=tk.X, ipady=7)
 
     def _labeled_combo(self, label: str, variable: tk.StringVar, values: list[str]) -> ttk.Combobox:
@@ -274,8 +333,8 @@ class ElectionalDesktopApp:
             badge = tk.Label(
                 self.number_strip,
                 text=text,
-                bg="#f8df9d",
-                fg="#3a4c38",
+                bg=PALETTE["panel_alt"],
+                fg=PALETTE["top_bar_dark"],
                 relief=tk.SOLID,
                 bd=1,
                 font=("Segoe UI", 13),
@@ -298,7 +357,14 @@ class ElectionalDesktopApp:
         ttk.Label(score_card, textvariable=self.score_var, style="Score.TLabel").pack()
         ttk.Label(score_card, text="top window score", style="Small.TLabel").pack()
 
-        self.canvas = tk.Canvas(self.center_panel, width=760, height=640, bg="#f6d39b", highlightthickness=1, highlightbackground="#986a3c")
+        self.canvas = tk.Canvas(
+            self.center_panel,
+            width=760,
+            height=640,
+            bg=PALETTE["canvas"],
+            highlightthickness=1,
+            highlightbackground=PALETTE["panel_line"],
+        )
         self.canvas.grid(row=2, column=0, sticky="nsew")
         self.canvas.bind("<Configure>", self._schedule_redraw)
 
@@ -316,8 +382,8 @@ class ElectionalDesktopApp:
             frame,
             width=40,
             height=7,
-            bg="#f8dca6",
-            fg="#1f1a14",
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["text"],
             relief=tk.FLAT,
             activestyle="dotbox",
             font=("Segoe UI", 9),
@@ -333,8 +399,8 @@ class ElectionalDesktopApp:
             frame,
             width=40,
             height=height,
-            bg="#f8dca6",
-            fg="#1f1a14",
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["text"],
             relief=tk.FLAT,
             wrap=tk.WORD,
             font=("Segoe UI", 9),
@@ -456,7 +522,15 @@ class ElectionalDesktopApp:
         aspect_radius = outer * 0.44
 
         self._draw_grid(width, height)
-        self.canvas.create_oval(cx - outer, cy - outer, cx + outer, cy + outer, fill="#efd29a", outline="#754f30", width=2)
+        self.canvas.create_oval(
+            cx - outer,
+            cy - outer,
+            cx + outer,
+            cy + outer,
+            fill=PALETTE["chart_disc"],
+            outline=PALETTE["chart_line"],
+            width=2,
+        )
 
         ascendant = next(angle for angle in snapshot["angles"] if angle["id"] == "asc")
         asc_lon = float(ascendant["longitude"])
@@ -471,7 +545,7 @@ class ElectionalDesktopApp:
                 start=start,
                 extent=-30,
                 fill=SIGN_COLORS[index],
-                outline="#67412d",
+                outline=PALETTE["chart_line"],
                 width=1,
             )
             self.canvas.create_arc(
@@ -481,57 +555,65 @@ class ElectionalDesktopApp:
                 cy + zodiac_inner,
                 start=start,
                 extent=-30,
-                fill="#efc58e",
-                outline="#67412d",
+                fill=PALETTE["chart_disc"],
+                outline=PALETTE["chart_line"],
                 width=1,
             )
             label_angle = wheel_degrees(index * 30 + 15, asc_lon)
             lx, ly = _polar(cx, cy, outer * 0.92, label_angle)
-            self.canvas.create_text(lx, ly, text=sign, fill="#f5e9c6", font=("Segoe UI", 15, "bold"))
+            self.canvas.create_text(lx, ly, text=sign, fill="#17234f", font=("Segoe UI", 15, "bold"))
 
-        self.canvas.create_oval(cx - zodiac_inner, cy - zodiac_inner, cx + zodiac_inner, cy + zodiac_inner, outline="#765238", width=2)
-        self.canvas.create_oval(cx - house_inner, cy - house_inner, cx + house_inner, cy + house_inner, fill="#f6dca8", outline="#8a6547", width=2)
-        self.canvas.create_oval(cx - 72, cy - 72, cx + 72, cy + 72, outline="#8a6547", width=2)
+        self.canvas.create_oval(cx - zodiac_inner, cy - zodiac_inner, cx + zodiac_inner, cy + zodiac_inner, outline=PALETTE["chart_line"], width=2)
+        self.canvas.create_oval(
+            cx - house_inner,
+            cy - house_inner,
+            cx + house_inner,
+            cy + house_inner,
+            fill=PALETTE["chart_inner"],
+            outline=PALETTE["chart_line"],
+            width=2,
+        )
+        self.canvas.create_oval(cx - 72, cy - 72, cx + 72, cy + 72, outline=PALETTE["chart_line"], width=2)
 
         for house_index in range(12):
             angle = wheel_degrees(asc_lon + house_index * 30, asc_lon)
             x1, y1 = _polar(cx, cy, house_inner, angle)
             x2, y2 = _polar(cx, cy, zodiac_inner, angle)
-            self.canvas.create_line(x1, y1, x2, y2, fill="#6f4d35", width=1)
+            self.canvas.create_line(x1, y1, x2, y2, fill=PALETTE["chart_line"], width=1)
             lx, ly = _polar(cx, cy, outer * 0.64, angle - 15)
-            self.canvas.create_text(lx, ly, text=str(house_index + 1), fill="#7a4f34", font=("Segoe UI", 12, "bold"))
+            self.canvas.create_text(lx, ly, text=str(house_index + 1), fill=PALETTE["muted"], font=("Segoe UI", 12, "bold"))
 
         self._draw_aspects(snapshot, cx, cy, aspect_radius, asc_lon)
         self._draw_angles(snapshot, cx, cy, outer, asc_lon)
         self._draw_planets(snapshot, cx, cy, asc_lon, outer)
 
-        self.canvas.create_text(cx, cy - 8, text="Election", fill="#263044", font=("Segoe UI", 18, "bold"))
-        self.canvas.create_text(cx, cy + 25, text=str(snapshot["formattedTime"]), fill="#5b4a39", font=("Segoe UI", 10))
+        self.canvas.create_text(cx, cy - 8, text="Election", fill=PALETTE["top_bar_dark"], font=("Segoe UI", 18, "bold"))
+        self.canvas.create_text(cx, cy + 25, text=str(snapshot["formattedTime"]), fill=PALETTE["muted"], font=("Segoe UI", 10))
 
     def _draw_grid(self, width: int, height: int) -> None:
         for x in range(0, width, 24):
-            self.canvas.create_line(x, 0, x, height, fill="#e9c88d", width=1)
+            self.canvas.create_line(x, 0, x, height, fill=PALETTE["canvas_grid"], width=1)
         for y in range(0, height, 24):
-            self.canvas.create_line(0, y, width, y, fill="#e9c88d", width=1)
+            self.canvas.create_line(0, y, width, y, fill=PALETTE["canvas_grid"], width=1)
 
     def _draw_angles(self, snapshot: dict[str, object], cx: float, cy: float, outer: float, asc_lon: float) -> None:
         for angle in snapshot["angles"]:
             degrees = wheel_degrees(float(angle["longitude"]), asc_lon)
             x1, y1 = _polar(cx, cy, outer * 0.33, degrees)
             x2, y2 = _polar(cx, cy, outer, degrees)
-            self.canvas.create_line(x1, y1, x2, y2, fill="#0d6681", width=3)
+            self.canvas.create_line(x1, y1, x2, y2, fill=PALETTE["accent"], width=3)
             lx, ly = _polar(cx, cy, outer - 20, degrees)
-            self.canvas.create_text(lx, ly, text=angle["shortName"], fill="#1c3765", font=("Segoe UI", 14, "bold"))
+            self.canvas.create_text(lx, ly, text=angle["shortName"], fill=PALETTE["top_bar"], font=("Segoe UI", 14, "bold"))
 
     def _draw_planets(self, snapshot: dict[str, object], cx: float, cy: float, asc_lon: float, outer: float) -> None:
         for index, planet in enumerate(snapshot["positions"]):
             degrees = wheel_degrees(float(planet["longitude"]), asc_lon)
             radius = outer * 0.74 - (index % 3) * 18
             x, y = _polar(cx, cy, radius, degrees)
-            fill = "#fff0c9" if planet.get("isPresetPoint") else "#ddcfb2"
-            outline = "#23445b" if planet.get("isAngular") else "#6d513d"
+            fill = PALETTE["panel_alt"] if planet.get("isPresetPoint") else "#dfe2d2"
+            outline = PALETTE["top_bar"] if planet.get("isAngular") else PALETTE["chart_line"]
             self.canvas.create_oval(x - 14, y - 14, x + 14, y + 14, fill=fill, outline=outline, width=2)
-            self.canvas.create_text(x, y, text=planet_abbreviation(str(planet["name"])), fill="#18284f", font=("Segoe UI", 9, "bold"))
+            self.canvas.create_text(x, y, text=planet_abbreviation(str(planet["name"])), fill=PALETTE["top_bar_dark"], font=("Segoe UI", 9, "bold"))
 
     def _draw_aspects(self, snapshot: dict[str, object], cx: float, cy: float, radius: float, asc_lon: float) -> None:
         positions = {planet["name"]: planet for planet in snapshot["positions"]}
@@ -543,7 +625,7 @@ class ElectionalDesktopApp:
             angle_b = wheel_degrees(float(positions[body_b]["longitude"]), asc_lon)
             x1, y1 = _polar(cx, cy, radius, angle_a)
             x2, y2 = _polar(cx, cy, radius, angle_b)
-            color = "#219b9d" if aspect["tone"] == "support" else "#d5657b"
+            color = PALETTE["support"] if aspect["tone"] == "support" else PALETTE["stress"]
             self.canvas.create_line(x1, y1, x2, y2, fill=color, width=2)
 
     def _render_text_panels(self, snapshot: dict[str, object], windows: list[dict[str, object]], location: object) -> None:

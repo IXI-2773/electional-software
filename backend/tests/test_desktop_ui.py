@@ -6,7 +6,9 @@ from backend.electional.desktop import (
     DEFAULT_TIMEZONE,
     build_custom_location,
     default_location_for_timezone,
+    format_window_label,
     planet_abbreviation,
+    shift_local_datetime,
     validate_election_inputs,
     wheel_degrees,
 )
@@ -43,6 +45,30 @@ class DesktopUiHelpersTest(unittest.TestCase):
 
         self.assertEqual(location.timezone, "America/Los_Angeles")
         self.assertEqual(location.name, "Los Angeles, CA")
+
+    def test_shift_local_datetime_crosses_midnight(self) -> None:
+        next_date, next_time = shift_local_datetime("2026-05-26", "11:30 PM", "America/Los_Angeles", 2)
+
+        self.assertEqual(next_date, "2026-05-27")
+        self.assertEqual(next_time, "01:30")
+
+    def test_window_label_summarizes_support_and_stress_counts(self) -> None:
+        label = format_window_label(
+            1,
+            {
+                "time": "9:00 AM PDT",
+                "score": 77,
+                "title": "High-priority election",
+                "detectedAspects": [
+                    {"tone": "support"},
+                    {"tone": "support"},
+                    {"tone": "stress"},
+                ],
+            },
+        )
+
+        self.assertIn("+2/!1", label)
+        self.assertIn("Score 77", label)
 
 
 if __name__ == "__main__":

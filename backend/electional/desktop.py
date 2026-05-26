@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import math
 from pathlib import Path
 import tkinter as tk
@@ -136,6 +136,19 @@ def default_location_for_timezone(timezone_name: str = DEFAULT_TIMEZONE) -> Loca
         if location.timezone == timezone_name:
             return location
     return LOCATION_PRESETS[0]
+
+
+def shift_local_datetime(date_text: str, time_text: str, timezone_name: str, hours: int) -> tuple[str, str]:
+    local_time = datetime.strptime(f"{date_text} {normalize_time_text(time_text)}", "%Y-%m-%d %H:%M")
+    zoned = local_time.replace(tzinfo=ZoneInfo(timezone_name or "UTC"))
+    shifted = zoned + timedelta(hours=hours)
+    return shifted.strftime("%Y-%m-%d"), shifted.strftime("%H:%M")
+
+
+def format_window_label(rank: int, window: dict[str, object]) -> str:
+    support = sum(1 for aspect in window["detectedAspects"] if aspect["tone"] == "support")
+    stress = sum(1 for aspect in window["detectedAspects"] if aspect["tone"] == "stress")
+    return f"{rank}. {window['time']}  Score {window['score']}  +{support}/!{stress}  {window['title']}"
 
 
 class ElectionalDesktopApp:
@@ -380,6 +393,14 @@ class ElectionalDesktopApp:
 
         self._labeled_entry("Election date", self.date_var)
         self._labeled_entry("Start time", self.time_var)
+        quick_time = ttk.Frame(self.left_panel, style="Panel.TFrame")
+        quick_time.pack(fill=tk.X, pady=(6, 0))
+        for label, hours in (("-2h", -2), ("-1h", -1), ("Now", 0), ("+1h", 1), ("+2h", 2)):
+            ttk.Button(
+                quick_time,
+                text=label,
+                command=(self._set_current_time if hours == 0 else lambda delta=hours: self._shift_time(delta)),
+            ).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
         self.location_combo = self._labeled_combo("Location preset", self.location_var, [location.name for location in LOCATION_PRESETS])
         self.location_combo.bind("<<ComboboxSelected>>", self._load_selected_location)
         self._labeled_entry("Location name", self.location_name_var)
@@ -387,7 +408,8 @@ class ElectionalDesktopApp:
         self._labeled_entry("Longitude", self.longitude_var)
         self._labeled_entry("Time zone", self.timezone_var)
         self._labeled_combo("Objective", self.objective_var, list(OBJECTIVES))
-        self._labeled_combo("Electional model", self.preset_var, [preset.name for preset in ELECTIONAL_PRESETS])
+        self.preset_combo = self._labeled_combo("Electional model", self.preset_var, [preset.name for preset in ELECTIONAL_PRESETS])
+        self.preset_combo.bind("<<ComboboxSelected>>", self._sync_aspects_to_preset)
 
         aspect_box = ttk.LabelFrame(self.left_panel, text="Aspect focus", style="Panel.TLabelframe", padding=10)
         aspect_box.pack(fill=tk.X, pady=(8, 12))
@@ -425,6 +447,35 @@ class ElectionalDesktopApp:
         self.latitude_var.set(f"{location.latitude:.4f}")
         self.longitude_var.set(f"{location.longitude:.4f}")
         self.timezone_var.set(location.timezone)
+
+    def _sync_aspects_to_preset(self, _event: object | None = None) -> None:
+        preset = self.presets_by_name.get(self.preset_var.get(), ELECTIONAL_PRESETS[1])
+        for aspect_id, var in self.aspect_vars.items():
+            var.set(aspect_id in preset.aspect_ids)
+        self.status_var.set(f"Aspect focus updated for {preset.name}.")
+
+    def _shift_time(self, hours: int) -> None:
+        errors = validate_election_inputs(
+            self.date_var.get(),
+            self.time_var.get(),
+            self.latitude_var.get(),
+            self.longitude_var.get(),
+            self.timezone_var.get(),
+        )
+        if errors:
+            self.validation_var.set("Validation failed:\n" + "\n".join(f"- {error}" for error in errors))
+            return
+        next_date, next_time = shift_local_datetime(self.date_var.get(), self.time_var.get(), self.timezone_var.get(), hours)
+        self.date_var.set(next_date)
+        self.time_var.set(next_time)
+        self.calculate()
+
+    def _set_current_time(self) -> None:
+        timezone_name = self.timezone_var.get() or DEFAULT_TIMEZONE
+        now = datetime.now(ZoneInfo(timezone_name))
+        self.date_var.set(now.strftime("%Y-%m-%d"))
+        self.time_var.set(now.strftime("%H:%M"))
+        self.calculate()
 
     def _build_chart_panel(self) -> None:
         header = ttk.Frame(self.center_panel, style="Panel.TFrame")
@@ -568,8 +619,7 @@ class ElectionalDesktopApp:
     def _populate_window_list(self, windows: list[dict[str, object]]) -> None:
         self.windows_list.delete(0, tk.END)
         for index, window in enumerate(windows, start=1):
-            label = f"{index}. {window['time']}  Score {window['score']}  {window['title']}"
-            self.windows_list.insert(tk.END, label)
+            self.windows_list.insert(tk.END, format_window_label(index, window))
         if windows:
             self.windows_list.selection_set(0)
             self.windows_list.activate(0)

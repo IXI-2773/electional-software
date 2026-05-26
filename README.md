@@ -27,6 +27,14 @@ The app includes a validation panel that compares a fixed chart against NASA/JPL
 
 The same panel also runs an angle sanity check for the Los Angeles morning chart to guard against flipped ASC/DSC orientation.
 
+Angle validation fixture:
+
+- Source: `sweph-wasm` 2.6.9 using Swiss Ephemeris `swe_houses(..., "W")`
+- ASC: 110.13511832023705 degrees / 20 Cancer 08
+- MC: 6.5293592412573105 degrees / 6 Aries 32
+- Current ASC delta: 0.0000 degrees
+- Current MC delta: 0.0000 degrees
+
 ## Open Locally
 
 Open `index.html` in a browser from this folder.

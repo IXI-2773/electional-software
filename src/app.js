@@ -154,6 +154,7 @@ function renderDetectedAspects(snapshot) {
 function renderValidation() {
   const report = window.ElectionalValidation.runJplValidation();
   const angleReport = window.ElectionalValidation.runAngleSanityValidation();
+  const swissAngleReport = window.ElectionalValidation.runSwissAngleValidation();
   const worstBodies = [...report.bodies]
     .sort((first, second) => Math.abs(second.longitudeDelta) - Math.abs(first.longitudeDelta))
     .slice(0, 3);
@@ -169,6 +170,11 @@ function renderValidation() {
       <span>${angleReport.label}</span>
       <strong>${angleReport.pass ? "Pass" : "Review"}</strong>
       <small>ASC ${window.ElectionalEphemeris.formatZodiacPosition(angleReport.ascendant.zodiac)} / MC ${window.ElectionalEphemeris.formatZodiacPosition(angleReport.midheaven.zodiac)}</small>
+    </article>
+    <article class="validation-summary ${swissAngleReport.pass ? "pass" : "fail"}">
+      <span>${swissAngleReport.label}</span>
+      <strong>${swissAngleReport.pass ? "Pass" : "Review"}</strong>
+      <small>ASC delta ${swissAngleReport.ascendantDelta.toFixed(4)} deg / MC delta ${swissAngleReport.midheavenDelta.toFixed(4)} deg</small>
     </article>
     ${worstBodies.map((body) => `
       <article class="validation-row">

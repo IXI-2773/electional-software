@@ -35,7 +35,7 @@ function calculateMidheaven(localSiderealDegrees, obliquityDegrees) {
   const theta = degreesToRadians(localSiderealDegrees);
   const epsilon = degreesToRadians(obliquityDegrees);
   return window.ElectionalEphemeris.normalizeDegrees(
-    radiansToDegrees(Math.atan2(Math.sin(theta) * Math.cos(epsilon), Math.cos(theta))),
+    radiansToDegrees(Math.atan2(Math.sin(theta) / Math.cos(epsilon), Math.cos(theta))),
   );
 }
 

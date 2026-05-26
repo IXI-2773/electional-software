@@ -26,6 +26,13 @@ const ANGLE_SANITY_REFERENCE = {
   expectedAscendantSign: "Cancer",
   expectedMidheavenSign: "Aries",
 };
+const SWISS_EPHEMERIS_ANGLE_REFERENCE = {
+  label: "Swiss Ephemeris Whole Sign angles",
+  source: "sweph-wasm 2.6.9 / swe_houses(..., 'W')",
+  ascendant: 110.13511832023705,
+  midheaven: 6.5293592412573105,
+  tolerance: 0.05,
+};
 
 function getSignedLongitudeDelta(actual, expected) {
   const delta = window.ElectionalEphemeris.normalizeDegrees(actual - expected);
@@ -98,10 +105,40 @@ function runAngleSanityValidation() {
   };
 }
 
+function runSwissAngleValidation() {
+  const chartDate = window.ElectionalTimezone.zonedTimeToUtc(
+    JPL_REFERENCE_CHART.date,
+    JPL_REFERENCE_CHART.time,
+    JPL_REFERENCE_CHART.timezone,
+  );
+  const angles = window.ElectionalHouses.calculateAngles({
+    date: chartDate,
+    latitude: JPL_REFERENCE_CHART.latitude,
+    longitude: JPL_REFERENCE_CHART.longitude,
+  });
+  const ascendant = angles.find((angle) => angle.id === "asc");
+  const midheaven = angles.find((angle) => angle.id === "mc");
+  const ascendantDelta = getSignedLongitudeDelta(ascendant.longitude, SWISS_EPHEMERIS_ANGLE_REFERENCE.ascendant);
+  const midheavenDelta = getSignedLongitudeDelta(midheaven.longitude, SWISS_EPHEMERIS_ANGLE_REFERENCE.midheaven);
+
+  return {
+    ...SWISS_EPHEMERIS_ANGLE_REFERENCE,
+    ascendant,
+    midheaven,
+    ascendantDelta,
+    midheavenDelta,
+    pass:
+      Math.abs(ascendantDelta) <= SWISS_EPHEMERIS_ANGLE_REFERENCE.tolerance &&
+      Math.abs(midheavenDelta) <= SWISS_EPHEMERIS_ANGLE_REFERENCE.tolerance,
+  };
+}
+
 window.ElectionalValidation = {
   ANGLE_SANITY_REFERENCE,
   JPL_REFERENCE_CHART,
   LONGITUDE_TOLERANCE_DEGREES,
+  SWISS_EPHEMERIS_ANGLE_REFERENCE,
   runAngleSanityValidation,
   runJplValidation,
+  runSwissAngleValidation,
 };

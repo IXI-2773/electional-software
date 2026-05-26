@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from backend.electional.chart import build_snapshot, build_transit_windows
+from backend.electional.chart import build_election_report, build_snapshot, build_transit_windows
 from backend.electional.ephemeris import get_planet_positions
 from backend.electional.houses import calculate_angles
 from backend.electional.locations import get_location
@@ -44,6 +44,19 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertEqual(len(snapshot["positions"]), 10)
         self.assertEqual(len(snapshot["angles"]), 4)
         self.assertEqual(len(windows), 6)
+        self.assertGreaterEqual(windows[0]["score"], windows[-1]["score"])
+
+    def test_election_report_reuses_base_snapshot_and_ranks_full_windows(self) -> None:
+        location = get_location("los-angeles")
+        report = build_election_report("2026-05-26", "09:00", location, "traditional-lilly")
+        snapshot = report["snapshot"]
+        windows = report["windows"]
+
+        self.assertEqual(len(windows), 6)
+        self.assertTrue(any(window["date"] == snapshot["date"] for window in windows))
+        self.assertIn("engine", windows[0])
+        self.assertIn("formattedTime", windows[0])
+        self.assertIn("preset", windows[0])
         self.assertGreaterEqual(windows[0]["score"], windows[-1]["score"])
 
 

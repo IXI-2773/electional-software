@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from zoneinfo import ZoneInfo
 
-from .chart import build_snapshot, build_transit_windows, format_angle, format_position
+from .chart import build_election_report, format_angle, format_position
 from .locations import LOCATION_PRESETS, LocationPreset, get_location
 from .presets import ELECTIONAL_PRESETS
 from .time_utils import normalize_time_text
@@ -113,6 +113,10 @@ class ElectionalDesktopApp:
         self.locations_by_name = {location.name: location for location in LOCATION_PRESETS}
         self.presets_by_name = {preset.name: preset for preset in ELECTIONAL_PRESETS}
         self.aspect_vars: dict[str, tk.BooleanVar] = {}
+        self.current_location: LocationPreset | None = None
+        self.current_windows: list[dict[str, object]] = []
+        self.selected_window: dict[str, object] | None = None
+        self._resize_job: str | None = None
 
         self._configure_style()
         self._build_layout()
@@ -296,12 +300,31 @@ class ElectionalDesktopApp:
 
         self.canvas = tk.Canvas(self.center_panel, width=760, height=640, bg="#f6d39b", highlightthickness=1, highlightbackground="#986a3c")
         self.canvas.grid(row=2, column=0, sticky="nsew")
+        self.canvas.bind("<Configure>", self._schedule_redraw)
 
     def _build_right_panel(self) -> None:
         self.summary_text = self._text_panel("Score Summary", height=7)
-        self.windows_text = self._text_panel("Candidate Windows", height=13)
-        self.planets_text = self._text_panel("Planets", height=12)
-        self.aspects_text = self._text_panel("Aspects", height=9)
+        self._build_window_list_panel()
+        self.window_detail_text = self._text_panel("Selected Window", height=7)
+        self.planets_text = self._text_panel("Planets", height=10)
+        self.aspects_text = self._text_panel("Aspects", height=8)
+
+    def _build_window_list_panel(self) -> None:
+        frame = ttk.LabelFrame(self.right_panel, text="Candidate Windows", style="Panel.TLabelframe", padding=7)
+        frame.pack(fill=tk.X, pady=(0, 9))
+        self.windows_list = tk.Listbox(
+            frame,
+            width=40,
+            height=7,
+            bg="#f8dca6",
+            fg="#1f1a14",
+            relief=tk.FLAT,
+            activestyle="dotbox",
+            font=("Segoe UI", 9),
+        )
+        self.windows_list.pack(fill=tk.X)
+        self.windows_list.bind("<<ListboxSelect>>", self._select_window_from_list)
+        ttk.Button(frame, text="Use Selected Time", command=self._use_selected_window_time).pack(fill=tk.X, pady=(7, 0))
 
     def _text_panel(self, title: str, height: int) -> tk.Text:
         frame = ttk.LabelFrame(self.right_panel, text=title, style="Panel.TLabelframe", padding=7)
@@ -347,11 +370,17 @@ class ElectionalDesktopApp:
         self.time_var.set(normalized_time)
 
         try:
-            snapshot = build_snapshot(self.date_var.get(), normalized_time, location, preset.id, selected_aspects)
-            windows = build_transit_windows(self.date_var.get(), normalized_time, location, preset.id, selected_aspects)
+            report = build_election_report(self.date_var.get(), normalized_time, location, preset.id, selected_aspects)
         except Exception as exc:  # pragma: no cover - exercised manually through the desktop UI.
             messagebox.showerror("Electional calculation failed", str(exc))
             return
+
+        snapshot = report["snapshot"]
+        windows = report["windows"]
+        selected_window = windows[0] if windows else snapshot
+        self.current_location = location
+        self.current_windows = list(windows)
+        self.selected_window = selected_window
 
         self.title_var.set(f"{self.objective_var.get()} windows near {location.name}")
         self.natal_summary.configure(
@@ -362,24 +391,69 @@ class ElectionalDesktopApp:
                 f"{location.timezone}"
             )
         )
-        self.score_var.set(str(windows[0]["score"] if windows else snapshot["score"]))
+        self.score_var.set(str(selected_window["score"]))
         self.validation_var.set("Validation: Pass")
         self.status_var.set(
-            f"Location: {location.name}    Chart time: {snapshot['formattedTime']}    Validation: Pass    Engine: {snapshot['engine']}"
+            f"Location: {location.name}    Chart time: {selected_window['formattedTime']}    Validation: Pass    Engine: {selected_window['engine']}"
         )
-        self._draw_wheel(snapshot)
-        self._render_text_panels(snapshot, windows, location)
+        self._populate_window_list(windows)
+        self._draw_wheel(selected_window)
+        self._render_text_panels(selected_window, windows, location)
+
+    def _populate_window_list(self, windows: list[dict[str, object]]) -> None:
+        self.windows_list.delete(0, tk.END)
+        for index, window in enumerate(windows, start=1):
+            label = f"{index}. {window['time']}  Score {window['score']}  {window['title']}"
+            self.windows_list.insert(tk.END, label)
+        if windows:
+            self.windows_list.selection_set(0)
+            self.windows_list.activate(0)
+
+    def _select_window_from_list(self, _event: object | None = None) -> None:
+        if not self.current_windows or not self.current_location:
+            return
+        selection = self.windows_list.curselection()
+        if not selection:
+            return
+        selected = self.current_windows[int(selection[0])]
+        self.selected_window = selected
+        self.score_var.set(str(selected["score"]))
+        self.status_var.set(
+            f"Location: {self.current_location.name}    Chart time: {selected['formattedTime']}    Validation: Pass    Engine: {selected['engine']}"
+        )
+        self._draw_wheel(selected)
+        self._render_text_panels(selected, self.current_windows, self.current_location)
+
+    def _use_selected_window_time(self) -> None:
+        if not self.selected_window or not self.current_location:
+            return
+        local = self.selected_window["date"].astimezone(ZoneInfo(self.current_location.timezone))
+        self.date_var.set(local.strftime("%Y-%m-%d"))
+        self.time_var.set(local.strftime("%H:%M"))
+        self.calculate()
+
+    def _schedule_redraw(self, _event: object | None = None) -> None:
+        if not self.selected_window:
+            return
+        if self._resize_job:
+            self.root.after_cancel(self._resize_job)
+        self._resize_job = self.root.after(90, self._redraw_selected_window)
+
+    def _redraw_selected_window(self) -> None:
+        self._resize_job = None
+        if self.selected_window:
+            self._draw_wheel(self.selected_window)
 
     def _draw_wheel(self, snapshot: dict[str, object]) -> None:
         self.canvas.delete("all")
-        width = int(self.canvas.cget("width"))
-        height = int(self.canvas.cget("height"))
+        width = max(self.canvas.winfo_width(), int(self.canvas.cget("width")))
+        height = max(self.canvas.winfo_height(), int(self.canvas.cget("height")))
         cx = width / 2
         cy = height / 2 + 8
-        outer = 275
-        zodiac_inner = 230
-        house_inner = 122
-        aspect_radius = 122
+        outer = max(180, min(width, height) / 2 - 34)
+        zodiac_inner = outer * 0.84
+        house_inner = outer * 0.44
+        aspect_radius = outer * 0.44
 
         self._draw_grid(width, height)
         self.canvas.create_oval(cx - outer, cy - outer, cx + outer, cy + outer, fill="#efd29a", outline="#754f30", width=2)
@@ -412,7 +486,7 @@ class ElectionalDesktopApp:
                 width=1,
             )
             label_angle = wheel_degrees(index * 30 + 15, asc_lon)
-            lx, ly = _polar(cx, cy, 252, label_angle)
+            lx, ly = _polar(cx, cy, outer * 0.92, label_angle)
             self.canvas.create_text(lx, ly, text=sign, fill="#f5e9c6", font=("Segoe UI", 15, "bold"))
 
         self.canvas.create_oval(cx - zodiac_inner, cy - zodiac_inner, cx + zodiac_inner, cy + zodiac_inner, outline="#765238", width=2)
@@ -424,15 +498,15 @@ class ElectionalDesktopApp:
             x1, y1 = _polar(cx, cy, house_inner, angle)
             x2, y2 = _polar(cx, cy, zodiac_inner, angle)
             self.canvas.create_line(x1, y1, x2, y2, fill="#6f4d35", width=1)
-            lx, ly = _polar(cx, cy, 175, angle - 15)
+            lx, ly = _polar(cx, cy, outer * 0.64, angle - 15)
             self.canvas.create_text(lx, ly, text=str(house_index + 1), fill="#7a4f34", font=("Segoe UI", 12, "bold"))
 
         self._draw_aspects(snapshot, cx, cy, aspect_radius, asc_lon)
         self._draw_angles(snapshot, cx, cy, outer, asc_lon)
-        self._draw_planets(snapshot, cx, cy, asc_lon)
+        self._draw_planets(snapshot, cx, cy, asc_lon, outer)
 
         self.canvas.create_text(cx, cy - 8, text="Election", fill="#263044", font=("Segoe UI", 18, "bold"))
-        self.canvas.create_text(cx, cy + 25, text="Python Astronomy Engine", fill="#5b4a39", font=("Segoe UI", 10))
+        self.canvas.create_text(cx, cy + 25, text=str(snapshot["formattedTime"]), fill="#5b4a39", font=("Segoe UI", 10))
 
     def _draw_grid(self, width: int, height: int) -> None:
         for x in range(0, width, 24):
@@ -443,16 +517,16 @@ class ElectionalDesktopApp:
     def _draw_angles(self, snapshot: dict[str, object], cx: float, cy: float, outer: float, asc_lon: float) -> None:
         for angle in snapshot["angles"]:
             degrees = wheel_degrees(float(angle["longitude"]), asc_lon)
-            x1, y1 = _polar(cx, cy, 92, degrees)
+            x1, y1 = _polar(cx, cy, outer * 0.33, degrees)
             x2, y2 = _polar(cx, cy, outer, degrees)
             self.canvas.create_line(x1, y1, x2, y2, fill="#0d6681", width=3)
-            lx, ly = _polar(cx, cy, outer - 18, degrees)
+            lx, ly = _polar(cx, cy, outer - 20, degrees)
             self.canvas.create_text(lx, ly, text=angle["shortName"], fill="#1c3765", font=("Segoe UI", 14, "bold"))
 
-    def _draw_planets(self, snapshot: dict[str, object], cx: float, cy: float, asc_lon: float) -> None:
+    def _draw_planets(self, snapshot: dict[str, object], cx: float, cy: float, asc_lon: float, outer: float) -> None:
         for index, planet in enumerate(snapshot["positions"]):
             degrees = wheel_degrees(float(planet["longitude"]), asc_lon)
-            radius = 202 - (index % 3) * 18
+            radius = outer * 0.74 - (index % 3) * 18
             x, y = _polar(cx, cy, radius, degrees)
             fill = "#fff0c9" if planet.get("isPresetPoint") else "#ddcfb2"
             outline = "#23445b" if planet.get("isAngular") else "#6d513d"
@@ -489,11 +563,18 @@ class ElectionalDesktopApp:
             ),
         )
 
-        window_lines = []
-        for window in windows:
-            aspect_labels = ", ".join(aspect["label"] for aspect in window["detectedAspects"][:2]) or "No selected major aspects"
-            window_lines.append(f"{window['time']}  Score {window['score']}\n{window['title']}\n{window['note']}\n{aspect_labels}\n")
-        self._set_text(self.windows_text, "\n".join(window_lines))
+        selected_rank = next((index for index, window in enumerate(windows, start=1) if window["date"] == snapshot["date"]), 1)
+        aspect_labels = ", ".join(aspect["label"] for aspect in snapshot["detectedAspects"][:3]) or "No selected major aspects"
+        self._set_text(
+            self.window_detail_text,
+            (
+                f"Rank: {selected_rank} of {len(windows)}\n"
+                f"Time: {snapshot['formattedTime']}\n"
+                f"Score: {snapshot['score']} - {snapshot.get('title', 'Election')}\n"
+                f"{snapshot.get('note', '')}\n"
+                f"{aspect_labels}"
+            ),
+        )
 
         planet_lines = []
         for planet in snapshot["positions"]:

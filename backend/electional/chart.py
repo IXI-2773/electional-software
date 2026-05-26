@@ -1,8 +1,8 @@
-"""Python chart builder for the server-rendered electional interface."""
+"""Python chart builder for the electional desktop and diagnostic interfaces."""
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Iterable
 
 from .aspects import detect_aspects
@@ -34,16 +34,7 @@ def describe_window(detected_aspects: list[dict[str, object]], positions: list[d
     return f"Strongest contact: {strongest['label']} with {strongest['orbText']} orb."
 
 
-def build_snapshot(
-    date_text: str,
-    time_text: str,
-    location: LocationPreset,
-    preset_id: str,
-    selected_aspects: Iterable[str] | None = None,
-) -> dict[str, object]:
-    preset = get_preset(preset_id)
-    aspects = tuple(selected_aspects or preset.aspect_ids)
-    moment = zoned_time_to_utc(date_text, time_text, location.timezone)
+def build_snapshot_for_moment(moment: datetime, location: LocationPreset, preset: object, aspects: Iterable[str]) -> dict[str, object]:
     angles = calculate_angles(moment, location.latitude, location.longitude)
     base_positions = enrich_positions_with_houses(get_planet_positions(moment), angles)
     positions = apply_dignities(base_positions, preset)
@@ -61,6 +52,35 @@ def build_snapshot(
     }
 
 
+def snapshot_to_window(snapshot: dict[str, object], location: LocationPreset) -> dict[str, object]:
+    detected = snapshot["detectedAspects"]
+    positions = snapshot["positions"]
+    preset = snapshot["preset"]
+    score = int(snapshot["score"])
+    window = dict(snapshot)
+    window.update(
+        {
+            "time": format_in_timezone(snapshot["date"], location.timezone).split(", ", 1)[-1],
+            "title": "High-priority election" if score >= 76 else "Workable election" if score >= 60 else "Use with caution",
+            "note": describe_window(detected, positions, preset),
+        }
+    )
+    return window
+
+
+def build_snapshot(
+    date_text: str,
+    time_text: str,
+    location: LocationPreset,
+    preset_id: str,
+    selected_aspects: Iterable[str] | None = None,
+) -> dict[str, object]:
+    preset = get_preset(preset_id)
+    aspects = tuple(selected_aspects or preset.aspect_ids)
+    moment = zoned_time_to_utc(date_text, time_text, location.timezone)
+    return build_snapshot_for_moment(moment, location, preset, aspects)
+
+
 def build_transit_windows(
     date_text: str,
     time_text: str,
@@ -75,25 +95,37 @@ def build_transit_windows(
 
     for offset in WINDOW_OFFSETS:
         moment = base_moment + timedelta(hours=offset)
-        angles = calculate_angles(moment, location.latitude, location.longitude)
-        base_positions = enrich_positions_with_houses(get_planet_positions(moment), angles)
-        positions = apply_dignities(base_positions, preset)
-        detected = detect_aspects(filter_positions_for_preset(positions, preset), aspects, preset.aspect_orbs)
-        score = score_window(detected, positions, preset)
-        windows.append(
-            {
-                "date": moment,
-                "time": format_in_timezone(moment, location.timezone).split(", ", 1)[-1],
-                "score": score,
-                "title": "High-priority election" if score >= 76 else "Workable election" if score >= 60 else "Use with caution",
-                "note": describe_window(detected, positions, preset),
-                "angles": angles,
-                "positions": positions,
-                "detectedAspects": detected,
-            }
-        )
+        snapshot = build_snapshot_for_moment(moment, location, preset, aspects)
+        windows.append(snapshot_to_window(snapshot, location))
 
     return sorted(windows, key=lambda item: int(item["score"]), reverse=True)
+
+
+def build_election_report(
+    date_text: str,
+    time_text: str,
+    location: LocationPreset,
+    preset_id: str,
+    selected_aspects: Iterable[str] | None = None,
+) -> dict[str, object]:
+    """Build the input chart and ranked windows without recalculating the base moment twice."""
+
+    base_moment = zoned_time_to_utc(date_text, time_text, location.timezone)
+    preset = get_preset(preset_id)
+    aspects = tuple(selected_aspects or preset.aspect_ids)
+    snapshot = build_snapshot_for_moment(base_moment, location, preset, aspects)
+    windows = [snapshot_to_window(snapshot, location)]
+
+    for offset in WINDOW_OFFSETS:
+        if offset == 0:
+            continue
+        window_snapshot = build_snapshot_for_moment(base_moment + timedelta(hours=offset), location, preset, aspects)
+        windows.append(snapshot_to_window(window_snapshot, location))
+
+    return {
+        "snapshot": snapshot,
+        "windows": sorted(windows, key=lambda item: int(item["score"]), reverse=True),
+    }
 
 
 def format_angle(angle: dict[str, object]) -> str:

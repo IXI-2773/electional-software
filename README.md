@@ -8,6 +8,7 @@ A private work-in-progress application for electional astrology: transits, aspec
 - The primary interface is a native Python desktop application.
 - The desktop UI requires no browser and no browser JavaScript.
 - The desktop UI supports preset cities, custom latitude/longitude/timezone entries, and built-in validation.
+- Ranked candidate windows are selectable in the desktop UI and can be applied back to the input time.
 - Python calculates timezone conversion, ephemeris, ASC/MC/DSC/IC, Whole Sign houses, aspects, dignity, scoring, and ranked windows server-side.
 - The previous static JavaScript UI has been retired into `legacy/static-js-ui` for reference only.
 

@@ -33,13 +33,13 @@ OBJECTIVES = ("Launch or publish", "Meeting or negotiation", "Creative work", "R
 DEFAULT_TIMEZONE = "America/Los_Angeles"
 
 PALETTE = {
-    "app_bg": "#d8dfe8",
+    "app_bg": "#edf1f5",
     "title_bar": "#ef9eab",
     "top_bar": "#233e7d",
     "top_bar_dark": "#152858",
-    "ribbon": "#e8a7af",
-    "ribbon_panel": "#f0bcc2",
-    "panel": "#fff3c8",
+    "ribbon": "#f4c2cb",
+    "ribbon_panel": "#fff0f3",
+    "panel": "#fff4cb",
     "panel_alt": "#fff9df",
     "panel_line": "#6f7783",
     "canvas": "#eee6ca",
@@ -53,6 +53,10 @@ PALETTE = {
     "score": "#005f67",
     "support": "#148b9b",
     "stress": "#d75a7b",
+    "button": "#fff9df",
+    "button_hover": "#ffffff",
+    "button_line": "#9d7b9a",
+    "selected": "#dbeff2",
 }
 
 SIGN_COLORS = (
@@ -184,8 +188,9 @@ class ElectionalDesktopApp:
         shell.columnconfigure(1, weight=1)
         shell.rowconfigure(0, weight=1)
 
-        self.left_panel = ttk.Frame(shell, style="Panel.TFrame", padding=12)
+        self.left_panel = ttk.Frame(shell, style="Panel.TFrame", padding=12, width=290)
         self.left_panel.grid(row=0, column=0, sticky="ns", padx=(0, 10))
+        self.left_panel.grid_propagate(False)
         self._build_left_controls()
 
         self.center_panel = ttk.Frame(shell, style="Panel.TFrame", padding=12)
@@ -194,8 +199,9 @@ class ElectionalDesktopApp:
         self.center_panel.rowconfigure(2, weight=1)
         self._build_chart_panel()
 
-        self.right_panel = ttk.Frame(shell, style="Panel.TFrame", padding=10)
+        self.right_panel = ttk.Frame(shell, style="Panel.TFrame", padding=10, width=360)
         self.right_panel.grid(row=0, column=2, sticky="ns")
+        self.right_panel.grid_propagate(False)
         self._build_right_panel()
 
         self.status_var = tk.StringVar(value="Backend: Python desktop engine")
@@ -229,18 +235,18 @@ class ElectionalDesktopApp:
         ribbon = ttk.Frame(self.root, style="Ribbon.TFrame", padding=(10, 8))
         ribbon.pack(fill=tk.X)
         groups = (
-            ("Database", ("New Chart", "Save", "Ask")),
-            ("Transits and Progressions", ("Transits", "Primary Directions")),
-            ("Electional", ("Electional Search", "Void Course")),
+            ("Chart", ("New Chart", "Save", "Ask")),
+            ("Calculate", ("Transits", "Electional Search")),
+            ("Advanced", ("Primary Directions", "Void Course")),
             ("Utility", ("Bounds", "Heliacal Search")),
         )
         for group_title, items in groups:
-            group = ttk.Frame(ribbon, style="RibbonPanel.TFrame", padding=(8, 6))
+            group = ttk.Frame(ribbon, style="RibbonPanel.TFrame", padding=(10, 7))
             group.pack(side=tk.LEFT, padx=(0, 8))
             row = ttk.Frame(group, style="RibbonPanel.TFrame")
             row.pack()
             for item in items:
-                self._ribbon_button(row, item).pack(side=tk.LEFT, padx=3)
+                self._ribbon_button(row, item).pack(side=tk.LEFT, padx=(0, 6))
             tk.Label(
                 group,
                 text=group_title,
@@ -250,17 +256,20 @@ class ElectionalDesktopApp:
             ).pack(fill=tk.X, pady=(4, 0))
 
     def _ribbon_button(self, parent: tk.Widget, label: str) -> tk.Frame:
-        button = tk.Frame(parent, bg=PALETTE["ribbon_panel"], padx=3, pady=2)
-        icon = tk.Canvas(button, width=30, height=26, bg=PALETTE["ribbon_panel"], highlightthickness=0)
-        icon.create_oval(5, 3, 25, 23, fill=PALETTE["panel_alt"], outline=PALETTE["top_bar_dark"], width=1)
-        icon.create_text(15, 13, text=label[:1], fill=PALETTE["top_bar_dark"], font=("Segoe UI", 9, "bold"))
-        icon.pack()
+        button = tk.Frame(
+            parent,
+            bg=PALETTE["button"],
+            highlightbackground=PALETTE["button_line"],
+            highlightthickness=1,
+            padx=10,
+            pady=6,
+        )
         tk.Label(
             button,
-            text=label.replace(" ", "\n", 1),
-            bg=PALETTE["ribbon_panel"],
+            text=label,
+            bg=PALETTE["button"],
             fg=PALETTE["text"],
-            font=("Segoe UI", 8),
+            font=("Segoe UI", 9, "bold"),
             justify=tk.CENTER,
         ).pack()
         self._bind_clickable(button, lambda: self._run_ribbon_action(label))
@@ -268,10 +277,16 @@ class ElectionalDesktopApp:
 
     def _bind_clickable(self, widget: tk.Widget, command: Callable[[], None]) -> None:
         widget.bind("<Button-1>", lambda _event: command())
-        widget.bind("<Enter>", lambda _event: widget.configure(cursor="hand2"))
-        widget.bind("<Leave>", lambda _event: widget.configure(cursor=""))
+        widget.bind("<Enter>", lambda _event: self._set_clickable_hover(widget, True))
+        widget.bind("<Leave>", lambda _event: self._set_clickable_hover(widget, False))
         for child in widget.winfo_children():
             self._bind_clickable(child, command)
+
+    def _set_clickable_hover(self, widget: tk.Widget, active: bool) -> None:
+        color = PALETTE["button_hover"] if active else PALETTE["button"]
+        widget.configure(cursor="hand2" if active else "")
+        if isinstance(widget, (tk.Frame, tk.Label)):
+            widget.configure(bg=color)
 
     def _run_ribbon_action(self, label: str) -> None:
         actions = {
@@ -436,6 +451,20 @@ class ElectionalDesktopApp:
         self.canvas.grid(row=2, column=0, sticky="nsew")
         self.canvas.bind("<Configure>", self._schedule_redraw)
 
+        interpretation = ttk.LabelFrame(self.center_panel, text="Point Interpretation", style="Panel.TLabelframe", padding=7)
+        interpretation.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+        self.interpretation_text = tk.Text(
+            interpretation,
+            height=4,
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["text"],
+            relief=tk.FLAT,
+            wrap=tk.WORD,
+            font=("Segoe UI", 9),
+        )
+        self.interpretation_text.pack(fill=tk.X)
+        self.interpretation_text.configure(state=tk.DISABLED)
+
     def _build_right_panel(self) -> None:
         self.summary_text = self._text_panel("Score Summary", height=7)
         self._build_window_list_panel()
@@ -455,6 +484,8 @@ class ElectionalDesktopApp:
             relief=tk.FLAT,
             activestyle="dotbox",
             font=("Segoe UI", 9),
+            selectbackground=PALETTE["selected"],
+            selectforeground=PALETTE["text"],
         )
         self.windows_list.pack(fill=tk.X)
         self.windows_list.bind("<<ListboxSelect>>", self._select_window_from_list)
@@ -602,6 +633,7 @@ class ElectionalDesktopApp:
 
         ascendant = next(angle for angle in snapshot["angles"] if angle["id"] == "asc")
         asc_lon = float(ascendant["longitude"])
+        self._draw_degree_ticks(cx, cy, outer, zodiac_inner, asc_lon)
 
         for index, sign in enumerate(SIGN_LABELS):
             start = wheel_degrees(index * 30, asc_lon)
@@ -657,6 +689,15 @@ class ElectionalDesktopApp:
 
         self.canvas.create_text(cx, cy - 10, text=f"Score {snapshot['score']}", fill=PALETTE["top_bar_dark"], font=("Segoe UI", 16, "bold"))
         self.canvas.create_text(cx, cy + 18, text=str(snapshot["formattedTime"]), fill=PALETTE["muted"], font=("Segoe UI", 9))
+
+    def _draw_degree_ticks(self, cx: float, cy: float, outer: float, zodiac_inner: float, asc_lon: float) -> None:
+        for degree in range(0, 360, 5):
+            angle = wheel_degrees(degree, asc_lon)
+            tick_length = 16 if degree % 30 == 0 else 8
+            x1, y1 = _polar(cx, cy, zodiac_inner, angle)
+            x2, y2 = _polar(cx, cy, min(outer, zodiac_inner + tick_length), angle)
+            width = 2 if degree % 30 == 0 else 1
+            self.canvas.create_line(x1, y1, x2, y2, fill=PALETTE["chart_line"], width=width)
 
     def _draw_grid(self, width: int, height: int) -> None:
         for x in range(0, width, 24):
@@ -725,6 +766,10 @@ class ElectionalDesktopApp:
                 f"{aspect_labels}"
             ),
         )
+        self._set_text(
+            self.interpretation_text,
+            self._selected_window_interpretation(snapshot, selected_rank, len(windows)),
+        )
 
         planet_lines = []
         for planet in snapshot["positions"]:
@@ -739,6 +784,26 @@ class ElectionalDesktopApp:
         for aspect in snapshot["detectedAspects"]:
             aspect_lines.append(f"{aspect['label']} ({aspect['orbText']}) - {aspect['tone']}")
         self._set_text(self.aspects_text, "\n".join(aspect_lines) or "No selected major aspects in orb.")
+
+    def _selected_window_interpretation(self, snapshot: dict[str, object], rank: int, count: int) -> str:
+        support = [aspect["label"] for aspect in snapshot["detectedAspects"] if aspect["tone"] == "support"]
+        stress = [aspect["label"] for aspect in snapshot["detectedAspects"] if aspect["tone"] == "stress"]
+        angular = [
+            f"{planet['name']} near {planet['closestAngle']['shortName']}"
+            for planet in snapshot["positions"]
+            if planet.get("isAngular")
+        ]
+        lines = [
+            f"Selected window ranks {rank} of {count} with score {snapshot['score']}.",
+            str(snapshot.get("note", "No interpretation note available.")),
+        ]
+        if support:
+            lines.append("Support: " + ", ".join(support[:3]) + ".")
+        if stress:
+            lines.append("Watch: " + ", ".join(stress[:3]) + ".")
+        if angular:
+            lines.append("Angles: " + ", ".join(angular[:3]) + ".")
+        return "\n".join(lines)
 
     def _set_text(self, widget: tk.Text, text: str) -> None:
         widget.configure(state=tk.NORMAL)

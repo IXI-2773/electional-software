@@ -12,6 +12,7 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Ribbon buttons now perform useful actions: reset chart, calculate, save reports, or clearly mark queued features.
 - The chart workspace includes degree ticks and a bottom interpretation panel for the selected window.
 - Quick time controls and support/stress counts make candidate-window scanning faster.
+- The desktop app remembers the last working session and saved reports include ranked candidate windows.
 - Python calculates timezone conversion, ephemeris, ASC/MC/DSC/IC, Whole Sign houses, aspects, dignity, scoring, and ranked windows server-side.
 - The previous static JavaScript UI has been retired into `legacy/static-js-ui` for reference only.
 

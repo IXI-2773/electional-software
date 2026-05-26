@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+import json
 import math
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
-from typing import Callable
+from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from .chart import build_election_report, format_angle, format_position
@@ -31,6 +32,7 @@ PLANET_LABELS = {
 SIGN_LABELS = ("Ar", "Ta", "Ge", "Ca", "Le", "Vi", "Li", "Sc", "Sg", "Cp", "Aq", "Pi")
 OBJECTIVES = ("Launch or publish", "Meeting or negotiation", "Creative work", "Relationship timing", "Travel departure")
 DEFAULT_TIMEZONE = "America/Los_Angeles"
+SESSION_PATH = Path.cwd() / ".electional-session.json"
 
 PALETTE = {
     "app_bg": "#edf1f5",
@@ -151,6 +153,53 @@ def format_window_label(rank: int, window: dict[str, object]) -> str:
     return f"{rank}. {window['time']}  Score {window['score']}  +{support}/!{stress}  {window['title']}"
 
 
+def load_session_state(path: Path = SESSION_PATH) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def save_session_state(state: dict[str, Any], path: Path = SESSION_PATH) -> None:
+    path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
+    default_location = default_location_for_timezone()
+    date_text = str(state.get("date") or date.today().isoformat())
+    time_text = str(state.get("time") or "09:00")
+    location_name = str(state.get("location_name") or default_location.name)
+    latitude = str(state.get("latitude") or f"{default_location.latitude:.4f}")
+    longitude = str(state.get("longitude") or f"{default_location.longitude:.4f}")
+    timezone = str(state.get("timezone") or default_location.timezone)
+    if validate_election_inputs(date_text, time_text, latitude, longitude, timezone):
+        date_text = date.today().isoformat()
+        time_text = "09:00"
+        location_name = default_location.name
+        latitude = f"{default_location.latitude:.4f}"
+        longitude = f"{default_location.longitude:.4f}"
+        timezone = default_location.timezone
+
+    preset_names = {preset.name for preset in ELECTIONAL_PRESETS}
+    objective = str(state.get("objective") or OBJECTIVES[0])
+    preset = str(state.get("preset") or ELECTIONAL_PRESETS[1].name)
+    aspects = state.get("aspects") if isinstance(state.get("aspects"), dict) else {}
+
+    return {
+        "date": date_text,
+        "time": normalize_time_text(time_text),
+        "location_preset": str(state.get("location_preset") or location_name),
+        "location_name": location_name,
+        "latitude": latitude,
+        "longitude": longitude,
+        "timezone": timezone,
+        "objective": objective if objective in OBJECTIVES else OBJECTIVES[0],
+        "preset": preset if preset in preset_names else ELECTIONAL_PRESETS[1].name,
+        "aspects": {str(key): bool(value) for key, value in aspects.items()},
+    }
+
+
 class ElectionalDesktopApp:
     """Tkinter desktop UI that talks directly to the Python electional engine."""
 
@@ -167,9 +216,11 @@ class ElectionalDesktopApp:
         self.current_windows: list[dict[str, object]] = []
         self.selected_window: dict[str, object] | None = None
         self._resize_job: str | None = None
+        self.session_state = clean_session_state(load_session_state())
 
         self._configure_style()
         self._build_layout()
+        self.root.protocol("WM_DELETE_WINDOW", self._close)
         self.calculate()
 
     def _configure_style(self) -> None:
@@ -348,6 +399,7 @@ class ElectionalDesktopApp:
         planets = "\n".join(
             f"- {planet['name']}: {format_position(planet)} House {planet['house']}" for planet in self.selected_window["positions"]
         )
+        windows = "\n".join(format_window_label(index, window) for index, window in enumerate(self.current_windows, start=1))
         return (
             "Electional Software Report\n"
             f"Location: {self.current_location.name}\n"
@@ -355,6 +407,7 @@ class ElectionalDesktopApp:
             f"Score: {self.selected_window['score']}\n"
             f"Window: {self.selected_window.get('title', 'Electional window')}\n"
             f"Note: {self.selected_window.get('note', '')}\n\n"
+            f"Ranked Windows:\n{windows}\n\n"
             f"Aspects:\n{aspects or '- No selected major aspects in orb.'}\n\n"
             f"Planets:\n{planets}\n"
         )
@@ -379,16 +432,16 @@ class ElectionalDesktopApp:
         self.natal_summary.pack(anchor="w")
 
         today = date.today()
-        default_location = default_location_for_timezone()
-        self.date_var = tk.StringVar(value=today.strftime("%Y-%m-%d"))
-        self.time_var = tk.StringVar(value="09:00")
-        self.location_var = tk.StringVar(value=default_location.name)
-        self.location_name_var = tk.StringVar(value=default_location.name)
-        self.latitude_var = tk.StringVar(value=f"{default_location.latitude:.4f}")
-        self.longitude_var = tk.StringVar(value=f"{default_location.longitude:.4f}")
-        self.timezone_var = tk.StringVar(value=default_location.timezone)
-        self.objective_var = tk.StringVar(value="Launch or publish")
-        self.preset_var = tk.StringVar(value=ELECTIONAL_PRESETS[1].name)
+        state = self.session_state
+        self.date_var = tk.StringVar(value=str(state.get("date") or today.strftime("%Y-%m-%d")))
+        self.time_var = tk.StringVar(value=str(state.get("time") or "09:00"))
+        self.location_var = tk.StringVar(value=str(state.get("location_preset") or state.get("location_name")))
+        self.location_name_var = tk.StringVar(value=str(state.get("location_name")))
+        self.latitude_var = tk.StringVar(value=str(state.get("latitude")))
+        self.longitude_var = tk.StringVar(value=str(state.get("longitude")))
+        self.timezone_var = tk.StringVar(value=str(state.get("timezone")))
+        self.objective_var = tk.StringVar(value=str(state.get("objective") or OBJECTIVES[0]))
+        self.preset_var = tk.StringVar(value=str(state.get("preset") or ELECTIONAL_PRESETS[1].name))
         self.validation_var = tk.StringVar(value="Validation: waiting for first calculation")
 
         self._labeled_entry("Election date", self.date_var)
@@ -414,8 +467,10 @@ class ElectionalDesktopApp:
         aspect_box = ttk.LabelFrame(self.left_panel, text="Aspect focus", style="Panel.TLabelframe", padding=10)
         aspect_box.pack(fill=tk.X, pady=(8, 12))
         preset = ELECTIONAL_PRESETS[1]
+        session_aspects = state.get("aspects") if isinstance(state.get("aspects"), dict) else {}
         for aspect_id in ("conjunction", "trine", "sextile", "square", "opposition"):
-            var = tk.BooleanVar(value=aspect_id in preset.aspect_ids)
+            default_value = bool(session_aspects.get(aspect_id, aspect_id in preset.aspect_ids))
+            var = tk.BooleanVar(value=default_value)
             self.aspect_vars[aspect_id] = var
             ttk.Checkbutton(aspect_box, text=aspect_id.title(), variable=var).pack(anchor="w", pady=2)
 
@@ -615,6 +670,7 @@ class ElectionalDesktopApp:
         self._populate_window_list(windows)
         self._draw_wheel(selected_window)
         self._render_text_panels(selected_window, windows, location)
+        self._save_session()
 
     def _populate_window_list(self, windows: list[dict[str, object]]) -> None:
         self.windows_list.delete(0, tk.END)
@@ -854,6 +910,29 @@ class ElectionalDesktopApp:
         if angular:
             lines.append("Angles: " + ", ".join(angular[:3]) + ".")
         return "\n".join(lines)
+
+    def _session_payload(self) -> dict[str, Any]:
+        return {
+            "date": self.date_var.get(),
+            "time": self.time_var.get(),
+            "location_preset": self.location_var.get(),
+            "location_name": self.location_name_var.get(),
+            "latitude": self.latitude_var.get(),
+            "longitude": self.longitude_var.get(),
+            "timezone": self.timezone_var.get(),
+            "objective": self.objective_var.get(),
+            "preset": self.preset_var.get(),
+            "aspects": {aspect_id: var.get() for aspect_id, var in self.aspect_vars.items()},
+        }
+
+    def _save_session(self) -> None:
+        save_session_state(self._session_payload())
+
+    def _close(self) -> None:
+        try:
+            self._save_session()
+        finally:
+            self.root.destroy()
 
     def _set_text(self, widget: tk.Text, text: str) -> None:
         widget.configure(state=tk.NORMAL)

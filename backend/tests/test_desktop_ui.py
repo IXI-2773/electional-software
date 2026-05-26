@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
 from backend.electional.desktop import (
     DEFAULT_TIMEZONE,
     build_custom_location,
+    clean_session_state,
     default_location_for_timezone,
     format_window_label,
+    load_session_state,
     planet_abbreviation,
+    save_session_state,
     shift_local_datetime,
     validate_election_inputs,
     wheel_degrees,
@@ -69,6 +74,25 @@ class DesktopUiHelpersTest(unittest.TestCase):
 
         self.assertIn("+2/!1", label)
         self.assertIn("Score 77", label)
+
+    def test_session_state_round_trip(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "session.json"
+            state = {
+                "date": "2026-05-26",
+                "time": "9:30 PM",
+                "location_name": "Paris",
+                "latitude": "48.8566",
+                "longitude": "2.3522",
+                "timezone": "Europe/Paris",
+            }
+
+            save_session_state(state, path)
+            loaded = clean_session_state(load_session_state(path))
+
+        self.assertEqual(loaded["date"], "2026-05-26")
+        self.assertEqual(loaded["time"], "21:30")
+        self.assertEqual(loaded["timezone"], "Europe/Paris")
 
 
 if __name__ == "__main__":

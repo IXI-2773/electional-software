@@ -5,6 +5,7 @@ A private work-in-progress application for electional astrology: transits, aspec
 ## Current Foundation
 
 - Static browser app, no build step required yet.
+- Python backend migration has started under `backend/electional`.
 - Electional workspace UI with date, location, objective, and aspect filters.
 - Domain modules for aspect definitions and transit-window scaffolding.
 - Professional ephemeris module powered by Astronomy Engine.
@@ -38,3 +39,27 @@ Angle validation fixture:
 ## Open Locally
 
 Open `index.html` in a browser from this folder.
+
+## Python Backend Migration
+
+The first Python slice now mirrors core electional logic:
+
+- Aspect definitions and detection.
+- Electional presets: Transit 1 Degree, Traditional Lilly, Medieval Electional.
+- Classical essential dignity scoring.
+- Electional window scoring.
+- Standard-library JSON API skeleton.
+
+Run tests:
+
+```powershell
+& "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m unittest discover backend\tests
+```
+
+Run the Python API:
+
+```powershell
+& "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m backend.electional.server
+```
+
+The next migration step is moving ephemeris and house-angle calculations from browser JavaScript into Python.

@@ -21,7 +21,9 @@
 
 body {
   margin: 0;
-  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) 24px;
+  height: 100vh;
   overflow: hidden;
   color: var(--ink);
   background: #c58b61;
@@ -37,7 +39,6 @@ select {
 .app-shell {
   display: grid;
   grid-template-columns: 292px minmax(0, 1fr);
-  height: calc(100vh - 128px);
   min-height: 0;
 }
 
@@ -100,6 +101,7 @@ select {
 .sidebar {
   border-right: 1px solid var(--line);
   background: #efc189;
+  min-height: 0;
   padding: 14px;
   overflow-y: auto;
 }
@@ -201,7 +203,9 @@ legend {
 
 .workspace {
   min-width: 0;
+  min-height: 0;
   background: #d99b69;
+  overflow: hidden;
   padding: 10px;
 }
 
@@ -219,6 +223,7 @@ legend {
   gap: 10px;
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 .chart-left-rail {
@@ -246,10 +251,13 @@ legend {
 }
 
 .wheel-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   border: 1px solid #8c5e3d;
   background: #f1c891;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   padding: 10px;
 }
 
@@ -264,8 +272,7 @@ legend {
 .wheel-frame {
   display: grid;
   place-items: center;
-  height: calc(100% - 76px);
-  min-height: 520px;
+  min-height: 0;
   border: 1px solid #a5734d;
   background:
     linear-gradient(90deg, rgba(148, 89, 55, 0.08) 1px, transparent 1px),
@@ -276,10 +283,11 @@ legend {
 }
 
 .wheel-svg {
-  width: min(82vh, 100%);
+  width: min(100%, 760px);
+  height: min(100%, 760px);
   max-width: 760px;
-  min-width: 520px;
-  height: auto;
+  max-height: 100%;
+  min-width: 0;
   filter: drop-shadow(0 12px 24px rgba(77, 45, 26, 0.24));
 }
 
@@ -438,6 +446,7 @@ legend {
 .inspector {
   border: 1px solid #8c5e3d;
   background: #e5af78;
+  min-height: 0;
   overflow-y: auto;
   padding: 10px;
 }
@@ -739,6 +748,9 @@ legend {
 
 @media (max-width: 860px) {
   body {
+    display: block;
+    height: auto;
+    min-height: 100vh;
     overflow: auto;
   }
 
@@ -754,6 +766,7 @@ legend {
   .chart-board {
     height: auto;
     grid-template-columns: 1fr;
+    overflow: visible;
   }
 
   .chart-left-rail {
@@ -761,12 +774,12 @@ legend {
   }
 
   .wheel-frame {
-    min-height: auto;
+    min-height: 360px;
   }
 
   .wheel-svg {
-    min-width: 0;
     width: 100%;
+    height: auto;
   }
 
   .sidebar {

@@ -99,6 +99,15 @@
             </select>
           </label>
 
+          <label>
+            Electional preset
+            <select id="presetInput" name="presetId">
+              <option value="transit-1-degree">Transit 1 Degree</option>
+              <option value="traditional-lilly">Traditional Lilly</option>
+              <option value="medieval-electional">Medieval Electional</option>
+            </select>
+          </label>
+
           <fieldset>
             <legend>Aspect focus</legend>
             <label class="check-row">
@@ -169,6 +178,14 @@
                 <span>Angular</span>
                 <strong id="angularCount">--</strong>
               </article>
+              <article>
+                <span>Preset</span>
+                <strong id="presetLabel">--</strong>
+              </article>
+              <article>
+                <span>Orb mode</span>
+                <strong id="orbLabel">--</strong>
+              </article>
             </section>
 
             <section class="timeline-section panel-block">
@@ -218,6 +235,7 @@
     <footer class="status-bar" aria-label="Application status">
       <span>Location: <strong id="statusLocation">--</strong></span>
       <span>Chart time: <strong id="statusTime">--</strong></span>
+      <span>Preset: <strong id="statusPreset">--</strong></span>
       <span>Validation: <strong id="statusValidation">--</strong></span>
       <span>Engine: <strong>Astronomy Engine</strong></span>
     </footer>
@@ -227,6 +245,7 @@
     <script src="src/domain/timezone.js"></script>
     <script src="src/domain/ephemeris.js"></script>
     <script src="src/domain/houses.js"></script>
+    <script src="src/domain/presets.js"></script>
     <script src="src/domain/validation.js"></script>
     <script src="src/domain/transits.js"></script>
     <script src="src/app.js"></script>

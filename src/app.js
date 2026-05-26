@@ -5,6 +5,7 @@ const locationInput = document.querySelector("#locationInput");
 const latitudeInput = document.querySelector("#latitudeInput");
 const longitudeInput = document.querySelector("#longitudeInput");
 const timezoneInput = document.querySelector("#timezoneInput");
+const presetInput = document.querySelector("#presetInput");
 const timeline = document.querySelector("#timeline");
 const bestScore = document.querySelector("#bestScore");
 const beneficCount = document.querySelector("#beneficCount");
@@ -12,6 +13,8 @@ const stressCount = document.querySelector("#stressCount");
 const trackedCount = document.querySelector("#trackedCount");
 const timezoneLabel = document.querySelector("#timezoneLabel");
 const angularCount = document.querySelector("#angularCount");
+const presetLabel = document.querySelector("#presetLabel");
+const orbLabel = document.querySelector("#orbLabel");
 const workspaceTitle = document.querySelector("#workspaceTitle");
 const positionTimestamp = document.querySelector("#positionTimestamp");
 const positionGrid = document.querySelector("#positionGrid");
@@ -24,6 +27,7 @@ const chartTitle = document.querySelector("#chartTitle");
 const chartMeta = document.querySelector("#chartMeta");
 const statusLocation = document.querySelector("#statusLocation");
 const statusTime = document.querySelector("#statusTime");
+const statusPreset = document.querySelector("#statusPreset");
 const statusValidation = document.querySelector("#statusValidation");
 
 dateInput.value = new Date().toISOString().slice(0, 10);
@@ -59,8 +63,18 @@ function getFormState() {
     longitude: Number(data.get("longitude")),
     timezone: data.get("timezone"),
     objective: data.get("objective"),
+    presetId: data.get("presetId"),
     aspects: data.getAll("aspect"),
   };
+}
+
+function applyPresetSelection() {
+  const preset = window.ElectionalPresets.getPreset(presetInput.value);
+  const checkboxes = [...form.querySelectorAll('input[name="aspect"]')];
+
+  checkboxes.forEach((checkbox) => {
+    checkbox.checked = preset.aspectIds.includes(checkbox.value);
+  });
 }
 
 function applyLocationPreset() {
@@ -226,7 +240,7 @@ function renderTimeline(windows) {
   }).join("");
 }
 
-function renderSummary(windows) {
+function renderSummary(windows, preset) {
   const topWindow = windows.reduce((best, current) => {
     return current.score > best.score ? current : best;
   }, windows[0]);
@@ -240,17 +254,21 @@ function renderSummary(windows) {
   beneficCount.textContent = benefic;
   stressCount.textContent = stress;
   trackedCount.textContent = uniqueTracked.size;
-  angularCount.textContent = topWindow ? topWindow.positions.filter((planet) => planet.isAngular).length : "--";
+  angularCount.textContent = topWindow
+    ? window.ElectionalPresets.filterPositionsForPreset(topWindow.positions, preset).filter((planet) => planet.isAngular).length
+    : "--";
+  presetLabel.textContent = preset.shortName;
+  orbLabel.textContent = window.ElectionalPresets.summarizeOrb(preset);
 }
 
 function renderPositions(snapshot, state) {
   positionTimestamp.textContent = `${window.ElectionalTimezone.formatInTimezone(snapshot.date, state.timezone)} / ${window.ElectionalEphemeris.engine}`;
 
   positionGrid.innerHTML = snapshot.positions.map((planet) => `
-    <article class="position-row">
+    <article class="position-row ${planet.isPresetPoint ? "" : "muted-position"}">
       <div>
         <strong>${planet.name}</strong>
-        <small>House ${planet.house}${planet.isAngular ? ` / ${planet.closestAngle.shortName}` : ""}</small>
+        <small>House ${planet.house}${planet.isAngular ? ` / ${planet.closestAngle.shortName}` : ""}${planet.dignity ? ` / ${planet.dignity.label}` : ""}</small>
       </div>
       <span>${window.ElectionalEphemeris.formatPosition(planet)}</span>
     </article>
@@ -282,7 +300,7 @@ function renderDetectedAspects(snapshot) {
     return `
       <article class="detected-card${tone}">
         <strong>${aspect.label}</strong>
-        <span>${aspect.orbText} orb / ${aspect.exactAngle} deg exact</span>
+        <span>${aspect.orbText} orb / ${aspect.exactAngle} deg exact / limit ${aspect.orbLimit} deg</span>
       </article>
     `;
   }).join("");
@@ -328,6 +346,7 @@ function render() {
   const state = getFormState();
   const windows = window.ElectionalTransits.buildTransitWindows(state);
   const snapshot = window.ElectionalTransits.buildElectionSnapshot(state);
+  const preset = snapshot.preset;
   const objectiveLabel = form.elements.objective.selectedOptions[0].textContent;
 
   chartTitle.textContent = "Natal Chart";
@@ -339,7 +358,7 @@ function render() {
   `;
   workspaceTitle.textContent = `${objectiveLabel} windows near ${state.location}`;
   timezoneLabel.textContent = state.timezone.replaceAll("_", " ");
-  renderSummary(windows);
+  renderSummary(windows, preset);
   renderChartWheel(snapshot);
   renderTimeline(windows);
   renderPositions(snapshot, state);
@@ -348,6 +367,7 @@ function render() {
   const validationPasses = renderValidation();
   statusLocation.textContent = state.location;
   statusTime.textContent = window.ElectionalTimezone.formatInTimezone(snapshot.date, state.timezone);
+  statusPreset.textContent = preset.name;
   statusValidation.textContent = validationPasses ? "Pass" : "Review";
 }
 
@@ -357,4 +377,9 @@ locationPresetInput.addEventListener("change", () => {
 });
 
 form.addEventListener("input", render);
+presetInput.addEventListener("change", () => {
+  applyPresetSelection();
+  render();
+});
+applyPresetSelection();
 render();

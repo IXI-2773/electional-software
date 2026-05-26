@@ -56,9 +56,10 @@ function formatOrb(orb) {
   return `${degrees} deg ${String(minutes).padStart(2, "0")} min`;
 }
 
-function detectAspects(positions, selectedAspectIds) {
+function detectAspects(positions, selectedAspectIds, options = {}) {
   const selected = ASPECTS.filter((aspect) => selectedAspectIds.includes(aspect.id));
   const detected = [];
+  const aspectOrbs = options.aspectOrbs ?? {};
 
   for (let firstIndex = 0; firstIndex < positions.length; firstIndex += 1) {
     for (let secondIndex = firstIndex + 1; secondIndex < positions.length; secondIndex += 1) {
@@ -68,13 +69,16 @@ function detectAspects(positions, selectedAspectIds) {
 
       selected.forEach((aspect) => {
         const orb = Math.abs(distance - aspect.angle);
-        if (orb <= aspect.defaultOrb) {
+        const orbLimit = aspectOrbs[aspect.id] ?? aspect.defaultOrb;
+
+        if (orb <= orbLimit) {
           detected.push({
             aspectId: aspect.id,
             aspectName: aspect.name,
             exactAngle: aspect.angle,
             tone: aspect.tone,
             orb,
+            orbLimit,
             orbText: formatOrb(orb),
             bodies: [first.name, second.name],
             label: `${first.name} ${aspect.name.toLowerCase()} ${second.name}`,

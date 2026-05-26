@@ -29,18 +29,31 @@ function getToneCounts(detectedAspects) {
   }, { support: 0, stress: 0, mixed: 0 });
 }
 
-function scoreWindow(detectedAspects, preferredAspects, positions) {
+function scoreWindow(detectedAspects, preferredAspects, positions, preset) {
   const counts = getToneCounts(detectedAspects);
+  const scoring = preset.scoring;
   const objectiveMatches = detectedAspects.filter((aspect) => preferredAspects.includes(aspect.aspectId)).length;
-  const closeContacts = detectedAspects.filter((aspect) => aspect.orb <= 2).length;
-  const angularityScore = window.ElectionalHouses.getAngularityScore(positions);
-  const rawScore = 58 + counts.support * 8 + counts.mixed * 3 + objectiveMatches * 5 + closeContacts * 4 + angularityScore - counts.stress * 9;
+  const closeContacts = detectedAspects.filter((aspect) => aspect.orb <= scoring.closeContactOrb).length;
+  const scoringPositions = window.ElectionalPresets.filterPositionsForPreset(positions, preset);
+  const angularityScore = window.ElectionalHouses.getAngularityScore(scoringPositions) * scoring.angularMultiplier;
+  const dignityScore = window.ElectionalPresets.getDignityScore(positions, preset) * scoring.dignityWeight;
+  const rawScore = 58
+    + counts.support * scoring.supportWeight
+    + counts.mixed * scoring.mixedWeight
+    + objectiveMatches * scoring.preferredWeight
+    + closeContacts * scoring.closeContactWeight
+    + angularityScore
+    + dignityScore
+    - counts.stress * scoring.stressPenalty;
 
-  return Math.max(10, Math.min(99, rawScore));
+  return Math.round(Math.max(10, Math.min(99, rawScore)));
 }
 
-function describeWindow(detectedAspects, positions) {
-  const angularBodies = positions
+function describeWindow(detectedAspects, positions, preset) {
+  const scoringPositions = preset
+    ? window.ElectionalPresets.filterPositionsForPreset(positions, preset)
+    : positions;
+  const angularBodies = scoringPositions
     .filter((planet) => planet.isAngular)
     .map((planet) => `${planet.name} near ${planet.closestAngle.shortName}`);
 
@@ -56,39 +69,58 @@ function describeWindow(detectedAspects, positions) {
   return `Strongest contact: ${strongest.label} with ${strongest.orbText} orb.`;
 }
 
-function buildElectionSnapshot({ date, time, timezone, latitude, longitude, aspects }) {
-  const selectedAspects = aspects.length ? aspects : ["conjunction", "trine", "square"];
+function buildElectionSnapshot({ date, time, timezone, latitude, longitude, aspects, presetId }) {
+  const preset = window.ElectionalPresets.getPreset(presetId);
+  const selectedAspects = aspects.length ? aspects : preset.aspectIds;
   const chartDate = buildDate(date, time, timezone);
   const angles = window.ElectionalHouses.calculateAngles({ date: chartDate, latitude, longitude });
-  const positions = window.ElectionalHouses.enrichPositionsWithHouses(
-    window.ElectionalEphemeris.getPlanetPositions(chartDate),
-    angles,
+  const positions = window.ElectionalPresets.applyDignities(
+    window.ElectionalHouses.enrichPositionsWithHouses(
+      window.ElectionalEphemeris.getPlanetPositions(chartDate),
+      angles,
+    ),
+    preset,
   );
-  const detectedAspects = window.ElectionalAspects.detectAspects(positions, selectedAspects);
+  const detectedAspects = window.ElectionalAspects.detectAspects(
+    window.ElectionalPresets.filterPositionsForPreset(positions, preset),
+    selectedAspects,
+    { aspectOrbs: preset.aspectOrbs },
+  );
 
   return {
     angles,
     date: chartDate,
+    preset,
     positions,
     detectedAspects,
   };
 }
 
-function buildTransitWindows({ date, time, timezone, latitude, longitude, objective, aspects }) {
-  const selectedAspects = aspects.length ? aspects : ["conjunction", "trine", "square"];
-  const preferred = OBJECTIVE_WEIGHTS[objective] ?? OBJECTIVE_WEIGHTS.launch;
+function buildTransitWindows({ date, time, timezone, latitude, longitude, objective, aspects, presetId }) {
+  const preset = window.ElectionalPresets.getPreset(presetId);
+  const selectedAspects = aspects.length ? aspects : preset.aspectIds;
+  const preferred = preset.preferredAspects.length
+    ? preset.preferredAspects
+    : OBJECTIVE_WEIGHTS[objective] ?? OBJECTIVE_WEIGHTS.launch;
   const baseDate = buildDate(date, time, timezone);
 
   return WINDOW_OFFSETS.map((offsetHours) => {
     const windowDate = new Date(baseDate);
     windowDate.setHours(baseDate.getHours() + offsetHours);
     const angles = window.ElectionalHouses.calculateAngles({ date: windowDate, latitude, longitude });
-    const positions = window.ElectionalHouses.enrichPositionsWithHouses(
-      window.ElectionalEphemeris.getPlanetPositions(windowDate),
-      angles,
+    const positions = window.ElectionalPresets.applyDignities(
+      window.ElectionalHouses.enrichPositionsWithHouses(
+        window.ElectionalEphemeris.getPlanetPositions(windowDate),
+        angles,
+      ),
+      preset,
     );
-    const detectedAspects = window.ElectionalAspects.detectAspects(positions, selectedAspects);
-    const score = scoreWindow(detectedAspects, preferred, positions);
+    const detectedAspects = window.ElectionalAspects.detectAspects(
+      window.ElectionalPresets.filterPositionsForPreset(positions, preset),
+      selectedAspects,
+      { aspectOrbs: preset.aspectOrbs },
+    );
+    const score = scoreWindow(detectedAspects, preferred, positions, preset);
 
     const title = score >= 76
       ? "High-priority election"
@@ -99,7 +131,8 @@ function buildTransitWindows({ date, time, timezone, latitude, longitude, object
     return {
       detectedAspects,
       angles,
-      note: describeWindow(detectedAspects, positions),
+      note: describeWindow(detectedAspects, positions, preset),
+      preset,
       positions,
       score,
       time: new Intl.DateTimeFormat("en-US", {

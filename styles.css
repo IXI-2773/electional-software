@@ -624,6 +624,10 @@ legend {
   gap: 12px;
 }
 
+.position-row.muted-position {
+  opacity: 0.58;
+}
+
 .position-row span,
 .position-row small,
 .angle-card span,

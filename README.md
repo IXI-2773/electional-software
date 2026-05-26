@@ -6,6 +6,7 @@ A private work-in-progress application for electional astrology: transits, aspec
 
 - Static browser app, no build step required yet.
 - Python backend migration has started under `backend/electional`.
+- Python now serves an initial no-JavaScript interface at `http://127.0.0.1:8765/`.
 - Electional workspace UI with date, location, objective, and aspect filters.
 - Domain modules for aspect definitions and transit-window scaffolding.
 - Professional ephemeris module powered by Astronomy Engine.

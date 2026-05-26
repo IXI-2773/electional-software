@@ -98,6 +98,16 @@ select {
   padding: 8px 10px;
 }
 
+.python-submit {
+  border: 1px solid #654426;
+  border-radius: 3px;
+  background: linear-gradient(#f8d9a0, #d99161);
+  color: #2f241d;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 10px;
+}
+
 .sidebar {
   border-right: 1px solid var(--line);
   background: #efc189;
@@ -289,6 +299,22 @@ legend {
   max-height: 100%;
   min-width: 0;
   filter: drop-shadow(0 12px 24px rgba(77, 45, 26, 0.24));
+}
+
+.python-wheel-svg {
+  isolation: isolate;
+}
+
+.python-wheel-sector {
+  fill: var(--sector);
+  opacity: 0.72;
+  stroke: rgba(79, 54, 38, 0.28);
+  stroke-width: 1;
+}
+
+.python-wheel-tick {
+  stroke: rgba(50, 37, 31, 0.54);
+  stroke-width: 1.5;
 }
 
 .outer-disc {

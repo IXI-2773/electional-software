@@ -1,6 +1,6 @@
 # Electional Python Backend
 
-This is the beginning of the migration from browser-only JavaScript toward a Python calculation backend.
+This is the beginning of the migration from browser-only JavaScript toward a Python-owned application.
 
 The current Python slice includes:
 
@@ -9,8 +9,9 @@ The current Python slice includes:
 - Classical essential dignity scoring.
 - Electional window scoring.
 - A small standard-library JSON API.
+- A server-rendered Python interface at `/`.
 
-The browser UI is still JavaScript for now. The migration path is to move the calculation engine into Python first, then have the existing UI call the Python API.
+The legacy browser UI still exists as a fallback while the Python interface grows. The migration path is to move calculation and display into Python in layers until the JavaScript interface can be retired.
 
 ## Run Tests
 
@@ -26,6 +27,7 @@ The browser UI is still JavaScript for now. The migration path is to move the ca
 
 Endpoints:
 
+- `GET /`
 - `GET /api/health`
 - `GET /api/presets`
 - `POST /api/score`

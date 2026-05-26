@@ -5,12 +5,17 @@ from __future__ import annotations
 import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from .aspects import detect_aspects
 from .presets import apply_dignities, filter_positions_for_preset, get_preset, summarize_orb
 from .scoring import score_window
+from .web import render_app
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def build_score_response(payload: dict[str, Any]) -> dict[str, Any]:
@@ -38,7 +43,17 @@ class ElectionalRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
-        path = urlparse(self.path).path
+        parsed_url = urlparse(self.path)
+        path = parsed_url.path
+
+        if path == "/":
+            self.send_html(render_app(parse_qs(parsed_url.query)))
+            return
+
+        if path == "/styles.css":
+            self.send_static_file(PROJECT_ROOT / "styles.css", "text/css; charset=utf-8")
+            return
+
         if path == "/api/health":
             self.send_json({"ok": True, "service": "electional-python"})
             return
@@ -74,6 +89,26 @@ class ElectionalRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "content-type")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+
+    def send_html(self, html: str, status: HTTPStatus = HTTPStatus.OK) -> None:
+        body = html.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_static_file(self, path: Path, content_type: str) -> None:
+        if not path.exists():
+            self.send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+            return
+
+        body = path.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload).encode("utf-8")

@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import unittest
 
-from backend.electional.desktop import build_custom_location, planet_abbreviation, validate_election_inputs, wheel_degrees
+from backend.electional.desktop import (
+    DEFAULT_TIMEZONE,
+    build_custom_location,
+    default_location_for_timezone,
+    planet_abbreviation,
+    validate_election_inputs,
+    wheel_degrees,
+)
 
 
 class DesktopUiHelpersTest(unittest.TestCase):
@@ -30,6 +37,12 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("Latitude must be between -90 and 90.", errors)
         self.assertIn("Longitude must be a number.", errors)
         self.assertIn("Time zone must be a valid IANA name like America/Los_Angeles.", errors)
+
+    def test_default_location_matches_local_timezone(self) -> None:
+        location = default_location_for_timezone(DEFAULT_TIMEZONE)
+
+        self.assertEqual(location.timezone, "America/Los_Angeles")
+        self.assertEqual(location.name, "Los Angeles, CA")
 
 
 if __name__ == "__main__":

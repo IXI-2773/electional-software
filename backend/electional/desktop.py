@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from datetime import date, datetime
 import math
+from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
+from typing import Callable
 from zoneinfo import ZoneInfo
 
 from .chart import build_election_report, format_angle, format_position
@@ -28,6 +30,7 @@ PLANET_LABELS = {
 
 SIGN_LABELS = ("Ar", "Ta", "Ge", "Ca", "Le", "Vi", "Li", "Sc", "Sg", "Cp", "Aq", "Pi")
 OBJECTIVES = ("Launch or publish", "Meeting or negotiation", "Creative work", "Relationship timing", "Travel departure")
+DEFAULT_TIMEZONE = "America/Los_Angeles"
 
 PALETTE = {
     "app_bg": "#d8dfe8",
@@ -124,6 +127,13 @@ def build_custom_location(name: str, latitude_text: str, longitude_text: str, ti
     return LocationPreset("custom", label, float(latitude_text), float(longitude_text), timezone_text.strip() or "UTC")
 
 
+def default_location_for_timezone(timezone_name: str = DEFAULT_TIMEZONE) -> LocationPreset:
+    for location in LOCATION_PRESETS:
+        if location.timezone == timezone_name:
+            return location
+    return LOCATION_PRESETS[0]
+
+
 class ElectionalDesktopApp:
     """Tkinter desktop UI that talks directly to the Python electional engine."""
 
@@ -171,25 +181,21 @@ class ElectionalDesktopApp:
 
         shell = ttk.Frame(self.root, style="Workbench.TFrame", padding=(12, 10, 12, 8))
         shell.pack(fill=tk.BOTH, expand=True)
-        shell.columnconfigure(2, weight=1)
+        shell.columnconfigure(1, weight=1)
         shell.rowconfigure(0, weight=1)
 
         self.left_panel = ttk.Frame(shell, style="Panel.TFrame", padding=12)
         self.left_panel.grid(row=0, column=0, sticky="ns", padx=(0, 10))
         self._build_left_controls()
 
-        self.number_strip = ttk.Frame(shell, style="Panel.TFrame", padding=(8, 14))
-        self.number_strip.grid(row=0, column=1, sticky="ns", padx=(0, 10))
-        self._build_number_strip()
-
         self.center_panel = ttk.Frame(shell, style="Panel.TFrame", padding=12)
-        self.center_panel.grid(row=0, column=2, sticky="nsew", padx=(0, 10))
+        self.center_panel.grid(row=0, column=1, sticky="nsew", padx=(0, 10))
         self.center_panel.columnconfigure(0, weight=1)
         self.center_panel.rowconfigure(2, weight=1)
         self._build_chart_panel()
 
         self.right_panel = ttk.Frame(shell, style="Panel.TFrame", padding=10)
-        self.right_panel.grid(row=0, column=3, sticky="ns")
+        self.right_panel.grid(row=0, column=2, sticky="ns")
         self._build_right_panel()
 
         self.status_var = tk.StringVar(value="Backend: Python desktop engine")
@@ -257,7 +263,84 @@ class ElectionalDesktopApp:
             font=("Segoe UI", 8),
             justify=tk.CENTER,
         ).pack()
+        self._bind_clickable(button, lambda: self._run_ribbon_action(label))
         return button
+
+    def _bind_clickable(self, widget: tk.Widget, command: Callable[[], None]) -> None:
+        widget.bind("<Button-1>", lambda _event: command())
+        widget.bind("<Enter>", lambda _event: widget.configure(cursor="hand2"))
+        widget.bind("<Leave>", lambda _event: widget.configure(cursor=""))
+        for child in widget.winfo_children():
+            self._bind_clickable(child, command)
+
+    def _run_ribbon_action(self, label: str) -> None:
+        actions = {
+            "New Chart": self._new_chart,
+            "Save": self._save_current_report,
+            "Ask": self._show_quick_help,
+            "Transits": self.calculate,
+            "Electional Search": self.calculate,
+            "Primary Directions": lambda: self._feature_pending("Primary Directions"),
+            "Void Course": lambda: self._feature_pending("Void of Course search"),
+            "Bounds": lambda: self._feature_pending("Bounds table"),
+            "Heliacal Search": lambda: self._feature_pending("Heliacal search"),
+        }
+        actions.get(label, lambda: self._feature_pending(label))()
+
+    def _new_chart(self) -> None:
+        location = default_location_for_timezone()
+        self.date_var.set(date.today().isoformat())
+        self.time_var.set("09:00")
+        self.location_var.set(location.name)
+        self.location_name_var.set(location.name)
+        self.latitude_var.set(f"{location.latitude:.4f}")
+        self.longitude_var.set(f"{location.longitude:.4f}")
+        self.timezone_var.set(location.timezone)
+        self.objective_var.set(OBJECTIVES[0])
+        self.preset_var.set(ELECTIONAL_PRESETS[1].name)
+        for var in self.aspect_vars.values():
+            var.set(True)
+        self.calculate()
+
+    def _save_current_report(self) -> None:
+        if not self.selected_window or not self.current_location:
+            self.status_var.set("Nothing to save yet. Calculate a chart first.")
+            return
+        reports_dir = Path.cwd() / "reports"
+        reports_dir.mkdir(exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        path = reports_dir / f"electional-report-{stamp}.txt"
+        path.write_text(self._current_report_text(), encoding="utf-8")
+        self.status_var.set(f"Saved report: {path}")
+
+    def _current_report_text(self) -> str:
+        if not self.selected_window or not self.current_location:
+            return "No electional report calculated."
+        aspects = "\n".join(f"- {aspect['label']} ({aspect['orbText']})" for aspect in self.selected_window["detectedAspects"])
+        planets = "\n".join(
+            f"- {planet['name']}: {format_position(planet)} House {planet['house']}" for planet in self.selected_window["positions"]
+        )
+        return (
+            "Electional Software Report\n"
+            f"Location: {self.current_location.name}\n"
+            f"Time: {self.selected_window['formattedTime']}\n"
+            f"Score: {self.selected_window['score']}\n"
+            f"Window: {self.selected_window.get('title', 'Electional window')}\n"
+            f"Note: {self.selected_window.get('note', '')}\n\n"
+            f"Aspects:\n{aspects or '- No selected major aspects in orb.'}\n\n"
+            f"Planets:\n{planets}\n"
+        )
+
+    def _show_quick_help(self) -> None:
+        messagebox.showinfo(
+            "Electional Software help",
+            "Choose a location, date, time, and electional model, then calculate. "
+            "Select a candidate window on the right to redraw the wheel for that exact time.",
+        )
+
+    def _feature_pending(self, feature_name: str) -> None:
+        self.status_var.set(f"{feature_name} is queued for a later build.")
+        messagebox.showinfo(feature_name, f"{feature_name} is not wired to the engine yet, but the button is now active.")
 
     def _build_left_controls(self) -> None:
         card = ttk.Frame(self.left_panel, style="Panel.TFrame", padding=12)
@@ -268,7 +351,7 @@ class ElectionalDesktopApp:
         self.natal_summary.pack(anchor="w")
 
         today = date.today()
-        default_location = LOCATION_PRESETS[0]
+        default_location = default_location_for_timezone()
         self.date_var = tk.StringVar(value=today.strftime("%Y-%m-%d"))
         self.time_var = tk.StringVar(value="09:00")
         self.location_var = tk.StringVar(value=default_location.name)
@@ -327,21 +410,6 @@ class ElectionalDesktopApp:
         self.latitude_var.set(f"{location.latitude:.4f}")
         self.longitude_var.set(f"{location.longitude:.4f}")
         self.timezone_var.set(location.timezone)
-
-    def _build_number_strip(self) -> None:
-        for text in ("5\n6\n12", "11\n1\n3", "6\n8"):
-            badge = tk.Label(
-                self.number_strip,
-                text=text,
-                bg=PALETTE["panel_alt"],
-                fg=PALETTE["top_bar_dark"],
-                relief=tk.SOLID,
-                bd=1,
-                font=("Segoe UI", 13),
-                width=4,
-                height=3,
-            )
-            badge.pack(pady=(0, 18))
 
     def _build_chart_panel(self) -> None:
         header = ttk.Frame(self.center_panel, style="Panel.TFrame")
@@ -587,8 +655,8 @@ class ElectionalDesktopApp:
         self._draw_angles(snapshot, cx, cy, outer, asc_lon)
         self._draw_planets(snapshot, cx, cy, asc_lon, outer)
 
-        self.canvas.create_text(cx, cy - 8, text="Election", fill=PALETTE["top_bar_dark"], font=("Segoe UI", 18, "bold"))
-        self.canvas.create_text(cx, cy + 25, text=str(snapshot["formattedTime"]), fill=PALETTE["muted"], font=("Segoe UI", 10))
+        self.canvas.create_text(cx, cy - 10, text=f"Score {snapshot['score']}", fill=PALETTE["top_bar_dark"], font=("Segoe UI", 16, "bold"))
+        self.canvas.create_text(cx, cy + 18, text=str(snapshot["formattedTime"]), fill=PALETTE["muted"], font=("Segoe UI", 9))
 
     def _draw_grid(self, width: int, height: int) -> None:
         for x in range(0, width, 24):

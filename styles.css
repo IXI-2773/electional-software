@@ -22,6 +22,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  overflow: hidden;
   color: var(--ink);
   background: #c58b61;
   font-family: "Trebuchet MS", Verdana, sans-serif;
@@ -36,7 +37,8 @@ select {
 .app-shell {
   display: grid;
   grid-template-columns: 292px minmax(0, 1fr);
-  min-height: calc(100vh - 104px);
+  height: calc(100vh - 128px);
+  min-height: 0;
 }
 
 .top-ribbon {
@@ -215,7 +217,8 @@ legend {
   display: grid;
   grid-template-columns: 58px minmax(480px, 1fr) 384px;
   gap: 10px;
-  min-height: calc(100vh - 124px);
+  height: 100%;
+  min-height: 0;
 }
 
 .chart-left-rail {
@@ -246,6 +249,7 @@ legend {
   border: 1px solid #8c5e3d;
   background: #f1c891;
   min-width: 0;
+  min-height: 0;
   padding: 10px;
 }
 
@@ -260,7 +264,8 @@ legend {
 .wheel-frame {
   display: grid;
   place-items: center;
-  min-height: 640px;
+  height: calc(100% - 76px);
+  min-height: 520px;
   border: 1px solid #a5734d;
   background:
     linear-gradient(90deg, rgba(148, 89, 55, 0.08) 1px, transparent 1px),
@@ -271,7 +276,7 @@ legend {
 }
 
 .wheel-svg {
-  width: min(86vh, 100%);
+  width: min(82vh, 100%);
   max-width: 760px;
   min-width: 520px;
   height: auto;
@@ -471,7 +476,7 @@ legend {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .summary-grid article,
@@ -485,7 +490,7 @@ legend {
 .summary-grid article {
   display: grid;
   gap: 5px;
-  padding: 10px;
+  padding: 8px;
 }
 
 .summary-grid span,
@@ -498,15 +503,15 @@ legend {
 }
 
 .summary-grid strong {
-  font-size: 1.08rem;
+  font-size: 1rem;
   overflow-wrap: anywhere;
 }
 
 .panel-block {
-  margin-top: 10px;
+  margin-top: 8px;
   border: 1px solid #9b6d48;
   background: #efc189;
-  padding: 9px;
+  padding: 8px;
 }
 
 .section-heading {
@@ -528,22 +533,32 @@ legend {
 
 .timeline-card {
   display: grid;
-  grid-template-columns: 64px 1fr;
-  gap: 9px;
-  align-items: center;
-  padding: 8px;
+  grid-template-columns: 58px 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 7px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.timeline-card.selected {
+  background: #ffe0a8;
+  border-color: #74512f;
 }
 
 .timeline-time {
   color: var(--accent-strong);
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   font-weight: 700;
 }
 
 .timeline-title {
   margin-bottom: 4px;
-  font-size: 1.1rem;
+  font-size: 0.92rem;
   font-weight: 700;
+}
+
+.timeline-meta {
+  line-height: 1.25;
 }
 
 .tag-row {
@@ -552,6 +567,7 @@ legend {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: start;
+  margin-top: 2px;
 }
 
 .tag {
@@ -559,7 +575,7 @@ legend {
   background: rgba(13, 107, 98, 0.11);
   color: var(--accent-strong);
   font-family: "Trebuchet MS", sans-serif;
-  font-size: 0.78rem;
+  font-size: 0.68rem;
   font-weight: 700;
   padding: 4px 6px;
 }
@@ -589,7 +605,7 @@ legend {
   border: 1px solid var(--line);
   border-radius: 3px;
   background: #f8d9a0;
-  padding: 8px;
+  padding: 7px;
 }
 
 .position-row {
@@ -649,7 +665,25 @@ legend {
   border: 1px solid var(--line);
   border-radius: 3px;
   background: #f8d9a0;
-  padding: 8px;
+  padding: 7px;
+}
+
+.status-bar {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  height: 24px;
+  border-top: 1px solid #30265d;
+  background: #f1a2ad;
+  color: #312537;
+  font-size: 0.74rem;
+  overflow-x: auto;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.status-bar strong {
+  font-weight: 800;
 }
 
 .validation-summary {
@@ -704,7 +738,12 @@ legend {
 }
 
 @media (max-width: 860px) {
+  body {
+    overflow: auto;
+  }
+
   .app-shell {
+    height: auto;
     grid-template-columns: 1fr;
   }
 
@@ -713,6 +752,7 @@ legend {
   }
 
   .chart-board {
+    height: auto;
     grid-template-columns: 1fr;
   }
 

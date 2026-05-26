@@ -22,6 +22,9 @@ const validationPanel = document.querySelector("#validationPanel");
 const chartWheel = document.querySelector("#chartWheel");
 const chartTitle = document.querySelector("#chartTitle");
 const chartMeta = document.querySelector("#chartMeta");
+const statusLocation = document.querySelector("#statusLocation");
+const statusTime = document.querySelector("#statusTime");
+const statusValidation = document.querySelector("#statusValidation");
 
 dateInput.value = new Date().toISOString().slice(0, 10);
 
@@ -198,9 +201,9 @@ function renderChartWheel(snapshot) {
 }
 
 function renderTimeline(windows) {
-  timeline.innerHTML = windows.map((transitWindow) => {
+  timeline.innerHTML = windows.map((transitWindow, index) => {
     const tags = transitWindow.detectedAspects
-      .slice(0, 4)
+      .slice(0, 3)
       .map((aspect) => {
         const tone = aspect.tone === "stress" ? " stress" : "";
         return `<span class="tag${tone}">${aspect.label}</span>`;
@@ -208,7 +211,7 @@ function renderTimeline(windows) {
       .join("");
 
     return `
-      <article class="timeline-card">
+      <article class="timeline-card ${index === 0 ? "selected" : ""}">
         <div class="timeline-time">${transitWindow.time}</div>
         <div>
           <div class="timeline-title">${transitWindow.title}</div>
@@ -317,6 +320,8 @@ function renderValidation() {
       </article>
     `).join("")}
   `;
+
+  return report.pass && angleReport.pass && swissAngleReport.pass;
 }
 
 function render() {
@@ -340,7 +345,10 @@ function render() {
   renderPositions(snapshot, state);
   renderAngles(snapshot);
   renderDetectedAspects(snapshot);
-  renderValidation();
+  const validationPasses = renderValidation();
+  statusLocation.textContent = state.location;
+  statusTime.textContent = window.ElectionalTimezone.formatInTimezone(snapshot.date, state.timezone);
+  statusValidation.textContent = validationPasses ? "Pass" : "Review";
 }
 
 locationPresetInput.addEventListener("change", () => {

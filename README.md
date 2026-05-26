@@ -24,6 +24,16 @@ Run the native desktop application:
 & "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" desktop_app.py
 ```
 
+Or double-click:
+
+`Run Desktop App.bat`
+
+Open the project Python runner:
+
+`Open Python Runner.bat`
+
+Runner notes are in `docs/python-runner.md`.
+
 Optional diagnostic server:
 
 ```powershell

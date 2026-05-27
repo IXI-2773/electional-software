@@ -15,13 +15,22 @@ from .time_utils import normalize_time_text
 from .validation import validate_election_inputs
 
 SESSION_PATH = Path.cwd() / ".electional-session.json"
-OBJECTIVES = ("Launch or publish", "Meeting or negotiation", "Creative work", "Relationship timing", "Travel departure")
+OBJECTIVES = (
+    "Launch or publish",
+    "Meeting or negotiation",
+    "Creative work",
+    "Relationship timing",
+    "Travel departure",
+    "Money or business",
+    "Health or surgery caution",
+)
 DEFAULT_DISPLAY_OPTIONS = {
     "show_aspects": True,
     "show_lots": False,
     "show_nodes": False,
     "show_fixed_stars": False,
     "compact_wheel": True,
+    "wheel_zoom": 0.88,
 }
 
 
@@ -56,6 +65,10 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
     house_system = get_house_system(str(state.get("house_system") or DEFAULT_HOUSE_SYSTEM_ID)).name
     aspects = state.get("aspects") if isinstance(state.get("aspects"), dict) else {}
     display_options = state.get("display_options") if isinstance(state.get("display_options"), dict) else {}
+    try:
+        wheel_zoom = float(display_options.get("wheel_zoom", DEFAULT_DISPLAY_OPTIONS["wheel_zoom"]))
+    except (TypeError, ValueError):
+        wheel_zoom = float(DEFAULT_DISPLAY_OPTIONS["wheel_zoom"])
 
     return {
         "date": date_text,
@@ -75,7 +88,11 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
         "minimum_score": str(state.get("minimum_score") or DEFAULT_MINIMUM_SCORE),
         "max_results": str(state.get("max_results") or DEFAULT_MAX_RESULTS),
         "display_options": {
-            key: bool(display_options.get(key, default_value))
-            for key, default_value in DEFAULT_DISPLAY_OPTIONS.items()
+            **{
+                key: bool(display_options.get(key, default_value))
+                for key, default_value in DEFAULT_DISPLAY_OPTIONS.items()
+                if isinstance(default_value, bool)
+            },
+            "wheel_zoom": max(0.76, min(1.04, wheel_zoom)),
         },
     }

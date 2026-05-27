@@ -119,6 +119,7 @@ def build_chart_response(payload: dict[str, Any]) -> dict[str, Any]:
         payload.get("aspects"),
         str(payload.get("zodiacSystemId") or payload.get("zodiacSystem") or "sidereal-lahiri"),
         str(payload.get("houseSystemId") or payload.get("houseSystem") or "whole-sign"),
+        str(payload.get("objective") or "Launch or publish"),
     )
     return {"location": location.to_json(), "snapshot": snapshot}
 
@@ -135,6 +136,7 @@ def build_search_response(payload: dict[str, Any]) -> dict[str, Any]:
         str(payload.get("zodiacSystemId") or payload.get("zodiacSystem") or "sidereal-lahiri"),
         str(payload.get("houseSystemId") or payload.get("houseSystem") or "whole-sign"),
         config,
+        str(payload.get("objective") or "Launch or publish"),
     )
     return {"location": location.to_json(), "search": asdict(config), "resultCount": len(windows), "windows": windows}
 
@@ -151,6 +153,7 @@ def build_report_response(payload: dict[str, Any]) -> dict[str, Any]:
         str(payload.get("zodiacSystemId") or payload.get("zodiacSystem") or "sidereal-lahiri"),
         str(payload.get("houseSystemId") or payload.get("houseSystem") or "whole-sign"),
         config,
+        str(payload.get("objective") or "Launch or publish"),
     )
     windows = report["windows"]
     selected_window = windows[0] if windows else report["snapshot"]

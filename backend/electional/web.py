@@ -18,6 +18,9 @@ OBJECTIVES = {
     "meeting": "Meeting or negotiation",
     "creative": "Creative work",
     "relationship": "Relationship timing",
+    "travel": "Travel departure",
+    "money": "Money or business",
+    "health": "Health or surgery caution",
 }
 
 
@@ -145,8 +148,8 @@ def render_app(params: Mapping[str, list[str]] | None = None) -> str:
     location = get_location(selected_location_id)
     preset = get_preset(selected_preset_id)
     objective_label = OBJECTIVES.get(selected_objective, OBJECTIVES["launch"])
-    snapshot = build_snapshot(selected_date, selected_time, location, selected_preset_id)
-    windows = build_transit_windows(selected_date, selected_time, location, selected_preset_id)
+    snapshot = build_snapshot(selected_date, selected_time, location, selected_preset_id, objective=objective_label)
+    windows = build_transit_windows(selected_date, selected_time, location, selected_preset_id, objective=objective_label)
     top_window = windows[0]
     all_detected = [aspect for window in windows for aspect in window["detectedAspects"]]
     support_count = sum(1 for aspect in all_detected if aspect["tone"] == "support")

@@ -10,6 +10,7 @@ from tkinter import messagebox, ttk
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
+from .calendar_export import calendar_from_entries
 from .chart import build_election_report, format_angle, format_position
 from .locations import (
     DEFAULT_TIMEZONE,
@@ -28,6 +29,7 @@ from .references import dignity_table_lines, lot_reference_lines, system_referen
 from .reporting import (
     build_report_text,
     condition_lines,
+    constellation_lines,
     format_aspectarian,
     format_dignity_summary,
     format_aspect_summary,
@@ -37,7 +39,11 @@ from .reporting import (
     format_planet_focus,
     format_score_breakdown,
     format_window_label,
+    factor_explorer_lines,
+    judgment_context_lines,
     rule_lines,
+    score_accounting_lines,
+    score_evaluation_lines,
     score_reason_lines,
 )
 from .screening import moon_void_course_summary, solar_elongation_summary
@@ -50,6 +56,7 @@ from .search import (
     format_search_summary,
 )
 from .session import OBJECTIVES, clean_session_state, load_session_state, save_session_state
+from .shortlist import add_shortlist_entry, build_shortlist_entry, format_shortlist_entries, load_shortlist, save_shortlist
 from .systems import DEFAULT_HOUSE_SYSTEM_ID, DEFAULT_ZODIAC_SYSTEM_ID, HOUSE_SYSTEMS, ZODIAC_SYSTEMS, get_house_system, get_zodiac_system
 from .time_utils import normalize_time_text
 from .validation import validate_election_inputs, validate_search_inputs
@@ -72,50 +79,51 @@ ZODIAC_SYSTEM_NAMES = tuple(system.name for system in ZODIAC_SYSTEMS)
 HOUSE_SYSTEM_NAMES = tuple(system.name for system in HOUSE_SYSTEMS)
 
 PALETTE = {
-    "app_bg": "#e8eef3",
-    "title_bar": "#f2a0ad",
-    "top_bar": "#17395c",
-    "top_bar_dark": "#0f2238",
-    "ribbon": "#eef4f8",
-    "ribbon_panel": "#f9fbfd",
-    "panel": "#f8fafb",
+    "app_bg": "#e9edf2",
+    "title_bar": "#182231",
+    "top_bar": "#1f3a4a",
+    "top_bar_dark": "#121821",
+    "ribbon": "#f5f7fa",
+    "ribbon_panel": "#ffffff",
+    "panel": "#f6f8fb",
     "panel_alt": "#ffffff",
-    "panel_line": "#c4ced7",
-    "canvas": "#eef1e7",
-    "canvas_grid": "#dde4dc",
-    "chart_disc": "#e9ecdd",
-    "chart_inner": "#fbf7e9",
-    "chart_line": "#526170",
-    "text": "#16202c",
-    "muted": "#526273",
-    "accent": "#00727d",
-    "score": "#005b66",
-    "support": "#118875",
-    "stress": "#d6536d",
-    "warning": "#b36a00",
+    "panel_line": "#d8dee8",
+    "canvas": "#f7f5ee",
+    "canvas_grid": "#ebe7dc",
+    "chart_disc": "#f0eadc",
+    "chart_inner": "#fffdf7",
+    "chart_line": "#485463",
+    "text": "#1b2430",
+    "muted": "#667586",
+    "accent": "#0f7b72",
+    "score": "#075a70",
+    "support": "#148060",
+    "stress": "#c94a62",
+    "warning": "#a86315",
     "button": "#ffffff",
-    "button_hover": "#e8f5f7",
-    "button_line": "#b7c3cf",
-    "selected": "#d9f3f4",
-    "metric_bg": "#edf8f7",
-    "center_hub": "#fffdf5",
-    "chip": "#e9f4f5",
-    "chip_line": "#a6cbd0",
+    "button_hover": "#edf7f6",
+    "button_line": "#d6dde7",
+    "selected": "#dff3ef",
+    "metric_bg": "#e7f5f3",
+    "center_hub": "#ffffff",
+    "chip": "#eef7f5",
+    "chip_line": "#bddbd5",
+    "surface_shadow": "#c6ccd5",
 }
 
 SIGN_COLORS = (
-    "#ef6b86",
-    "#d8c36e",
-    "#22c3b1",
-    "#b6d7a8",
-    "#f0b46a",
-    "#d4d8bd",
-    "#22b8b0",
-    "#c0569f",
-    "#f1976d",
-    "#bfc7ba",
-    "#30b8c3",
-    "#c968ad",
+    "#e86f78",
+    "#d2b15a",
+    "#55b8aa",
+    "#8fc28b",
+    "#e7a057",
+    "#bfc9a8",
+    "#45a9b6",
+    "#b66a9b",
+    "#dd8661",
+    "#aeb7aa",
+    "#5fa8cf",
+    "#bf75ac",
 )
 
 
@@ -267,7 +275,7 @@ class ElectionalDesktopApp:
         self.root = root
         self.root.title("Electional Software")
         self.root.geometry("1440x900")
-        self.root.minsize(1160, 760)
+        self.root.minsize(1020, 700)
 
         self.user_locations = load_user_locations()
         self.location_names = combined_location_names(self.user_locations)
@@ -280,6 +288,7 @@ class ElectionalDesktopApp:
         self.selected_window: dict[str, object] | None = None
         self.selected_window_index = 0
         self.window_cards: list[tk.Frame] = []
+        self.shortlist = load_shortlist()
         self._resize_job: str | None = None
         self.focus_mode = False
         self.event_log: list[str] = []
@@ -291,6 +300,7 @@ class ElectionalDesktopApp:
         self.show_nodes_var = tk.BooleanVar(value=bool(display_options.get("show_nodes", True)))
         self.show_fixed_stars_var = tk.BooleanVar(value=bool(display_options.get("show_fixed_stars", True)))
         self.compact_wheel_var = tk.BooleanVar(value=bool(display_options.get("compact_wheel", False)))
+        self.wheel_zoom = float(display_options.get("wheel_zoom", 0.88))
 
         self._configure_style()
         self._build_layout()
@@ -309,23 +319,23 @@ class ElectionalDesktopApp:
         style.configure("Ribbon.TFrame", background=PALETTE["ribbon"])
         style.configure("Workbench.TFrame", background=PALETTE["app_bg"])
         style.configure("Panel.TFrame", background=PALETTE["panel"], relief="flat", borderwidth=0)
-        style.configure("Card.TFrame", background=PALETTE["panel_alt"], relief="solid", borderwidth=1)
+        style.configure("Card.TFrame", background=PALETTE["panel_alt"], relief="flat", borderwidth=0)
         style.configure("RibbonPanel.TFrame", background=PALETTE["ribbon_panel"], relief="flat", borderwidth=0)
-        style.configure("Panel.TLabelframe", background=PALETTE["panel"], bordercolor=PALETTE["panel_line"])
-        style.configure("Panel.TLabelframe.Label", background=PALETTE["panel"], foreground=PALETTE["accent"], font=("Segoe UI", 9, "bold"))
-        style.configure("Ribbon.TLabelframe", background=PALETTE["ribbon_panel"], bordercolor="#b6c1cc")
-        style.configure("Ribbon.TLabelframe.Label", background=PALETTE["ribbon_panel"], foreground=PALETTE["top_bar_dark"], font=("Segoe UI", 8, "bold"))
+        style.configure("Panel.TLabelframe", background=PALETTE["panel"], bordercolor=PALETTE["panel_line"], relief="flat")
+        style.configure("Panel.TLabelframe.Label", background=PALETTE["panel"], foreground=PALETTE["accent"], font=("Segoe UI Semibold", 9))
+        style.configure("Ribbon.TLabelframe", background=PALETTE["ribbon_panel"], bordercolor=PALETTE["panel_line"], relief="flat")
+        style.configure("Ribbon.TLabelframe.Label", background=PALETTE["ribbon_panel"], foreground=PALETTE["muted"], font=("Segoe UI Semibold", 8))
         style.configure("TNotebook", background=PALETTE["panel"], borderwidth=0)
-        style.configure("TNotebook.Tab", background="#e8eef3", foreground=PALETTE["top_bar_dark"], padding=(10, 5), font=("Segoe UI", 9, "bold"))
+        style.configure("TNotebook.Tab", background="#e7ecf2", foreground=PALETTE["muted"], padding=(12, 7), font=("Segoe UI Semibold", 9))
         style.map("TNotebook.Tab", background=[("selected", PALETTE["panel_alt"])], foreground=[("selected", PALETTE["accent"])])
-        style.configure("Title.TLabel", background=PALETTE["panel"], foreground=PALETTE["text"], font=("Segoe UI", 18, "bold"))
+        style.configure("Title.TLabel", background=PALETTE["panel"], foreground=PALETTE["text"], font=("Segoe UI Semibold", 19))
         style.configure("Small.TLabel", background=PALETTE["panel"], foreground=PALETTE["muted"], font=("Segoe UI", 9))
-        style.configure("Accent.TLabel", background=PALETTE["panel"], foreground=PALETTE["accent"], font=("Segoe UI", 9, "bold"))
-        style.configure("Score.TLabel", background=PALETTE["panel_alt"], foreground=PALETTE["score"], font=("Segoe UI", 30, "bold"))
-        style.configure("TButton", background=PALETTE["button"], foreground=PALETTE["text"], padding=(12, 7), bordercolor=PALETTE["button_line"])
+        style.configure("Accent.TLabel", background=PALETTE["panel"], foreground=PALETTE["accent"], font=("Segoe UI Semibold", 9))
+        style.configure("Score.TLabel", background=PALETTE["panel_alt"], foreground=PALETTE["score"], font=("Segoe UI Semibold", 32))
+        style.configure("TButton", background=PALETTE["button"], foreground=PALETTE["text"], padding=(13, 8), bordercolor=PALETTE["button_line"], focusthickness=1, focuscolor=PALETTE["accent"])
         style.map("TButton", background=[("active", PALETTE["button_hover"])])
-        style.configure("TCheckbutton", background=PALETTE["panel"], foreground=PALETTE["muted"])
-        style.configure("TCombobox", fieldbackground=PALETTE["panel_alt"], background=PALETTE["ribbon_panel"], foreground=PALETTE["text"])
+        style.configure("TCheckbutton", background=PALETTE["panel"], foreground=PALETTE["muted"], font=("Segoe UI", 9))
+        style.configure("TCombobox", fieldbackground=PALETTE["panel_alt"], background=PALETTE["ribbon_panel"], foreground=PALETTE["text"], arrowsize=14)
 
     def _location_map(self) -> dict[str, LocationPreset]:
         locations = {location.name: location for location in LOCATION_PRESETS}
@@ -346,19 +356,31 @@ class ElectionalDesktopApp:
         self.shell = tk.Frame(self.root, bg=PALETTE["app_bg"], padx=10, pady=10)
         self.shell.pack(fill=tk.BOTH, expand=True)
 
-        self.left_panel = tk.Frame(self.shell, bg=PALETTE["panel"], padx=10, pady=10, width=305)
-        self.left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 12))
+        self.workspace_panes = tk.PanedWindow(
+            self.shell,
+            orient=tk.HORIZONTAL,
+            bg=PALETTE["app_bg"],
+            bd=0,
+            sashwidth=8,
+            sashrelief=tk.FLAT,
+            showhandle=True,
+            handlesize=18,
+            handlepad=48,
+        )
+        self.workspace_panes.pack(fill=tk.BOTH, expand=True)
+
+        self.left_panel = tk.Frame(self.workspace_panes, bg=PALETTE["panel"], padx=8, pady=8, width=315)
         self.left_panel.pack_propagate(False)
+        self._build_left_scroll_area()
         self._build_left_controls()
 
-        self.center_panel = ttk.Frame(self.shell, style="Panel.TFrame", padding=10)
-        self.center_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 12))
+        self.center_pane = tk.Frame(self.workspace_panes, bg=PALETTE["panel"], padx=0, pady=0, width=720)
+        self._build_center_scroll_area()
         self.center_panel.columnconfigure(0, weight=1)
-        self.center_panel.rowconfigure(3, weight=1, minsize=360)
+        self.center_panel.rowconfigure(3, weight=1, minsize=260)
         self._build_chart_panel()
 
-        self.right_panel = tk.Frame(self.shell, bg=PALETTE["panel"], padx=8, pady=8, width=360)
-        self.right_panel.pack(side=tk.RIGHT, fill=tk.Y)
+        self.right_panel = tk.Frame(self.workspace_panes, bg=PALETTE["panel"], padx=8, pady=8, width=380)
         self.right_panel.pack_propagate(False)
         self._build_right_panel()
         self._pack_workspace_panels()
@@ -376,52 +398,147 @@ class ElectionalDesktopApp:
         )
         status.pack(fill=tk.X, side=tk.BOTTOM)
 
+    def _build_left_scroll_area(self) -> None:
+        viewport = tk.Frame(self.left_panel, bg=PALETTE["panel"])
+        viewport.pack(fill=tk.BOTH, expand=True)
+        self.left_scroll_canvas = tk.Canvas(
+            viewport,
+            bg=PALETTE["panel"],
+            bd=0,
+            highlightthickness=0,
+        )
+        scrollbar = ttk.Scrollbar(viewport, orient=tk.VERTICAL, command=self.left_scroll_canvas.yview)
+        self.left_controls_parent = ttk.Frame(self.left_scroll_canvas, style="Panel.TFrame")
+        self.left_controls_window = self.left_scroll_canvas.create_window((0, 0), window=self.left_controls_parent, anchor="nw")
+        self.left_scroll_canvas.configure(yscrollcommand=scrollbar.set)
+        self.left_scroll_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.left_controls_parent.bind(
+            "<Configure>",
+            lambda _event: self.left_scroll_canvas.configure(scrollregion=self.left_scroll_canvas.bbox("all")),
+        )
+        self.left_scroll_canvas.bind(
+            "<Configure>",
+            lambda event: self.left_scroll_canvas.itemconfigure(self.left_controls_window, width=event.width),
+        )
+        self.left_scroll_canvas.bind("<Enter>", lambda _event: self.left_scroll_canvas.bind_all("<MouseWheel>", self._scroll_left_controls))
+        self.left_scroll_canvas.bind("<Leave>", lambda _event: self.left_scroll_canvas.unbind_all("<MouseWheel>"))
+
+    def _scroll_left_controls(self, event: tk.Event) -> None:
+        if not hasattr(self, "left_scroll_canvas"):
+            return
+        delta = int(-1 * (event.delta / 120)) if getattr(event, "delta", 0) else 0
+        if delta:
+            self.left_scroll_canvas.yview_scroll(delta, "units")
+
+    def _build_center_scroll_area(self) -> None:
+        viewport = tk.Frame(self.center_pane, bg=PALETTE["panel"])
+        viewport.pack(fill=tk.BOTH, expand=True)
+        self.center_scroll_canvas = tk.Canvas(
+            viewport,
+            bg=PALETTE["panel"],
+            bd=0,
+            highlightthickness=0,
+        )
+        scrollbar = ttk.Scrollbar(viewport, orient=tk.VERTICAL, command=self.center_scroll_canvas.yview)
+        self.center_panel = ttk.Frame(self.center_scroll_canvas, style="Panel.TFrame", padding=10)
+        self.center_controls_window = self.center_scroll_canvas.create_window((0, 0), window=self.center_panel, anchor="nw")
+        self.center_scroll_canvas.configure(yscrollcommand=scrollbar.set)
+        self.center_scroll_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.center_panel.bind(
+            "<Configure>",
+            lambda _event: self.center_scroll_canvas.configure(scrollregion=self.center_scroll_canvas.bbox("all")),
+        )
+        self.center_scroll_canvas.bind(
+            "<Configure>",
+            lambda event: self.center_scroll_canvas.itemconfigure(self.center_controls_window, width=event.width),
+        )
+        self.center_scroll_canvas.bind("<Enter>", lambda _event: self.center_scroll_canvas.bind_all("<MouseWheel>", self._scroll_center_workspace))
+        self.center_scroll_canvas.bind("<Leave>", lambda _event: self.center_scroll_canvas.unbind_all("<MouseWheel>"))
+        self.center_panel.bind("<Enter>", lambda _event: self.center_scroll_canvas.bind_all("<MouseWheel>", self._scroll_center_workspace))
+        self.center_panel.bind("<Leave>", lambda _event: self.center_scroll_canvas.unbind_all("<MouseWheel>"))
+
+    def _scroll_center_workspace(self, event: tk.Event) -> None:
+        if not hasattr(self, "center_scroll_canvas"):
+            return
+        delta = int(-1 * (event.delta / 120)) if getattr(event, "delta", 0) else 0
+        if delta:
+            self.center_scroll_canvas.yview_scroll(delta, "units")
+
     def _build_top_bars(self) -> None:
-        title_bar = tk.Frame(self.root, bg=PALETTE["title_bar"], height=30)
+        title_bar = tk.Frame(self.root, bg=PALETTE["title_bar"], height=44)
         title_bar.pack(fill=tk.X)
         tk.Label(
             title_bar,
             text="Electional Software",
             bg=PALETTE["title_bar"],
-            fg=PALETTE["top_bar_dark"],
-            font=("Segoe UI", 10, "bold"),
-        ).pack(side=tk.LEFT, padx=16, pady=5)
+            fg="#ffffff",
+            font=("Segoe UI Semibold", 13),
+        ).pack(side=tk.LEFT, padx=18, pady=10)
         tk.Label(
             title_bar,
             text="Sidereal electional workspace",
             bg=PALETTE["title_bar"],
-            fg=PALETTE["top_bar_dark"],
+            fg="#b9c5d2",
             font=("Segoe UI", 9),
-        ).pack(side=tk.RIGHT, padx=16)
+        ).pack(side=tk.RIGHT, padx=18)
 
-        menu = ttk.Frame(self.root, style="Top.TFrame", padding=(12, 5))
+        menu = ttk.Frame(self.root, style="Top.TFrame", padding=(14, 6))
         menu.pack(fill=tk.X)
         for item in ("Chart", "Selected Chart", "Search", "Configuration", "Astro Mapping"):
-            tk.Label(menu, text=item, bg=PALETTE["top_bar"], fg="white", font=("Segoe UI", 9, "bold"), padx=16).pack(side=tk.LEFT)
+            tk.Label(
+                menu,
+                text=item,
+                bg=PALETTE["top_bar"],
+                fg="#eaf4f1",
+                font=("Segoe UI Semibold", 9),
+                padx=15,
+            ).pack(side=tk.LEFT)
 
-        ribbon = ttk.Frame(self.root, style="Ribbon.TFrame", padding=(12, 9))
+        ribbon = tk.Frame(self.root, bg=PALETTE["ribbon"], padx=12, pady=9)
         ribbon.pack(fill=tk.X)
         groups = (
-            ("Chart", ("New Chart", "Save", "Ask")),
-            ("Calculate", ("Transits", "Electional Search")),
-            ("Advanced", ("Chart Data", "Health", "Focus Wheel", "Void Course", "Preferences")),
-            ("Utility", ("Systems", "Bounds", "Lots", "Fixed Stars", "Heliacal Search")),
+            ("Chart", ("New Chart", "Save", "Calendar", "Ask")),
+            ("Calculate", ("Transits", "Electional Search", "Shortlist")),
+            ("Inspect", ("Chart Data", "Health", "Focus Wheel", "Void Course", "Preferences")),
+            ("References", ("Systems", "Bounds", "Lots", "Fixed Stars", "Heliacal Search")),
         )
         for group_title, items in groups:
-            group = ttk.LabelFrame(ribbon, text=group_title, style="Ribbon.TLabelframe", padding=(9, 7))
-            group.pack(side=tk.LEFT, padx=(0, 8))
-            row = ttk.Frame(group, style="RibbonPanel.TFrame")
-            row.pack()
-            for item in items:
-                self._ribbon_button(row, item).pack(side=tk.LEFT, padx=(0, 6))
+            self._ribbon_group(ribbon, group_title, items).pack(side=tk.LEFT, fill=tk.Y, padx=(0, 8))
+
+    def _ribbon_group(self, parent: tk.Widget, title: str, items: tuple[str, ...]) -> tk.Frame:
+        group = tk.Frame(
+            parent,
+            bg=PALETTE["ribbon_panel"],
+            highlightbackground=PALETTE["panel_line"],
+            highlightthickness=1,
+            padx=8,
+            pady=7,
+        )
+        tk.Label(
+            group,
+            text=title.upper(),
+            bg=PALETTE["ribbon_panel"],
+            fg=PALETTE["accent"],
+            font=("Segoe UI Semibold", 8),
+            anchor="w",
+        ).pack(fill=tk.X, pady=(0, 6))
+        row = tk.Frame(group, bg=PALETTE["ribbon_panel"])
+        row.pack(fill=tk.X)
+        for item in items:
+            self._ribbon_button(row, item).pack(side=tk.LEFT, padx=(0, 5))
+        return group
 
     def _ribbon_button(self, parent: tk.Widget, label: str) -> tk.Frame:
         descriptions = {
             "New Chart": "Reset",
             "Save": "Report",
+            "Calendar": ".ics",
             "Ask": "Help",
             "Transits": "Refresh",
             "Electional Search": "Rank",
+            "Shortlist": "Pick",
             "Chart Data": "Inspect",
             "Health": "Engine",
             "Focus Wheel": "F11",
@@ -433,22 +550,34 @@ class ElectionalDesktopApp:
             "Fixed Stars": "Stars",
             "Heliacal Search": "Visibility",
         }
+        title = {
+            "New Chart": "New",
+            "Electional Search": "Search",
+            "Chart Data": "Data",
+            "Focus Wheel": "Focus",
+            "Void Course": "VOC",
+            "Fixed Stars": "Stars",
+            "Heliacal Search": "Heliacal",
+        }.get(label, label)
         button = tk.Frame(
             parent,
             bg=PALETTE["button"],
             highlightbackground=PALETTE["button_line"],
             highlightthickness=1,
-            padx=10,
-            pady=7,
+            width=72,
+            height=54,
         )
+        button.pack_propagate(False)
+        tk.Frame(button, bg=PALETTE["accent"], height=2).pack(fill=tk.X, pady=(0, 6))
         tk.Label(
             button,
-            text=label,
+            text=title,
             bg=PALETTE["button"],
             fg=PALETTE["text"],
-            font=("Segoe UI", 8, "bold"),
+            font=("Segoe UI Semibold", 8),
             justify=tk.CENTER,
-        ).pack()
+            wraplength=66,
+        ).pack(fill=tk.X)
         tk.Label(
             button,
             text=descriptions.get(label, "Open"),
@@ -456,7 +585,7 @@ class ElectionalDesktopApp:
             fg=PALETTE["muted"],
             font=("Segoe UI", 7),
             justify=tk.CENTER,
-        ).pack()
+        ).pack(fill=tk.X, pady=(1, 0))
         self._bind_clickable(button, lambda: self._run_ribbon_action(label))
         return button
 
@@ -475,6 +604,8 @@ class ElectionalDesktopApp:
             for child in widget.winfo_children():
                 if isinstance(child, tk.Label):
                     child.configure(bg=color)
+                elif isinstance(child, tk.Frame):
+                    child.configure(bg=PALETTE["accent"])
 
     def _render_summary_chips(self, snapshot: dict[str, object]) -> None:
         for child in self.context_chip_frame.winfo_children():
@@ -495,9 +626,11 @@ class ElectionalDesktopApp:
         actions = {
             "New Chart": self._new_chart,
             "Save": self._save_current_report,
+            "Calendar": self._save_selected_calendar_event,
             "Ask": self._show_quick_help,
             "Transits": self.calculate,
             "Electional Search": self.calculate,
+            "Shortlist": self._add_selected_to_shortlist,
             "Chart Data": self._show_chart_inspector,
             "Health": self._show_calculation_health_dialog,
             "Focus Wheel": self._toggle_focus_mode,
@@ -577,6 +710,76 @@ class ElectionalDesktopApp:
         self.status_var.set(f"Saved chart wheel: {path}")
         self._log_event(f"Saved wheel export: {path.name}")
 
+    def _add_selected_to_shortlist(self) -> None:
+        if not self.selected_window or not self.current_location:
+            self.status_var.set("Nothing to shortlist yet. Calculate and select a candidate window first.")
+            return
+        entry = build_shortlist_entry(self.selected_window, self.current_location, self.objective_var.get())
+        self.shortlist = add_shortlist_entry(self.shortlist, entry)
+        save_shortlist(self.shortlist)
+        self._refresh_shortlist_text()
+        self._focus_detail_page("Shortlist")
+        self.status_var.set(f"Shortlisted {entry['formattedTime']} with score {entry['score']}.")
+        self._log_event(f"Shortlisted window: {entry['formattedTime']} score {entry['score']}")
+
+    def _clear_shortlist(self) -> None:
+        self.shortlist = []
+        save_shortlist(self.shortlist)
+        self._refresh_shortlist_text()
+        self.status_var.set("Cleared shortlisted candidate windows.")
+        self._log_event("Cleared shortlist")
+
+    def _save_shortlist_report(self) -> None:
+        if not self.shortlist:
+            self.status_var.set("Shortlist is empty.")
+            return
+        reports_dir = Path.cwd() / "reports"
+        reports_dir.mkdir(exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        path = reports_dir / f"electional-shortlist-{stamp}.txt"
+        path.write_text(format_shortlist_entries(self.shortlist), encoding="utf-8")
+        self.status_var.set(f"Saved shortlist: {path}")
+        self._log_event(f"Saved shortlist: {path.name}")
+
+    def _save_selected_calendar_event(self) -> None:
+        if not self.selected_window or not self.current_location:
+            self.status_var.set("Nothing to calendar-export yet. Select a candidate window first.")
+            return
+        entry = build_shortlist_entry(self.selected_window, self.current_location, self.objective_var.get())
+        reports_dir = Path.cwd() / "reports"
+        reports_dir.mkdir(exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        path = reports_dir / f"electional-window-{stamp}.ics"
+        path.write_text(calendar_from_entries([entry]), encoding="utf-8")
+        self.status_var.set(f"Saved calendar event: {path}")
+        self._log_event(f"Saved calendar event: {path.name}")
+
+    def _save_shortlist_calendar(self) -> None:
+        if not self.shortlist:
+            self.status_var.set("Shortlist is empty.")
+            return
+        reports_dir = Path.cwd() / "reports"
+        reports_dir.mkdir(exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        path = reports_dir / f"electional-shortlist-{stamp}.ics"
+        path.write_text(calendar_from_entries(self.shortlist), encoding="utf-8")
+        self.status_var.set(f"Saved shortlist calendar: {path}")
+        self._log_event(f"Saved shortlist calendar: {path.name}")
+
+    def _copy_selected_calendar_event(self) -> None:
+        if not self.selected_window or not self.current_location:
+            self.status_var.set("Nothing to calendar-copy yet. Select a candidate window first.")
+            return
+        entry = build_shortlist_entry(self.selected_window, self.current_location, self.objective_var.get())
+        self.root.clipboard_clear()
+        self.root.clipboard_append(calendar_from_entries([entry]))
+        self.status_var.set("Copied selected window calendar event to clipboard.")
+
+    def _copy_shortlist(self) -> None:
+        self.root.clipboard_clear()
+        self.root.clipboard_append(format_shortlist_entries(self.shortlist))
+        self.status_var.set("Copied shortlist to clipboard.")
+
     def _focus_detail_page(self, page_title: str) -> None:
         if not hasattr(self, "detail_notebook"):
             return
@@ -586,6 +789,16 @@ class ElectionalDesktopApp:
                 self.status_var.set(f"Opened {page_title} detail page.")
                 return
         self.status_var.set(f"{page_title} detail page is not available yet.")
+
+    def _refresh_shortlist_text(self) -> None:
+        if not hasattr(self, "shortlist_text"):
+            return
+        actions = (
+            "Shortlist Actions\n"
+            "- Select a candidate window and press Shortlist or Save Pick.\n"
+            "- Use Pick Tools to copy/save shortlist text or export .ics calendar files.\n\n"
+        )
+        self._set_text(self.shortlist_text, actions + format_shortlist_entries(self.shortlist))
 
     def _current_report_text(self) -> str:
         report = build_report_text(self.selected_window, self.current_windows, self.current_location)
@@ -971,10 +1184,11 @@ class ElectionalDesktopApp:
         self.status_var.set("Opened calculation health diagnostics.")
 
     def _build_left_controls(self) -> None:
-        card = ttk.Frame(self.left_panel, style="Panel.TFrame", padding=12)
+        parent = getattr(self, "left_controls_parent", self.left_panel)
+        card = ttk.Frame(parent, style="Panel.TFrame", padding=12)
         card.pack(fill=tk.X, pady=(0, 12))
         ttk.Label(card, text="NATAL CHART", style="Accent.TLabel").pack(anchor="w")
-        ttk.Label(card, text="Natal Chart", background=PALETTE["panel"], font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(6, 4))
+        ttk.Label(card, text="Natal Chart", background=PALETTE["panel"], foreground=PALETTE["text"], font=("Segoe UI Semibold", 14)).pack(anchor="w", pady=(6, 4))
         self.natal_summary = ttk.Label(card, text="", style="Small.TLabel", justify=tk.LEFT)
         self.natal_summary.pack(anchor="w")
 
@@ -998,7 +1212,7 @@ class ElectionalDesktopApp:
         self.search_summary_var = tk.StringVar(value="")
         self.validation_var = tk.StringVar(value="Validation: waiting for first calculation")
 
-        timing_box = ttk.LabelFrame(self.left_panel, text="Timing", style="Panel.TLabelframe", padding=10)
+        timing_box = ttk.LabelFrame(parent, text="Timing", style="Panel.TLabelframe", padding=10)
         timing_box.pack(fill=tk.X, pady=(0, 10))
         self._labeled_entry(timing_box, "Election date", self.date_var)
         self._labeled_entry(timing_box, "Start time", self.time_var)
@@ -1019,7 +1233,7 @@ class ElectionalDesktopApp:
                 command=lambda delta=minutes: self._shift_time_minutes(delta),
             ).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
 
-        location_box = ttk.LabelFrame(self.left_panel, text="Location", style="Panel.TLabelframe", padding=10)
+        location_box = ttk.LabelFrame(parent, text="Location", style="Panel.TLabelframe", padding=10)
         location_box.pack(fill=tk.X, pady=(0, 10))
         self.location_combo = self._labeled_combo(location_box, "Location preset", self.location_var, self.location_names)
         self.location_combo.bind("<<ComboboxSelected>>", self._load_selected_location)
@@ -1049,7 +1263,7 @@ class ElectionalDesktopApp:
         ttk.Button(location_actions, text="Local", command=self._use_default_location).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
         ttk.Button(location_actions, text="Forget", command=self._forget_location_preset).pack(side=tk.LEFT, expand=True, fill=tk.X)
 
-        model_box = ttk.LabelFrame(self.left_panel, text="Election Model", style="Panel.TLabelframe", padding=10)
+        model_box = ttk.LabelFrame(parent, text="Election Model", style="Panel.TLabelframe", padding=10)
         model_box.pack(fill=tk.X, pady=(0, 10))
         self._labeled_combo(model_box, "Objective", self.objective_var, list(OBJECTIVES))
         self._labeled_combo(model_box, "Zodiac system", self.zodiac_system_var, list(ZODIAC_SYSTEM_NAMES))
@@ -1103,13 +1317,13 @@ class ElectionalDesktopApp:
 
         ttk.Button(model_box, text="Calculate Election", command=self.calculate).pack(fill=tk.X, pady=(2, 0))
         tk.Label(
-            self.left_panel,
+            parent,
             textvariable=self.validation_var,
             bg=PALETTE["panel"],
             fg=PALETTE["score"],
             justify=tk.LEFT,
             wraplength=250,
-            font=("Segoe UI", 9, "bold"),
+            font=("Segoe UI Semibold", 9),
         ).pack(anchor="w", pady=(10, 0))
 
     def _labeled_entry(
@@ -1127,7 +1341,18 @@ class ElectionalDesktopApp:
         else:
             container.grid(row=0, column=column, sticky="ew", padx=(0, 6) if column == 0 else (6, 0))
         ttk.Label(container, text=label, style="Small.TLabel").pack(anchor="w", pady=(8 if compact else 10, 3))
-        entry = tk.Entry(container, textvariable=variable, bg=PALETTE["panel_alt"], relief=tk.SOLID, bd=1, font=("Segoe UI", 10, "bold"))
+        entry = tk.Entry(
+            container,
+            textvariable=variable,
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["text"],
+            insertbackground=PALETTE["accent"],
+            relief=tk.FLAT,
+            highlightthickness=1,
+            highlightbackground=PALETTE["panel_line"],
+            highlightcolor=PALETTE["accent"],
+            font=("Segoe UI Semibold", 10),
+        )
         entry.pack(fill=tk.X, ipady=6 if compact else 7)
 
     def _labeled_combo(self, parent: tk.Widget, label: str, variable: tk.StringVar, values: list[str]) -> ttk.Combobox:
@@ -1268,12 +1493,32 @@ class ElectionalDesktopApp:
         self.context_chip_frame.grid(row=3, column=0, sticky="w", pady=(8, 0))
         header.bind("<Configure>", self._resize_header_labels)
 
-        score_card = ttk.Frame(header, style="Panel.TFrame", padding=(10, 8))
+        score_card = tk.Frame(
+            header,
+            bg=PALETTE["panel_alt"],
+            highlightbackground=PALETTE["panel_line"],
+            highlightthickness=1,
+            padx=14,
+            pady=10,
+        )
         score_card.grid(row=0, column=1, rowspan=4, sticky="e")
+        tk.Frame(score_card, bg=PALETTE["score"], height=2).pack(fill=tk.X, pady=(0, 5))
         self.score_var = tk.StringVar(value="--")
-        ttk.Label(score_card, textvariable=self.score_var, style="Score.TLabel").pack()
+        tk.Label(
+            score_card,
+            textvariable=self.score_var,
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["score"],
+            font=("Segoe UI Semibold", 32),
+        ).pack()
         self.score_band_var = tk.StringVar(value="waiting")
-        ttk.Label(score_card, textvariable=self.score_band_var, style="Small.TLabel").pack()
+        tk.Label(
+            score_card,
+            textvariable=self.score_band_var,
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["muted"],
+            font=("Segoe UI", 9),
+        ).pack()
 
         state_bar = tk.Frame(self.center_panel, bg=PALETTE["panel"])
         state_bar.grid(row=1, column=0, sticky="ew", pady=(0, 8))
@@ -1295,13 +1540,15 @@ class ElectionalDesktopApp:
         self.canvas = tk.Canvas(
             self.center_panel,
             width=760,
-            height=640,
+            height=540,
             bg=PALETTE["canvas"],
             highlightthickness=1,
             highlightbackground=PALETTE["panel_line"],
         )
         self.canvas.grid(row=3, column=0, sticky="nsew")
         self.canvas.bind("<Configure>", self._schedule_redraw)
+        self.canvas.bind("<Enter>", lambda _event: self.center_scroll_canvas.bind_all("<MouseWheel>", self._scroll_center_workspace))
+        self.canvas.bind("<Leave>", lambda _event: self.center_scroll_canvas.unbind_all("<MouseWheel>"))
 
         self.focus_body_var = tk.StringVar(value="")
         self._build_chart_page_strip()
@@ -1317,6 +1564,8 @@ class ElectionalDesktopApp:
             ("View Report", self._show_current_report_dialog),
             ("Copy Report", self._copy_current_report),
             ("Save Report", self._save_current_report),
+            ("Calendar", self._save_selected_calendar_event),
+            ("Shortlist", self._add_selected_to_shortlist),
         ):
             ttk.Button(actions, text=label, command=command).pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(actions, textvariable=self.focus_mode_button_var, command=self._toggle_focus_mode).pack(side=tk.RIGHT)
@@ -1338,6 +1587,7 @@ class ElectionalDesktopApp:
             ("Aspects", lambda: self._focus_detail_page("Aspects")),
             ("Aspectarian", lambda: self._focus_detail_page("Aspectarian")),
             ("Conditions", lambda: self._focus_detail_page("Conditions")),
+            ("Shortlist", lambda: self._focus_detail_page("Shortlist")),
             ("Log", lambda: self._focus_detail_page("Log")),
             ("Chart Data", self._show_chart_inspector),
             ("Save Wheel", self._save_chart_wheel),
@@ -1378,6 +1628,12 @@ class ElectionalDesktopApp:
         tk.Label(display, text="Wheel View", bg=PALETTE["panel_alt"], fg=PALETTE["accent"], font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(display, text="Clean", command=self._apply_clean_wheel_view).pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(display, text="Full", command=self._apply_full_wheel_view).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(display, text="Fit", command=self._fit_wheel_view).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(display, text="Zoom -", command=lambda: self._adjust_wheel_zoom(-0.06)).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(display, text="Zoom +", command=lambda: self._adjust_wheel_zoom(0.06)).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(display, text="Reset Panels", command=self._reset_workspace_panels).pack(side=tk.RIGHT)
+        ttk.Button(display, text="Bottom", command=self._scroll_center_to_bottom).pack(side=tk.RIGHT, padx=(0, 6))
+        ttk.Button(display, text="Top", command=self._scroll_center_to_top).pack(side=tk.RIGHT, padx=(0, 6))
         for label, variable in (
             ("Aspects", self.show_aspects_var),
             ("Lots", self.show_lots_var),
@@ -1402,24 +1658,47 @@ class ElectionalDesktopApp:
         self._save_session()
         self.status_var.set("Updated wheel display options.")
 
+    def _fit_wheel_view(self) -> None:
+        self.wheel_zoom = 0.88
+        self.compact_wheel_var.set(True)
+        self._display_option_changed()
+        self.status_var.set("Wheel view fitted with extra label room.")
+
+    def _adjust_wheel_zoom(self, delta: float) -> None:
+        self.wheel_zoom = max(0.76, min(1.04, self.wheel_zoom + delta))
+        self._display_option_changed()
+        self.status_var.set(f"Wheel zoom: {self.wheel_zoom:.0%}.")
+
+    def _scroll_center_to_top(self) -> None:
+        if hasattr(self, "center_scroll_canvas"):
+            self.center_scroll_canvas.yview_moveto(0)
+            self.status_var.set("Middle workspace moved to top.")
+
+    def _scroll_center_to_bottom(self) -> None:
+        if hasattr(self, "center_scroll_canvas"):
+            self.center_scroll_canvas.yview_moveto(1)
+            self.status_var.set("Middle workspace moved to bottom.")
+
     def _toggle_focus_mode(self) -> None:
         self._set_focus_mode(not self.focus_mode)
 
     def _pack_workspace_panels(self) -> None:
-        self.left_panel.pack_forget()
-        self.center_panel.pack_forget()
-        self.right_panel.pack_forget()
-        self.left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 12))
-        self.right_panel.pack(side=tk.RIGHT, fill=tk.Y)
-        self.center_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 12))
+        for panel in (self.left_panel, self.center_pane, self.right_panel):
+            if str(panel) in self.workspace_panes.panes():
+                self.workspace_panes.forget(panel)
+        self.workspace_panes.add(self.left_panel, minsize=245, width=315, stretch="never", padx=0)
+        self.workspace_panes.add(self.center_pane, minsize=420, width=720, stretch="always", padx=8)
+        self.workspace_panes.add(self.right_panel, minsize=285, width=380, stretch="never", padx=0)
 
     def _set_focus_mode(self, enabled: bool) -> None:
         self.focus_mode = enabled
         if enabled:
-            self.left_panel.pack_forget()
-            self.right_panel.pack_forget()
-            self.center_panel.pack_forget()
-            self.center_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=0)
+            if str(self.left_panel) in self.workspace_panes.panes():
+                self.workspace_panes.forget(self.left_panel)
+            if str(self.right_panel) in self.workspace_panes.panes():
+                self.workspace_panes.forget(self.right_panel)
+            if str(self.center_pane) not in self.workspace_panes.panes():
+                self.workspace_panes.add(self.center_pane, minsize=420, stretch="always")
             self.focus_mode_button_var.set("Exit Focus")
             self.status_var.set("Focus wheel mode: side panels hidden. Press F11 to restore.")
         else:
@@ -1427,6 +1706,13 @@ class ElectionalDesktopApp:
             self.focus_mode_button_var.set("Focus Wheel")
             self.status_var.set("Focus wheel mode off: side panels restored.")
         self._schedule_redraw()
+
+    def _reset_workspace_panels(self) -> None:
+        self.focus_mode = False
+        self._pack_workspace_panels()
+        self.focus_mode_button_var.set("Focus Wheel")
+        self._schedule_redraw()
+        self.status_var.set("Workspace panels reset. Drag the vertical handles to resize side panels.")
 
     def _apply_clean_wheel_view(self) -> None:
         self.show_aspects_var.set(True)
@@ -1445,9 +1731,10 @@ class ElectionalDesktopApp:
         self._display_option_changed()
 
     def _state_card(self, parent: tk.Widget, title: str, variable: tk.StringVar, column: int, accent_color: str) -> None:
-        card = tk.Frame(parent, bg=PALETTE["panel_alt"], highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=9, pady=6)
+        card = tk.Frame(parent, bg=PALETTE["panel_alt"], highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=10, pady=7)
         card.grid(row=0, column=column, sticky="ew", padx=(0, 6) if column < 3 else (0, 0))
-        tk.Label(card, text=title, bg=PALETTE["panel_alt"], fg=accent_color, font=("Segoe UI", 8, "bold")).pack(anchor="w")
+        tk.Frame(card, bg=accent_color, height=2).pack(fill=tk.X, pady=(0, 5))
+        tk.Label(card, text=title, bg=PALETTE["panel_alt"], fg=accent_color, font=("Segoe UI Semibold", 8)).pack(anchor="w")
         tk.Label(card, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=170, justify=tk.LEFT).pack(anchor="w")
 
     def _build_right_panel(self) -> None:
@@ -1459,8 +1746,17 @@ class ElectionalDesktopApp:
         self.window_detail_text = self._text_tab("Window")
         self.interpretation_text = self._text_tab("Focus")
         self.score_detail_text = self._text_tab("Score")
+        self.accounting_text = self._text_tab("Accounting")
         self.conditions_text = self._text_tab("Conditions")
         self.rules_text = self._text_tab("Rules")
+        self.significators_text = self._text_tab("Significators")
+        self.moon_judgment_text = self._text_tab("Moon")
+        self.house_rulers_text = self._text_tab("House Rulers")
+        self.reception_text = self._text_tab("Reception")
+        self.planet_condition_text = self._text_tab("Planet Condition")
+        self.advanced_aspects_text = self._text_tab("Advanced")
+        self.factor_explorer_text = self._text_tab("Factor Explorer")
+        self.constellations_text = self._text_tab("Constellations")
         self.cusps_text = self._text_tab("Cusps")
         self.lots_text = self._text_tab("Lots")
         self.nodes_text = self._text_tab("Nodes")
@@ -1469,21 +1765,31 @@ class ElectionalDesktopApp:
         self.aspects_text = self._text_tab("Aspects")
         self.aspectarian_text = self._text_tab("Aspectarian")
         self.fixed_stars_text = self._text_tab("Fixed Stars")
+        self.shortlist_text = self._text_tab("Shortlist")
+        shortlist_actions = ttk.Frame(self.detail_notebook, style="Panel.TFrame", padding=7)
+        self.detail_notebook.add(shortlist_actions, text="Pick Tools")
+        ttk.Button(shortlist_actions, text="Save Selected .ics", command=self._save_selected_calendar_event).pack(fill=tk.X, pady=(0, 7))
+        ttk.Button(shortlist_actions, text="Copy Selected .ics", command=self._copy_selected_calendar_event).pack(fill=tk.X, pady=(0, 7))
+        ttk.Button(shortlist_actions, text="Save Shortlist .ics", command=self._save_shortlist_calendar).pack(fill=tk.X, pady=(0, 7))
+        ttk.Button(shortlist_actions, text="Copy Shortlist", command=self._copy_shortlist).pack(fill=tk.X, pady=(0, 7))
+        ttk.Button(shortlist_actions, text="Save Shortlist", command=self._save_shortlist_report).pack(fill=tk.X, pady=(0, 7))
+        ttk.Button(shortlist_actions, text="Clear Shortlist", command=self._clear_shortlist).pack(fill=tk.X)
         self.log_text = self._text_tab("Log")
+        self._refresh_shortlist_text()
         self._refresh_event_log()
 
     def _build_metric_panel(self) -> None:
         frame = ttk.LabelFrame(self.right_panel, text="Election Scoreboard", style="Panel.TLabelframe", padding=7)
         frame.pack(fill=tk.X, pady=(0, 9))
         metrics = (
-            ("score", "Score", PALETTE["metric_bg"], PALETTE["score"]),
-            ("support", "Support", "#e7f4ec", "#087a48"),
-            ("stress", "Stress", "#f9e5ea", PALETTE["stress"]),
-            ("angular", "Angular", "#edf0fb", PALETTE["top_bar"]),
-            ("stars", "Stars", "#eef3ff", "#3f5f9c"),
-            ("phase", "Moon", "#f4eefb", "#6d4d8f"),
-            ("hour", "Hour", "#edf8ee", "#407144"),
-            ("rules", "Rules", "#fff0e7", PALETTE["warning"]),
+            ("score", "Score", PALETTE["panel_alt"], PALETTE["score"]),
+            ("support", "Support", PALETTE["panel_alt"], PALETTE["support"]),
+            ("stress", "Stress", PALETTE["panel_alt"], PALETTE["stress"]),
+            ("angular", "Angular", PALETTE["panel_alt"], PALETTE["top_bar"]),
+            ("stars", "Stars", PALETTE["panel_alt"], "#4d66a6"),
+            ("phase", "Moon", PALETTE["panel_alt"], "#7a5797"),
+            ("hour", "Hour", PALETTE["panel_alt"], "#46734d"),
+            ("rules", "Rules", PALETTE["panel_alt"], PALETTE["warning"]),
         )
         for index, (key, label, bg_color, value_color) in enumerate(metrics):
             var = tk.StringVar(value="--")
@@ -1493,12 +1799,13 @@ class ElectionalDesktopApp:
                 bg=bg_color,
                 highlightbackground=PALETTE["panel_line"],
                 highlightthickness=1,
-                padx=8,
-                pady=6,
+                padx=9,
+                pady=7,
             )
             card.grid(row=index // 2, column=index % 2, sticky="ew", padx=3, pady=3)
-            tk.Label(card, text=label, bg=bg_color, fg=PALETTE["muted"], font=("Segoe UI", 8, "bold")).pack(anchor="w")
-            tk.Label(card, textvariable=var, bg=bg_color, fg=value_color, font=("Segoe UI", 15, "bold")).pack(anchor="w")
+            tk.Frame(card, bg=value_color, height=2).pack(fill=tk.X, pady=(0, 5))
+            tk.Label(card, text=label, bg=bg_color, fg=PALETTE["muted"], font=("Segoe UI Semibold", 8)).pack(anchor="w")
+            tk.Label(card, textvariable=var, bg=bg_color, fg=value_color, font=("Segoe UI Semibold", 15)).pack(anchor="w")
         frame.columnconfigure(0, weight=1)
         frame.columnconfigure(1, weight=1)
 
@@ -1534,6 +1841,7 @@ class ElectionalDesktopApp:
         ttk.Button(buttons, text="Prev", command=lambda: self._select_relative_window(-1)).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
         ttk.Button(buttons, text="Next", command=lambda: self._select_relative_window(1)).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
         ttk.Button(buttons, text="Use Time", command=self._use_selected_window_time).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
+        ttk.Button(buttons, text="Save Pick", command=self._add_selected_to_shortlist).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
         ttk.Button(buttons, text="Copy", command=self._copy_current_report).pack(side=tk.LEFT, expand=True, fill=tk.X)
 
     def _text_panel(self, title: str, height: int) -> tk.Text:
@@ -1630,6 +1938,7 @@ class ElectionalDesktopApp:
                 zodiac_system.id,
                 house_system.id,
                 search_config,
+                self.objective_var.get(),
             )
         except Exception as exc:  # pragma: no cover - exercised manually through the desktop UI.
             messagebox.showerror("Electional calculation failed", str(exc))
@@ -1713,10 +2022,10 @@ class ElectionalDesktopApp:
         card = tk.Frame(
             self.window_cards_frame,
             bg=window_score_color(int(window["score"])),
-            highlightbackground=PALETTE["panel_line"],
+            highlightbackground=PALETTE["selected"] if index == self.selected_window_index else PALETTE["panel_line"],
             highlightthickness=1,
-            padx=9,
-            pady=7,
+            padx=10,
+            pady=8,
         )
         card.pack(fill=tk.X, padx=4, pady=(4, 6))
         self.window_cards.append(card)
@@ -1725,25 +2034,25 @@ class ElectionalDesktopApp:
         tk.Label(
             header,
             text=f"#{index + 1}",
-            bg=PALETTE["top_bar"],
+            bg=PALETTE["top_bar_dark"],
             fg="white",
-            font=("Segoe UI", 8, "bold"),
-            padx=6,
-            pady=1,
+            font=("Segoe UI Semibold", 8),
+            padx=7,
+            pady=2,
         ).pack(side=tk.LEFT, padx=(0, 7))
         tk.Label(
             header,
             text=str(window["time"]),
             bg=card["bg"],
             fg=PALETTE["accent"],
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI Semibold", 10),
         ).pack(side=tk.LEFT)
         tk.Label(
             header,
             text=f"{score_band_label(int(window['score']))} {window['score']}",
             bg=card["bg"],
             fg=PALETTE["score"],
-            font=("Segoe UI", 9, "bold"),
+            font=("Segoe UI Semibold", 9),
             padx=8,
         ).pack(side=tk.RIGHT)
         tk.Label(
@@ -1751,7 +2060,7 @@ class ElectionalDesktopApp:
             text=str(window.get("title", "Electional window")),
             bg=card["bg"],
             fg=PALETTE["text"],
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI Semibold", 10),
             anchor="w",
         ).pack(fill=tk.X, pady=(5, 1))
         tk.Label(
@@ -1779,9 +2088,9 @@ class ElectionalDesktopApp:
                 text=text,
                 bg=bg,
                 fg=fg,
-                font=("Segoe UI", 8, "bold"),
-                padx=6,
-                pady=2,
+                font=("Segoe UI Semibold", 8),
+                padx=7,
+                pady=3,
             ).pack(side=tk.LEFT, padx=(0, 4))
         self._bind_card_click(card, lambda selected=index: self._select_window_by_index(selected))
         self._bind_card_click(card, lambda selected=index: self._activate_window_card(selected), double_click=True)
@@ -1869,28 +2178,23 @@ class ElectionalDesktopApp:
 
     def _draw_wheel(self, snapshot: dict[str, object]) -> None:
         self.canvas.delete("all")
-        width = max(self.canvas.winfo_width(), int(self.canvas.cget("width")))
-        height = max(self.canvas.winfo_height(), int(self.canvas.cget("height")))
+        measured_width = self.canvas.winfo_width()
+        measured_height = self.canvas.winfo_height()
+        width = measured_width if measured_width > 1 else int(self.canvas.cget("width"))
+        height = measured_height if measured_height > 1 else int(self.canvas.cget("height"))
         cx = width / 2
         cy = height / 2
-        side_padding = 70 if not self.compact_wheel_var.get() and self.show_fixed_stars_var.get() else 34
-        vertical_padding = 42
+        side_padding = 126 if not self.compact_wheel_var.get() and self.show_fixed_stars_var.get() else 96
+        vertical_padding = 88 if self.compact_wheel_var.get() else 106
         fit_width = max(260, width - side_padding * 2)
         fit_height = max(260, height - vertical_padding * 2)
-        outer = max(150, min(fit_width, fit_height) / 2)
+        outer = max(118, min(fit_width, fit_height) / 2 * self.wheel_zoom)
         zodiac_inner = outer * 0.84
         house_inner = outer * (0.50 if self.compact_wheel_var.get() else 0.44)
         aspect_radius = outer * 0.44
 
         self._draw_grid(width, height)
-        self.canvas.create_oval(
-            cx - outer + 6,
-            cy - outer + 8,
-            cx + outer + 6,
-            cy + outer + 8,
-            fill="#c9c2ad",
-            outline="",
-        )
+        self.canvas.create_oval(cx - outer + 7, cy - outer + 9, cx + outer + 7, cy + outer + 9, fill=PALETTE["surface_shadow"], outline="")
         self.canvas.create_oval(
             cx - outer,
             cy - outer,
@@ -1898,7 +2202,7 @@ class ElectionalDesktopApp:
             cy + outer,
             fill=PALETTE["chart_disc"],
             outline=PALETTE["chart_line"],
-            width=2,
+            width=3,
         )
 
         ascendant = next(angle for angle in snapshot["angles"] if angle["id"] == "asc")
@@ -1931,7 +2235,7 @@ class ElectionalDesktopApp:
             )
             label_angle = wheel_degrees(index * 30 + 15, asc_lon)
             lx, ly = _polar(cx, cy, outer * 0.92, label_angle)
-            self.canvas.create_text(lx, ly, text=sign, fill="#17234f", font=("Segoe UI", 13 if self.compact_wheel_var.get() else 15, "bold"))
+            self.canvas.create_text(lx, ly, text=sign, fill=PALETTE["top_bar_dark"], font=("Segoe UI Semibold", 13 if self.compact_wheel_var.get() else 15))
 
         self.canvas.create_oval(cx - zodiac_inner, cy - zodiac_inner, cx + zodiac_inner, cy + zodiac_inner, outline=PALETTE["chart_line"], width=2)
         self.canvas.create_oval(
@@ -1952,7 +2256,7 @@ class ElectionalDesktopApp:
             width=1,
             dash=(4, 5),
         )
-        self.canvas.create_oval(cx - 72, cy - 72, cx + 72, cy + 72, outline=PALETTE["chart_line"], width=2)
+        self.canvas.create_oval(cx - 72, cy - 72, cx + 72, cy + 72, outline="#b7c2ca", width=2)
 
         house_cusps = sorted(snapshot.get("houseCusps", []), key=lambda cusp: int(cusp["house"]))
         for house_index, cusp in enumerate(house_cusps):
@@ -1965,7 +2269,7 @@ class ElectionalDesktopApp:
             self.canvas.create_line(x1, y1, x2, y2, fill=PALETTE["chart_line"], width=1)
             label_angle = wheel_degrees(label_longitude, asc_lon)
             lx, ly = _polar(cx, cy, outer * 0.64, label_angle)
-            self.canvas.create_text(lx, ly, text=str(cusp["house"]), fill=PALETTE["muted"], font=("Segoe UI", 10 if self.compact_wheel_var.get() else 12, "bold"))
+            self.canvas.create_text(lx, ly, text=str(cusp["house"]), fill=PALETTE["muted"], font=("Segoe UI Semibold", 10 if self.compact_wheel_var.get() else 12))
 
         if self.show_aspects_var.get():
             self._draw_aspects(snapshot, cx, cy, aspect_radius, asc_lon)
@@ -1978,11 +2282,13 @@ class ElectionalDesktopApp:
         if self.show_nodes_var.get() and not self.compact_wheel_var.get():
             self._draw_nodes(snapshot, cx, cy, asc_lon, outer)
         self._draw_center_hub(cx, cy, snapshot)
+        self._draw_wheel_legend(width, height)
 
     def _draw_center_hub(self, cx: float, cy: float, snapshot: dict[str, object]) -> None:
-        self.canvas.create_oval(cx - 58, cy - 58, cx + 58, cy + 58, fill=PALETTE["center_hub"], outline="#b9c2c8", width=2)
-        self.canvas.create_text(cx, cy - 8, text=f"Score {snapshot['score']}", fill=PALETTE["top_bar_dark"], font=("Segoe UI", 13 if self.compact_wheel_var.get() else 15, "bold"))
-        self.canvas.create_text(cx, cy + 15, text=score_band_label(int(snapshot["score"])), fill=PALETTE["accent"], font=("Segoe UI", 8 if self.compact_wheel_var.get() else 9, "bold"))
+        self.canvas.create_oval(cx - 60, cy - 57, cx + 60, cy + 63, fill=PALETTE["surface_shadow"], outline="")
+        self.canvas.create_oval(cx - 58, cy - 58, cx + 58, cy + 58, fill=PALETTE["center_hub"], outline=PALETTE["panel_line"], width=2)
+        self.canvas.create_text(cx, cy - 8, text=f"Score {snapshot['score']}", fill=PALETTE["top_bar_dark"], font=("Segoe UI Semibold", 13 if self.compact_wheel_var.get() else 15))
+        self.canvas.create_text(cx, cy + 15, text=score_band_label(int(snapshot["score"])), fill=PALETTE["accent"], font=("Segoe UI Semibold", 8 if self.compact_wheel_var.get() else 9))
 
     def _draw_degree_ticks(self, cx: float, cy: float, outer: float, zodiac_inner: float, asc_lon: float) -> None:
         for degree in range(0, 360, 5):
@@ -1994,19 +2300,37 @@ class ElectionalDesktopApp:
             self.canvas.create_line(x1, y1, x2, y2, fill=PALETTE["chart_line"], width=width)
 
     def _draw_grid(self, width: int, height: int) -> None:
-        for x in range(0, width, 24):
+        for x in range(0, width, 32):
             self.canvas.create_line(x, 0, x, height, fill=PALETTE["canvas_grid"], width=1)
-        for y in range(0, height, 24):
+        for y in range(0, height, 32):
             self.canvas.create_line(0, y, width, y, fill=PALETTE["canvas_grid"], width=1)
+
+    def _draw_wheel_legend(self, width: int, height: int) -> None:
+        if self.compact_wheel_var.get():
+            return
+        x = 16
+        y = max(16, height - 70)
+        self.canvas.create_rectangle(
+            x,
+            y,
+            x + 190,
+            y + 52,
+            fill=PALETTE["panel_alt"],
+            outline=PALETTE["panel_line"],
+        )
+        self.canvas.create_line(x + 12, y + 16, x + 42, y + 16, fill=PALETTE["support"], width=2)
+        self.canvas.create_text(x + 50, y + 16, text="applying support", anchor="w", fill=PALETTE["muted"], font=("Segoe UI", 8))
+        self.canvas.create_line(x + 12, y + 36, x + 42, y + 36, fill=PALETTE["stress"], width=2, dash=(5, 4))
+        self.canvas.create_text(x + 50, y + 36, text="separating stress", anchor="w", fill=PALETTE["muted"], font=("Segoe UI", 8))
 
     def _draw_angles(self, snapshot: dict[str, object], cx: float, cy: float, outer: float, asc_lon: float) -> None:
         for angle in snapshot["angles"]:
             degrees = wheel_degrees(float(angle["longitude"]), asc_lon)
             x1, y1 = _polar(cx, cy, outer * 0.33, degrees)
-            x2, y2 = _polar(cx, cy, outer, degrees)
+            x2, y2 = _polar(cx, cy, outer * 0.965, degrees)
             self.canvas.create_line(x1, y1, x2, y2, fill=PALETTE["accent"], width=3)
-            lx, ly = _polar(cx, cy, outer - 20, degrees)
-            self.canvas.create_text(lx, ly, text=angle["shortName"], fill=PALETTE["top_bar"], font=("Segoe UI", 14, "bold"))
+            lx, ly = _polar(cx, cy, outer - 34, degrees)
+            self.canvas.create_text(lx, ly, text=angle["shortName"], fill=PALETTE["top_bar"], font=("Segoe UI Semibold", 13))
 
     def _draw_fixed_stars(self, snapshot: dict[str, object], cx: float, cy: float, asc_lon: float, outer: float) -> None:
         contacted = {
@@ -2018,8 +2342,8 @@ class ElectionalDesktopApp:
             if not isinstance(star, dict):
                 continue
             degrees = wheel_degrees(float(star["longitude"]), asc_lon)
-            x, y = _polar(cx, cy, outer * 0.985, degrees)
-            label_x, label_y = _polar(cx, cy, outer * 1.045, degrees)
+            x, y = _polar(cx, cy, outer * 0.91, degrees)
+            label_x, label_y = _polar(cx, cy, outer * 0.965, degrees)
             active_contact = str(star.get("name")) in contacted
             size = 7 if active_contact else 5
             fill = "#fff8d8" if active_contact else "#f5fbff"
@@ -2055,19 +2379,19 @@ class ElectionalDesktopApp:
         for index, planet in enumerate(snapshot["positions"]):
             degrees = wheel_degrees(float(planet["longitude"]), asc_lon)
             stack = 2 if self.compact_wheel_var.get() else 3
-            radius = outer * 0.74 - (index % stack) * (14 if self.compact_wheel_var.get() else 18)
+            radius = outer * 0.70 - (index % stack) * (13 if self.compact_wheel_var.get() else 17)
             x, y = _polar(cx, cy, radius, degrees)
-            fill = PALETTE["panel_alt"] if planet.get("isPresetPoint") else "#dfe2d2"
+            fill = PALETTE["panel_alt"] if planet.get("isPresetPoint") else "#edf0e4"
             outline = PALETTE["top_bar"] if planet.get("isAngular") else PALETTE["chart_line"]
             planet_tag = f"planet:{planet['id']}"
-            marker_size = 12 if self.compact_wheel_var.get() else 14
+            marker_size = 11 if self.compact_wheel_var.get() else 13
             self.canvas.create_oval(x - marker_size, y - marker_size, x + marker_size, y + marker_size, fill=fill, outline=outline, width=2, tags=("planet-marker", planet_tag))
             self.canvas.create_text(
                 x,
                 y,
                 text=planet_abbreviation(str(planet["name"])),
                 fill=PALETTE["top_bar_dark"],
-                font=("Segoe UI", 8 if self.compact_wheel_var.get() else 9, "bold"),
+                font=("Segoe UI Semibold", 8 if self.compact_wheel_var.get() else 9),
                 tags=("planet-marker", planet_tag),
             )
             self.canvas.tag_bind(planet_tag, "<Button-1>", lambda _event, planet_id=str(planet["id"]): self._select_planet_by_id(planet_id))
@@ -2095,7 +2419,7 @@ class ElectionalDesktopApp:
                 y,
                 text=lot_abbreviation(str(lot["name"])),
                 fill=PALETTE["top_bar_dark"],
-                font=("Segoe UI", 8, "bold"),
+                font=("Segoe UI Semibold", 8),
                 tags=("lot-marker", lot_tag),
             )
             self.canvas.tag_bind(lot_tag, "<Button-1>", lambda _event, lot_id=str(lot["id"]): self._select_lot_by_id(lot_id))
@@ -2125,7 +2449,7 @@ class ElectionalDesktopApp:
                 y + 2,
                 text=node_abbreviation(str(node["name"])),
                 fill=PALETTE["top_bar_dark"],
-                font=("Segoe UI", 8, "bold"),
+                font=("Segoe UI Semibold", 8),
                 tags=("node-marker", node_tag),
             )
             self.canvas.tag_bind(node_tag, "<Button-1>", lambda _event, node_id=str(node["id"]): self._select_node_by_id(node_id))
@@ -2143,7 +2467,7 @@ class ElectionalDesktopApp:
             x1, y1 = _polar(cx, cy, radius, angle_a)
             x2, y2 = _polar(cx, cy, radius, angle_b)
             color = PALETTE["support"] if aspect["tone"] == "support" else PALETTE["stress"]
-            self.canvas.create_line(x1, y1, x2, y2, fill=color, width=2)
+            self.canvas.create_line(x1, y1, x2, y2, fill=color, width=2, dash=() if aspect.get("isApplying") else (5, 4))
 
     def _render_text_panels(self, snapshot: dict[str, object], windows: list[dict[str, object]], location: object) -> None:
         support = sum(1 for aspect in snapshot["detectedAspects"] if aspect["tone"] == "support")
@@ -2178,6 +2502,7 @@ class ElectionalDesktopApp:
         rule_evaluations = snapshot.get("ruleEvaluations", {})
         rules = rule_evaluations.get("rules", []) if isinstance(rule_evaluations, dict) else []
         self.metric_vars["rules"].set(str(len(rules) if isinstance(rules, list) else 0))
+        self._refresh_shortlist_text()
 
         selected_rank = next((index for index, window in enumerate(windows, start=1) if window["date"] == snapshot["date"]), 1)
         aspect_labels = ", ".join(format_aspect_summary(aspect) for aspect in snapshot["detectedAspects"][:3]) or "No selected major aspects"
@@ -2211,8 +2536,20 @@ class ElectionalDesktopApp:
             (
                 f"Score: {snapshot['score']}\n"
                 f"{format_score_breakdown(snapshot)}\n\n"
+                "Evaluation\n"
+                + "\n".join(score_evaluation_lines(snapshot))
+                + "\n\n"
                 "Reason Lines\n"
                 + "\n".join(score_reason_lines(snapshot))
+            ),
+        )
+        self._set_text(
+            self.accounting_text,
+            (
+                "Point Accounting\n"
+                + "\n".join(score_accounting_lines(snapshot))
+                + "\n\nEvaluation\n"
+                + "\n".join(score_evaluation_lines(snapshot))
             ),
         )
         self._set_text(self.conditions_text, "\n".join(condition_lines(snapshot)))
@@ -2259,14 +2596,26 @@ class ElectionalDesktopApp:
             *rule_lines(snapshot),
         ]
         self._set_text(self.rules_text, "\n".join(rule_summary) if rule_lines(snapshot) else "\n".join([*rule_summary, "- No active caution/support rules."]))
+        self._set_text(self.significators_text, "\n".join(judgment_context_lines(snapshot, "significatorContext")))
+        self._set_text(self.moon_judgment_text, "\n".join(judgment_context_lines(snapshot, "moonCondition")))
+        self._set_text(self.house_rulers_text, "\n".join(judgment_context_lines(snapshot, "houseRulerContext")))
+        self._set_text(self.reception_text, "\n".join(judgment_context_lines(snapshot, "receptionContext")))
+        self._set_text(self.planet_condition_text, "\n".join(judgment_context_lines(snapshot, "planetConditionContext")))
+        self._set_text(self.advanced_aspects_text, "\n".join(judgment_context_lines(snapshot, "advancedAspectContext")))
+        self._set_text(self.factor_explorer_text, "\n".join(factor_explorer_lines(snapshot, self.input_snapshot)))
+        self._set_text(self.constellations_text, "\n".join(constellation_lines(snapshot)))
 
         planet_lines = []
         for planet in snapshot["positions"]:
             angular = " angular" if planet.get("isAngular") else ""
             dignity = format_dignity_summary(planet)
+            constellation = planet.get("constellation", {})
+            constellation_text = ""
+            if isinstance(constellation, dict):
+                constellation_text = f"; {constellation.get('name')} {float(constellation.get('spanDegrees', 0)):.0f}deg"
             planet_lines.append(
                 f"{planet['name']:<8} {format_position(planet):<15} H{planet['house']:<2} "
-                f"{dignity}; {format_motion_summary(planet)}{angular}"
+                f"{dignity}; {format_motion_summary(planet)}{angular}{constellation_text}"
             )
         angle_lines = ["", "Angles:"]
         angle_lines.extend(format_angle(angle) for angle in snapshot["angles"])
@@ -2532,6 +2881,7 @@ class ElectionalDesktopApp:
                 "show_nodes": self.show_nodes_var.get(),
                 "show_fixed_stars": self.show_fixed_stars_var.get(),
                 "compact_wheel": self.compact_wheel_var.get(),
+                "wheel_zoom": self.wheel_zoom,
             },
         }
 

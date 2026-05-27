@@ -32,6 +32,7 @@ from backend.electional.locations import (
 from backend.electional.references import dignity_table_lines, lot_reference_lines, system_reference_lines
 from backend.electional.reporting import (
     condition_lines,
+    constellation_lines,
     election_flag_lines,
     format_aspectarian,
     format_aspect_summary,
@@ -42,7 +43,11 @@ from backend.electional.reporting import (
     format_planet_focus,
     format_score_breakdown,
     format_window_label,
+    factor_explorer_lines,
+    judgment_context_lines,
     rule_lines,
+    score_accounting_lines,
+    score_evaluation_lines,
 )
 from backend.electional.search import build_search_config_from_text, format_search_summary
 from backend.electional.screening import solar_elongation_summary
@@ -220,6 +225,22 @@ class DesktopUiHelpersTest(unittest.TestCase):
                     "angularity": 4.5,
                     "dignity": 2,
                     "retrogradePressure": 3,
+                    "accounting": {
+                        "startingScore": 58,
+                        "positiveTotal": 20,
+                        "negativeTotal": -5,
+                        "netAdjustment": 15,
+                        "rawScore": 72.4,
+                        "finalScore": 72,
+                        "categoryTotals": {"Aspect quality": 7, "Risk pressure": -3},
+                    },
+                    "evaluation": {
+                        "band": "Workable",
+                        "grade": "C",
+                        "summary": "Workable electional window with net +15.0 points.",
+                        "strengths": ["Aspect quality +7.0"],
+                        "risks": ["Risk pressure -3.0"],
+                    },
                     "rawScore": 72.4,
                     "score": 72,
                 },
@@ -229,6 +250,91 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("support 1", summary)
         self.assertIn("retrograde pressure 3.0", summary)
         self.assertIn("raw 72.4 -> final 72", summary)
+
+    def test_score_accounting_and_evaluation_lines_are_human_readable(self) -> None:
+        snapshot = {
+            "scoreBreakdown": {
+                "score": 72,
+                "accounting": {
+                    "startingScore": 58,
+                    "positiveTotal": 18.5,
+                    "negativeTotal": -4,
+                    "netAdjustment": 14.5,
+                    "rawScore": 72.5,
+                    "finalScore": 72,
+                    "categoryTotals": {"Aspect quality": 7, "Risk pressure": -4},
+                },
+                "evaluation": {
+                    "band": "Workable",
+                    "grade": "C",
+                    "summary": "Workable electional window with net +14.5 points.",
+                    "strengths": ["Aspect quality +7.0"],
+                    "risks": ["Risk pressure -4.0"],
+                },
+            }
+        }
+
+        self.assertIn("positive +18.5", "\n".join(score_accounting_lines(snapshot)))
+        self.assertIn("Aspect quality", "\n".join(score_accounting_lines(snapshot)))
+        self.assertIn("Grade C", "\n".join(score_evaluation_lines(snapshot)))
+
+    def test_constellation_lines_explain_rising_size_and_speed(self) -> None:
+        snapshot = {
+            "constellationContext": {
+                "sourceNote": "diagnostic note",
+                "rising": {
+                    "ascendantConstellation": {
+                        "name": "Scorpius",
+                        "spanDegrees": 6,
+                        "spanRatioToSign": 0.2,
+                        "percentThrough": 0.5,
+                        "distanceToEndDegrees": 3,
+                        "nextConstellation": {"name": "Ophiuchus"},
+                    },
+                    "ascendantSpeedDegPerHour": 25,
+                    "tempo": {"label": "fast", "scoreImpact": 1},
+                    "spanContext": {"label": "narrow", "scoreImpact": -0.5},
+                    "currentConstellationRisingMinutes": 16,
+                    "currentSignRisingMinutes": 110,
+                    "minutesToNextConstellation": 7,
+                },
+                "positions": [
+                    {"name": "Sun", "constellation": {"name": "Virgo", "spanDegrees": 44}},
+                    {"name": "Moon", "constellation": {"name": "Libra", "spanDegrees": 24}},
+                ],
+            }
+        }
+        text = "\n".join(constellation_lines(snapshot))
+
+        self.assertIn("Scorpius", text)
+        self.assertIn("25.0 deg/hour", text)
+        self.assertIn("current 30 deg sign", text)
+
+    def test_judgment_and_factor_explorer_lines_are_human_readable(self) -> None:
+        snapshot = {
+            "score": 71,
+            "significatorContext": {
+                "summary": "Launch or publish: 3 primary significator(s) selected.",
+                "scoreImpact": 1.5,
+                "confidence": "solid",
+                "factors": [
+                    {
+                        "title": "Mercury significator condition",
+                        "detail": "Mercury serves as public launch natural significator.",
+                        "scoreImpact": 1.5,
+                        "severity": "support",
+                    }
+                ],
+            },
+            "moonCondition": {"summary": "Moon available.", "scoreImpact": 0, "confidence": "approximate", "factors": []},
+            "houseRulerContext": {"summary": "House ruler available.", "scoreImpact": 0, "confidence": "solid", "factors": []},
+            "receptionContext": {"summary": "No reception.", "scoreImpact": 0, "confidence": "solid", "factors": []},
+            "planetConditionContext": {"summary": "No conditions.", "scoreImpact": 0, "confidence": "approximate", "factors": []},
+            "advancedAspectContext": {"summary": "No patterns.", "scoreImpact": 0, "confidence": "experimental", "factors": []},
+        }
+
+        self.assertIn("Mercury significator", "\n".join(judgment_context_lines(snapshot, "significatorContext")))
+        self.assertIn("Significators", "\n".join(factor_explorer_lines(snapshot)))
 
     def test_lunar_and_motion_summaries_are_human_readable(self) -> None:
         phase = format_lunar_phase(
@@ -423,7 +529,7 @@ class DesktopUiHelpersTest(unittest.TestCase):
                 "step_minutes": "30",
                 "minimum_score": "70",
                 "max_results": "12",
-                "display_options": {"show_aspects": False, "compact_wheel": True},
+                "display_options": {"show_aspects": False, "compact_wheel": True, "wheel_zoom": 0.94},
             }
 
             save_session_state(state, path)
@@ -439,6 +545,7 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertFalse(loaded["display_options"]["show_aspects"])
         self.assertTrue(loaded["display_options"]["compact_wheel"])
         self.assertFalse(loaded["display_options"]["show_fixed_stars"])
+        self.assertEqual(loaded["display_options"]["wheel_zoom"], 0.94)
 
     def test_user_locations_round_trip(self) -> None:
         with TemporaryDirectory() as temp_dir:

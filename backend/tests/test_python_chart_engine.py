@@ -202,6 +202,13 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertIn("ruleEvaluations", snapshot)
         self.assertIn("lunarContext", snapshot["ruleEvaluations"])
         self.assertIn("planetaryHour", snapshot)
+        self.assertIn("constellationContext", snapshot)
+        self.assertIn("significatorContext", snapshot)
+        self.assertIn("moonCondition", snapshot)
+        self.assertIn("houseRulerContext", snapshot)
+        self.assertIn("receptionContext", snapshot)
+        self.assertIn("planetConditionContext", snapshot)
+        self.assertIn("advancedAspectContext", snapshot)
         self.assertIn("timingProfile", snapshot)
         self.assertIn("summary", snapshot["timingProfile"])
         self.assertTrue(snapshot["planetaryHour"]["available"])
@@ -213,8 +220,29 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertIn("fixedStarContacts", snapshot)
         self.assertIn("lunarPhase", snapshot)
         self.assertTrue(all("motion" in planet for planet in snapshot["positions"]))
+        self.assertTrue(all("constellation" in planet for planet in snapshot["positions"]))
         self.assertEqual(len(windows), 6)
         self.assertGreaterEqual(windows[0]["score"], windows[-1]["score"])
+
+    def test_objective_changes_significator_selection(self) -> None:
+        location = get_location("paris")
+        launch = build_snapshot("2026-05-26", "09:00", location, "traditional-lilly", objective="Launch or publish")
+        relationship = build_snapshot("2026-05-26", "09:00", location, "traditional-lilly", objective="Relationship timing")
+
+        launch_roles = {
+            role
+            for point in launch["significatorContext"]["points"]
+            for role in point["roles"]
+        }
+        relationship_roles = {
+            role
+            for point in relationship["significatorContext"]["points"]
+            for role in point["roles"]
+        }
+
+        self.assertIn("public launch natural significator", launch_roles)
+        self.assertIn("relationship natural significator", relationship_roles)
+        self.assertNotEqual(launch["significatorContext"]["points"], relationship["significatorContext"]["points"])
 
     def test_snapshot_can_use_sidereal_and_equal_house(self) -> None:
         location = get_location("los-angeles")

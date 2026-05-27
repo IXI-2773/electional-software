@@ -211,6 +211,183 @@ def format_score_breakdown(snapshot: dict[str, object]) -> str:
     )
 
 
+def score_accounting_lines(snapshot: dict[str, object]) -> list[str]:
+    breakdown = snapshot.get("scoreBreakdown")
+    if not isinstance(breakdown, dict):
+        return ["- Score accounting unavailable."]
+    accounting = breakdown.get("accounting")
+    if not isinstance(accounting, dict):
+        return ["- Score accounting unavailable."]
+    lines = [
+        (
+            f"- Start {float(accounting.get('startingScore', 58)):.1f}; "
+            f"positive {float(accounting.get('positiveTotal', 0)):+.1f}; "
+            f"negative {float(accounting.get('negativeTotal', 0)):+.1f}; "
+            f"net {float(accounting.get('netAdjustment', 0)):+.1f}; "
+            f"raw {float(accounting.get('rawScore', 0)):.1f}; final {accounting.get('finalScore', breakdown.get('score', '?'))}."
+        )
+    ]
+    category_totals = accounting.get("categoryTotals")
+    if isinstance(category_totals, dict):
+        for category, value in sorted(category_totals.items(), key=lambda item: abs(float(item[1])), reverse=True):
+            lines.append(f"- {category}: {float(value):+.1f}")
+    return lines
+
+
+def constellation_lines(snapshot: dict[str, object]) -> list[str]:
+    context = snapshot.get("constellationContext")
+    if not isinstance(context, dict):
+        return ["- Constellation proportion data unavailable."]
+    rising = context.get("rising", {})
+    if not isinstance(rising, dict):
+        return ["- Rising constellation data unavailable."]
+    asc = rising.get("ascendantConstellation", {})
+    tempo = rising.get("tempo", {})
+    span_context = rising.get("spanContext", {})
+    lines = ["Unequal Ecliptic Constellations"]
+    if isinstance(asc, dict):
+        next_constellation = asc.get("nextConstellation", {})
+        next_name = next_constellation.get("name", "next constellation") if isinstance(next_constellation, dict) else "next constellation"
+        lines.extend(
+            [
+                (
+                    f"- ASC: {asc.get('name', 'n/a')} "
+                    f"({float(asc.get('spanDegrees', 0)):.1f} deg, "
+                    f"{float(asc.get('spanRatioToSign', 0)):.2f}x a 30 deg sign)."
+                ),
+                (
+                    f"- Through span: {float(asc.get('percentThrough', 0)) * 100:.0f}%; "
+                    f"{float(asc.get('distanceToEndDegrees', 0)):.1f} deg to {next_name}."
+                ),
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "Ascensional Motion",
+            (
+                f"- Speed: {float(rising.get('ascendantSpeedDegPerHour', 0)):.1f} deg/hour "
+                f"({tempo.get('label', 'n/a') if isinstance(tempo, dict) else 'n/a'}, "
+                f"{float(tempo.get('scoreImpact', 0)):+.1f} pts)."
+            ),
+            (
+                f"- Current constellation rising time: "
+                f"{float(rising.get('currentConstellationRisingMinutes', 0)):.0f} min; "
+                f"current 30 deg sign: {float(rising.get('currentSignRisingMinutes', 0)):.0f} min."
+            ),
+            f"- Estimated time to next constellation boundary: {float(rising.get('minutesToNextConstellation', 0)):.0f} min.",
+        ]
+    )
+    if isinstance(span_context, dict):
+        lines.append(f"- Span factor: {span_context.get('label', 'n/a')} ({float(span_context.get('scoreImpact', 0)):+.1f} pts).")
+    bodies = []
+    for point in context.get("positions", []):
+        if not isinstance(point, dict) or point.get("name") not in {"Sun", "Moon", "Mercury", "Venus", "Mars"}:
+            continue
+        constellation = point.get("constellation")
+        if isinstance(constellation, dict):
+            bodies.append(f"{point.get('name')}: {constellation.get('name')} ({float(constellation.get('spanDegrees', 0)):.0f} deg)")
+    if bodies:
+        lines.extend(["", "Key Bodies", "- " + "; ".join(bodies)])
+    source_note = context.get("sourceNote")
+    if source_note:
+        lines.extend(["", f"Note: {source_note}"])
+    return lines
+
+
+JUDGMENT_CONTEXT_LABELS = {
+    "significatorContext": "Significators",
+    "moonCondition": "Moon Condition",
+    "houseRulerContext": "House Rulers",
+    "receptionContext": "Reception",
+    "planetConditionContext": "Planet Condition",
+    "advancedAspectContext": "Advanced Aspects",
+    "constellationContext": "Constellation / Rising",
+}
+
+
+def judgment_context_lines(snapshot: dict[str, object], context_key: str) -> list[str]:
+    context = snapshot.get(context_key)
+    if not isinstance(context, dict):
+        return [f"- {JUDGMENT_CONTEXT_LABELS.get(context_key, context_key)} unavailable."]
+    lines = [
+        JUDGMENT_CONTEXT_LABELS.get(context_key, context_key),
+        str(context.get("summary", "No summary available.")),
+        f"Score impact: {float(context.get('scoreImpact', 0)):+.1f}",
+        f"Confidence: {context.get('confidence', 'n/a')}",
+    ]
+    factors = context.get("factors", [])
+    if isinstance(factors, list) and factors:
+        lines.extend(["", "Factors"])
+        for factor in factors:
+            if not isinstance(factor, dict):
+                continue
+            lines.append(
+                (
+                    f"- {factor.get('title', 'Factor')}: "
+                    f"{factor.get('detail', '')} "
+                    f"({float(factor.get('scoreImpact', 0)):+.1f})"
+                )
+            )
+    return lines
+
+
+def factor_explorer_lines(snapshot: dict[str, object], baseline: dict[str, object] | None = None) -> list[str]:
+    lines = ["Factor Explorer", f"Score: {snapshot.get('score', 'n/a')}"]
+    if baseline and baseline is not snapshot:
+        try:
+            delta = int(snapshot.get("score", 0)) - int(baseline.get("score", 0))
+            lines.append(f"Compared with search-start chart: {delta:+d} points.")
+        except (TypeError, ValueError):
+            lines.append("Compared with search-start chart: n/a.")
+    for context_key, label in JUDGMENT_CONTEXT_LABELS.items():
+        if context_key == "constellationContext":
+            context = snapshot.get(context_key)
+            rising = context.get("rising", {}) if isinstance(context, dict) else {}
+            impact = float(rising.get("scoreImpact", 0)) if isinstance(rising, dict) else 0.0
+        else:
+            context = snapshot.get(context_key)
+            impact = float(context.get("scoreImpact", 0)) if isinstance(context, dict) else 0.0
+        lines.extend(["", f"{label} ({impact:+.1f})"])
+        if context_key == "constellationContext":
+            lines.extend(constellation_lines(snapshot)[:8])
+            continue
+        if not isinstance(context, dict):
+            lines.append("- Unavailable.")
+            continue
+        factors = context.get("factors", [])
+        if not isinstance(factors, list) or not factors:
+            lines.append(f"- {context.get('summary', 'No scored factors.')}")
+            continue
+        for factor in factors[:8]:
+            if isinstance(factor, dict):
+                lines.append(
+                    f"- {factor.get('title', 'Factor')} [{factor.get('severity', 'info')}]: "
+                    f"{float(factor.get('scoreImpact', 0)):+.1f}"
+                )
+    return lines
+
+
+def score_evaluation_lines(snapshot: dict[str, object]) -> list[str]:
+    breakdown = snapshot.get("scoreBreakdown")
+    if not isinstance(breakdown, dict):
+        return ["- Score evaluation unavailable."]
+    evaluation = breakdown.get("evaluation")
+    if not isinstance(evaluation, dict):
+        return ["- Score evaluation unavailable."]
+    lines = [
+        f"- Band: {evaluation.get('band', 'n/a')} / Grade {evaluation.get('grade', 'n/a')}",
+        f"- {evaluation.get('summary', 'No evaluation summary.')}",
+    ]
+    strengths = evaluation.get("strengths")
+    risks = evaluation.get("risks")
+    if isinstance(strengths, list) and strengths:
+        lines.append("- Strengths: " + "; ".join(str(item) for item in strengths))
+    if isinstance(risks, list) and risks:
+        lines.append("- Risks: " + "; ".join(str(item) for item in risks))
+    return lines
+
+
 def format_aspectarian(snapshot: dict[str, object]) -> str:
     """Render a compact aspectarian-style table for the selected chart."""
 
@@ -374,8 +551,18 @@ def build_report_text(
         f"Lunar phase: {format_lunar_phase(selected_window)}\n"
         f"Aspect timing: {selected_window.get('timingProfile', {}).get('summary', 'Timing profile unavailable.')}\n"
         f"Score explanation: {format_score_breakdown(selected_window)}\n"
+        f"Score accounting:\n{chr(10).join(score_accounting_lines(selected_window))}\n"
+        f"Score evaluation:\n{chr(10).join(score_evaluation_lines(selected_window))}\n"
         f"Score reasons:\n{chr(10).join(score_reason_lines(selected_window))}\n"
         f"Planetary hour:\n{chr(10).join(planetary_hour_lines) or '- Planetary hour unavailable.'}\n"
+        f"Significators:\n{chr(10).join(judgment_context_lines(selected_window, 'significatorContext'))}\n"
+        f"Moon condition:\n{chr(10).join(judgment_context_lines(selected_window, 'moonCondition'))}\n"
+        f"House rulers:\n{chr(10).join(judgment_context_lines(selected_window, 'houseRulerContext'))}\n"
+        f"Reception:\n{chr(10).join(judgment_context_lines(selected_window, 'receptionContext'))}\n"
+        f"Planet condition:\n{chr(10).join(judgment_context_lines(selected_window, 'planetConditionContext'))}\n"
+        f"Advanced aspects:\n{chr(10).join(judgment_context_lines(selected_window, 'advancedAspectContext'))}\n"
+        f"Constellation proportions:\n{chr(10).join(constellation_lines(selected_window))}\n"
+        f"Factor explorer:\n{chr(10).join(factor_explorer_lines(selected_window))}\n"
         f"Calculation backend:\n{chr(10).join(backend_lines) or '- Backend unavailable.'}\n"
         f"Calculation notes:\n{notes or '- No calculation warnings.'}\n"
         f"Conditions:\n{chr(10).join(condition_lines(selected_window))}\n"

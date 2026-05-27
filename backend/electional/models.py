@@ -34,6 +34,8 @@ class ScoreBreakdown:
     fixed_star: float
     electional_rules: float
     aspect_timing: float
+    accounting: dict[str, object]
+    evaluation: dict[str, object]
     raw_score: float
     score: int
     reasons: tuple[ScoreReason, ...]
@@ -54,6 +56,8 @@ class ScoreBreakdown:
             "fixedStar": self.fixed_star,
             "electionalRules": self.electional_rules,
             "aspectTiming": self.aspect_timing,
+            "accounting": self.accounting,
+            "evaluation": self.evaluation,
             "rawScore": self.raw_score,
             "score": self.score,
             "reasons": [reason.to_json() for reason in self.reasons],

@@ -32,6 +32,21 @@ TIMING_STRESS_WEIGHTS = {
     "near-term": -2.0,
     "later": -0.5,
 }
+SCORE_CATEGORIES = {
+    "support-aspects": "Aspect quality",
+    "mixed-aspects": "Aspect quality",
+    "stress-aspects": "Aspect quality",
+    "applying-support": "Aspect timing",
+    "applying-stress": "Aspect timing",
+    "preferred-aspects": "Objective fit",
+    "close-contacts": "Aspect timing",
+    "angularity": "Planet condition",
+    "essential-dignity": "Planet condition",
+    "fixed-stars": "Fixed stars",
+    "electional-rules": "Electional rules",
+    "aspect-timing": "Aspect timing",
+    "retrograde-pressure": "Risk pressure",
+}
 
 
 def tone_counts(detected_aspects: Sequence[Mapping[str, object]]) -> dict[str, int]:
@@ -96,6 +111,93 @@ def aspect_timing_score(detected_aspects: Sequence[Mapping[str, object]]) -> flo
         elif tone == "stress":
             score += TIMING_STRESS_WEIGHTS.get(quality, 0.0)
     return score
+
+
+def score_band(score: int) -> str:
+    if score >= 86:
+        return "Prime"
+    if score >= 76:
+        return "Strong"
+    if score >= 60:
+        return "Workable"
+    if score >= 45:
+        return "Fragile"
+    return "Avoid"
+
+
+def score_grade(score: int) -> str:
+    if score >= 90:
+        return "A"
+    if score >= 80:
+        return "B"
+    if score >= 70:
+        return "C"
+    if score >= 60:
+        return "D"
+    return "F"
+
+
+def score_accounting(reasons: Sequence[ScoreReason], raw_score: float, final_score: int) -> dict[str, object]:
+    category_totals: dict[str, float] = {}
+    positive_total = 0.0
+    negative_total = 0.0
+    for reason in reasons:
+        if reason.code == "base":
+            continue
+        category = SCORE_CATEGORIES.get(reason.code, "Other")
+        value = float(reason.value)
+        category_totals[category] = category_totals.get(category, 0.0) + value
+        if value >= 0:
+            positive_total += value
+        else:
+            negative_total += value
+
+    return {
+        "startingScore": 58,
+        "categoryTotals": category_totals,
+        "positiveTotal": positive_total,
+        "negativeTotal": negative_total,
+        "netAdjustment": positive_total + negative_total,
+        "rawScore": raw_score,
+        "finalScore": final_score,
+    }
+
+
+def score_evaluation(
+    final_score: int,
+    accounting: Mapping[str, object],
+    reasons: Sequence[ScoreReason],
+) -> dict[str, object]:
+    category_totals = accounting.get("categoryTotals", {})
+    if not isinstance(category_totals, Mapping):
+        category_totals = {}
+    strengths = [
+        f"{category} {float(value):+.1f}"
+        for category, value in sorted(category_totals.items(), key=lambda item: float(item[1]), reverse=True)
+        if float(value) > 0
+    ][:3]
+    risks = [
+        f"{category} {float(value):+.1f}"
+        for category, value in sorted(category_totals.items(), key=lambda item: float(item[1]))
+        if float(value) < 0
+    ][:3]
+    biggest_reason = max(
+        (reason for reason in reasons if reason.code != "base"),
+        key=lambda reason: abs(float(reason.value)),
+        default=None,
+    )
+    band = score_band(final_score)
+    summary = f"{band} electional window with net {float(accounting.get('netAdjustment', 0)):+.1f} points."
+    if biggest_reason:
+        summary += f" Largest factor: {biggest_reason.label} {float(biggest_reason.value):+.1f}."
+
+    return {
+        "band": band,
+        "grade": score_grade(final_score),
+        "summary": summary,
+        "strengths": strengths,
+        "risks": risks,
+    }
 
 
 def score_window(
@@ -180,6 +282,9 @@ def score_breakdown_model(
         ScoreReason("aspect-timing", "Aspect perfection timing", timing_points),
         ScoreReason("retrograde-pressure", "Retrograde pressure", retrograde_points, raw=retrograde),
     )
+    final_score = round(max(10, min(99, raw_score)))
+    accounting = score_accounting(reasons, raw_score, final_score)
+    evaluation = score_evaluation(final_score, accounting, reasons)
 
     return ScoreBreakdown(
         base=58,
@@ -196,7 +301,9 @@ def score_breakdown_model(
         fixed_star=fixed_star_points,
         electional_rules=rule_points,
         aspect_timing=timing_points,
+        accounting=accounting,
+        evaluation=evaluation,
         raw_score=raw_score,
-        score=round(max(10, min(99, raw_score))),
+        score=final_score,
         reasons=reasons,
     )

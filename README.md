@@ -10,6 +10,8 @@ A private work-in-progress application for electional astrology: transits, aspec
 - The desktop UI supports preset cities, custom latitude/longitude/timezone entries, and built-in validation.
 - Custom locations can be saved, reused from the Location preset dropdown, and forgotten later.
 - Ranked candidate windows are selectable in the desktop UI and can be applied back to the input time.
+- Promising candidate windows can be shortlisted, compared in a dedicated tab, copied, cleared, or saved as a shortlist report.
+- Selected windows and shortlists can be exported as `.ics` calendar files from the desktop UI.
 - Ribbon buttons now perform useful actions: reset chart, calculate, save reports, inspect chart data, review systems, and run screening tools.
 - The chart workspace includes degree ticks and a bottom interpretation panel for the selected window.
 - Quick time controls and support/stress counts make candidate-window scanning faster.
@@ -17,6 +19,7 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Preferences can apply zodiac, house, objective, model, and search defaults from one dialog.
 - Wheel view controls can toggle aspects, Lots, nodes, fixed-star markers, and compact mode without recalculating.
 - Clean/Full wheel presets make it faster to switch between a readable working chart and a dense inspection chart.
+- Fit and zoom controls improve wheel framing, while applying aspects draw solid and separating aspects draw dashed.
 - Timing and location context is now shown above the wheel with compact search/selected-window cards.
 - Focus Wheel mode hides the side panels for chart inspection and can be toggled with `F11`.
 - A reference-style View Page strip below the chart opens Interpretation, Aspects, Aspectarian, Conditions, Chart Data, and wheel export.
@@ -40,6 +43,8 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Moon phase, planetary motion, retrograde state, and electional condition notes now appear in snapshots, reports, and desktop detail tabs.
 - Pure-Python electional rules now add sidereal nakshatra/tithi context plus solar-condition screening for cazimi, combustion, and under-beams.
 - Planetary day/hour is calculated in Python from local sunrise and sunset, appears in reports/UI, and contributes a small electional rule score.
+- Unequal ecliptic constellation spans and ASC rising-speed diagnostics now appear in reports/UI and contribute small, transparent rule-score adjustments.
+- Judgment-engine contexts now add objective-specific significators, Moon condition, house rulers, reception, planet-condition diagnostics, advanced aspect patterns, and a Factor Explorer tab.
 - Aspect contacts now show applying/separating phase and feed the score explanation when supportive or stressful contacts are tightening.
 - Applying aspects now include approximate perfection timing, exact-time estimates, and a backend timing profile for next support/stress contacts.
 - The desktop now includes an aspectarian tab and Chart Data aspectarian output for faster visual review of active contacts.
@@ -47,6 +52,7 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Conditions now include election flags for tightening support/stress, angular benefics/malefics, and lunar phase context.
 - System references are available from the ribbon so zodiac/house modes can be reviewed inside the app.
 - Score breakdowns and reason lines explain the final window score.
+- Score accounting now separates category totals, positive/negative adjustments, net points, grade, strengths, and risks.
 - Desktop search controls can scan custom hour ranges, step sizes, score thresholds, and result limits.
 - The backend exposes chart, configurable search, and report API endpoints.
 - Python calculates timezone conversion, ephemeris, ASC/MC/DSC/IC, houses, aspects, lunar phase, planetary motion, dignity, scoring, and ranked windows server-side.

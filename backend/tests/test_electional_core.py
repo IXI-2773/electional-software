@@ -199,6 +199,11 @@ class ElectionalCoreTest(unittest.TestCase):
         self.assertEqual(breakdown["objectiveMatches"], 1)
         self.assertEqual(breakdown["closeContacts"], 1)
         self.assertEqual(breakdown["applyingSupport"], 0)
+        self.assertIn("accounting", breakdown)
+        self.assertIn("evaluation", breakdown)
+        self.assertIn("Aspect quality", breakdown["accounting"]["categoryTotals"])
+        self.assertGreaterEqual(breakdown["accounting"]["positiveTotal"], 0)
+        self.assertIn(breakdown["evaluation"]["band"], {"Prime", "Strong", "Workable", "Fragile", "Avoid"})
         self.assertEqual(breakdown["score"], score_window(detected, positions, preset))
         self.assertTrue(any(reason["code"] == "support-aspects" for reason in breakdown["reasons"]))
 
@@ -245,6 +250,8 @@ class ElectionalCoreTest(unittest.TestCase):
 
         self.assertEqual(payload["objectiveMatches"], model.objective_matches)
         self.assertEqual(payload["rawScore"], model.raw_score)
+        self.assertEqual(payload["accounting"]["finalScore"], model.score)
+        self.assertIn("summary", payload["evaluation"])
         self.assertIsInstance(payload["reasons"][0], dict)
 
 

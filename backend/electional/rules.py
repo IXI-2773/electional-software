@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Mapping, Sequence
 
 from .aspects import angular_distance, format_orb
+from .judgment import judgment_rule_factors
 
 NAKSHATRAS = (
     "Ashwini",
@@ -157,6 +158,8 @@ def evaluate_electional_rules(
     lunar_phase: Mapping[str, object],
     zodiac_system_id: str,
     planetary_hour: Mapping[str, object] | None = None,
+    constellation_context: Mapping[str, object] | None = None,
+    judgment_contexts: Mapping[str, Mapping[str, object]] | None = None,
 ) -> dict[str, object]:
     by_name = {str(planet.get("name")): planet for planet in positions}
     sun = by_name.get("Sun")
@@ -203,10 +206,57 @@ def evaluate_electional_rules(
                 }
             )
 
+    if isinstance(constellation_context, Mapping):
+        rising = constellation_context.get("rising", {})
+        if isinstance(rising, Mapping):
+            tempo = rising.get("tempo", {})
+            if isinstance(tempo, Mapping) and float(tempo.get("scoreImpact", 0)):
+                impact = float(tempo.get("scoreImpact", 0))
+                label = str(tempo.get("label", "tempo"))
+                rules.append(
+                    {
+                        "id": f"ascensional-tempo-{label}",
+                        "category": "ascensional-proportion",
+                        "severity": "support" if impact > 0 else "caution",
+                        "title": f"Ascendant rising tempo: {label}",
+                        "body": "ASC",
+                        "scoreImpact": impact,
+                        "detail": (
+                            f"The Ascendant is moving about {float(rising.get('ascendantSpeedDegPerHour', 0)):.1f} deg/hour; "
+                            f"{tempo.get('summary', 'ascensional tempo noted')}."
+                        ),
+                    }
+                )
+            span_context = rising.get("spanContext", {})
+            asc_constellation = rising.get("ascendantConstellation", {})
+            if isinstance(span_context, Mapping) and float(span_context.get("scoreImpact", 0)):
+                impact = float(span_context.get("scoreImpact", 0))
+                label = str(span_context.get("label", "span"))
+                rules.append(
+                    {
+                        "id": f"ascendant-constellation-span-{label}",
+                        "category": "constellation-proportion",
+                        "severity": "support" if impact > 0 else "caution",
+                        "title": f"ASC constellation span: {label}",
+                        "body": "ASC",
+                        "scoreImpact": impact,
+                        "detail": (
+                            f"The Ascendant is in {asc_constellation.get('name', 'its constellation')} "
+                            f"({float(asc_constellation.get('spanDegrees', 0)):.1f} deg wide); "
+                            f"{span_context.get('summary', 'constellation span noted')}."
+                        ),
+                    }
+                )
+
+    if isinstance(judgment_contexts, Mapping):
+        rules.extend(judgment_rule_factors(judgment_contexts))
+
     return {
         "zodiacSystemId": zodiac_system_id,
         "lunarContext": lunar_context,
         "planetaryHour": dict(planetary_hour or {}),
+        "constellationContext": dict(constellation_context or {}),
+        "judgmentContexts": dict(judgment_contexts or {}),
         "solarConditions": solar_rules,
         "rules": rules,
         "scoreImpact": sum(float(rule.get("scoreImpact", 0)) for rule in rules),

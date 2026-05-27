@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import Mapping, Sequence
 
+from .fixed_stars import fixed_star_score
 from .models import ScoreBreakdown, ScoreReason
 from .presets import ElectionalPreset, dignity_score, filter_positions_for_preset
+from .rules import rule_score
 
 BENEFIC_BODIES = {"Venus", "Jupiter"}
 CHALLENGING_BODIES = {"Mars", "Saturn"}
@@ -19,6 +21,16 @@ RETROGRADE_WEIGHTS = {
     "Uranus": 1.5,
     "Neptune": 1.5,
     "Pluto": 1.5,
+}
+TIMING_SUPPORT_WEIGHTS = {
+    "soon": 3.0,
+    "near-term": 2.0,
+    "later": 0.5,
+}
+TIMING_STRESS_WEIGHTS = {
+    "soon": -3.0,
+    "near-term": -2.0,
+    "later": -0.5,
 }
 
 
@@ -72,26 +84,46 @@ def applying_tone_counts(detected_aspects: Sequence[Mapping[str, object]]) -> di
     return counts
 
 
+def aspect_timing_score(detected_aspects: Sequence[Mapping[str, object]]) -> float:
+    score = 0.0
+    for aspect in detected_aspects:
+        if not aspect.get("isApplying"):
+            continue
+        quality = str(aspect.get("timingQuality") or "")
+        tone = str(aspect.get("tone") or "")
+        if tone == "support":
+            score += TIMING_SUPPORT_WEIGHTS.get(quality, 0.0)
+        elif tone == "stress":
+            score += TIMING_STRESS_WEIGHTS.get(quality, 0.0)
+    return score
+
+
 def score_window(
     detected_aspects: Sequence[Mapping[str, object]],
     positions: Sequence[Mapping[str, object]],
     preset: ElectionalPreset,
+    fixed_star_contacts: Sequence[Mapping[str, object]] = (),
+    rule_evaluations: Mapping[str, object] | None = None,
 ) -> int:
-    return int(score_breakdown(detected_aspects, positions, preset)["score"])
+    return int(score_breakdown(detected_aspects, positions, preset, fixed_star_contacts, rule_evaluations)["score"])
 
 
 def score_breakdown(
     detected_aspects: Sequence[Mapping[str, object]],
     positions: Sequence[Mapping[str, object]],
     preset: ElectionalPreset,
+    fixed_star_contacts: Sequence[Mapping[str, object]] = (),
+    rule_evaluations: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    return score_breakdown_model(detected_aspects, positions, preset).to_json()
+    return score_breakdown_model(detected_aspects, positions, preset, fixed_star_contacts, rule_evaluations).to_json()
 
 
 def score_breakdown_model(
     detected_aspects: Sequence[Mapping[str, object]],
     positions: Sequence[Mapping[str, object]],
     preset: ElectionalPreset,
+    fixed_star_contacts: Sequence[Mapping[str, object]] = (),
+    rule_evaluations: Mapping[str, object] | None = None,
 ) -> ScoreBreakdown:
     counts = tone_counts(detected_aspects)
     applying_counts = applying_tone_counts(detected_aspects)
@@ -112,6 +144,9 @@ def score_breakdown_model(
     angularity_points = angularity * scoring.angular_multiplier
     dignity_points = dignity * scoring.dignity_weight
     retrograde_points = -retrograde
+    fixed_star_points = fixed_star_score(fixed_star_contacts)
+    rule_points = rule_score(rule_evaluations)
+    timing_points = aspect_timing_score(detected_aspects)
 
     raw_score = (
         58
@@ -123,6 +158,9 @@ def score_breakdown_model(
         + applying_stress_points
         + angularity_points
         + dignity_points
+        + fixed_star_points
+        + rule_points
+        + timing_points
         + retrograde_points
         + stress_points
     )
@@ -137,6 +175,9 @@ def score_breakdown_model(
         ScoreReason("close-contacts", "Close contacts", close_contact_points, count=close_contacts),
         ScoreReason("angularity", "Angular planet emphasis", angularity_points, raw=angularity),
         ScoreReason("essential-dignity", "Essential dignity", dignity_points, raw=dignity),
+        ScoreReason("fixed-stars", "Fixed star contacts", fixed_star_points, count=len(fixed_star_contacts)),
+        ScoreReason("electional-rules", "Electional rules", rule_points),
+        ScoreReason("aspect-timing", "Aspect perfection timing", timing_points),
         ScoreReason("retrograde-pressure", "Retrograde pressure", retrograde_points, raw=retrograde),
     )
 
@@ -152,6 +193,9 @@ def score_breakdown_model(
         angularity=angularity,
         dignity=dignity,
         retrograde_pressure=retrograde,
+        fixed_star=fixed_star_points,
+        electional_rules=rule_points,
+        aspect_timing=timing_points,
         raw_score=raw_score,
         score=round(max(10, min(99, raw_score))),
         reasons=reasons,

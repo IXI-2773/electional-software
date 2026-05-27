@@ -40,8 +40,13 @@ def system_reference_lines() -> list[str]:
         [
             "Current implementation notes:",
             "- Sidereal Lahiri is the default electional mode.",
+            "- Additional sidereal options follow Astrolog's named ayanamsha offsets: Fagan-Bradley, Krishnamurti, and B.V. Raman.",
+            "- Professional calculation bridge detects local Astrolog/Swiss Ephemeris files in ast78win64 and can use pyswisseph when installed.",
             "- Topocentric is implemented as a Polich-Page cusp option using local latitude-derived pole divisions.",
             "- Koch is implemented as a birthplace/time-division house option based on MC and IC arc trisections.",
+            "- Placidus, Campanus, Regiomontanus, Alcabitius, and Porphyry are routed through Swiss Ephemeris when available; otherwise safe fallback cusps keep the app usable.",
+            "- Fixed-star screening uses a curated subset from Astrolog's Swiss Ephemeris sefstars.txt file.",
+            "- Lunar nodes are available as calculated chart points using lightweight mean/true node formulas until Swiss bindings are available.",
             "- Future Swiss Ephemeris integration can tighten ayanamsha and house cusp precision further.",
         ]
     )

@@ -8,6 +8,7 @@ from math import cos, floor, radians
 
 import astronomy
 
+from .professional import engine_name, swiss_ecliptic_coordinates
 from .systems import apply_zodiac_system
 from .time_utils import astronomy_time_string
 
@@ -39,7 +40,7 @@ PLANET_MODELS = (
     {"id": "pluto", "name": "Pluto", "astronomy_body": "Pluto"},
 )
 
-ENGINE_NAME = "Astronomy Engine Python"
+ENGINE_NAME = engine_name()
 
 
 def normalize_degrees(value: float) -> float:
@@ -94,6 +95,9 @@ def _cached_ecliptic_coordinates(body_name: str, time_text: str) -> tuple[float,
 
 
 def get_ecliptic_coordinates(body_name: str, moment: datetime) -> dict[str, float | None]:
+    professional = swiss_ecliptic_coordinates(body_name, moment)
+    if professional:
+        return professional
     latitude, longitude, distance = _cached_ecliptic_coordinates(body_name, astronomy_time_string(moment))
     return {
         "latitude": latitude,
@@ -103,9 +107,14 @@ def get_ecliptic_coordinates(body_name: str, moment: datetime) -> dict[str, floa
 
 
 def get_body_motion(body_name: str, moment: datetime) -> dict[str, object]:
-    previous = normalize_degrees(float(get_ecliptic_coordinates(body_name, moment - timedelta(hours=12))["longitude"]))
-    next_position = normalize_degrees(float(get_ecliptic_coordinates(body_name, moment + timedelta(hours=12))["longitude"]))
-    daily_change = signed_longitude_delta(previous, next_position)
+    current = get_ecliptic_coordinates(body_name, moment)
+    swiss_speed = current.get("dailyLongitudeChange")
+    if swiss_speed is not None:
+        daily_change = float(swiss_speed)
+    else:
+        previous = normalize_degrees(float(get_ecliptic_coordinates(body_name, moment - timedelta(hours=12))["longitude"]))
+        next_position = normalize_degrees(float(get_ecliptic_coordinates(body_name, moment + timedelta(hours=12))["longitude"]))
+        daily_change = signed_longitude_delta(previous, next_position)
     is_retrograde = daily_change < -0.02
     is_stationary = abs(daily_change) <= 0.02
 

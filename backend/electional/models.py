@@ -31,6 +31,9 @@ class ScoreBreakdown:
     angularity: float
     dignity: float
     retrograde_pressure: float
+    fixed_star: float
+    electional_rules: float
+    aspect_timing: float
     raw_score: float
     score: int
     reasons: tuple[ScoreReason, ...]
@@ -48,6 +51,9 @@ class ScoreBreakdown:
             "angularity": self.angularity,
             "dignity": self.dignity,
             "retrogradePressure": self.retrograde_pressure,
+            "fixedStar": self.fixed_star,
+            "electionalRules": self.electional_rules,
+            "aspectTiming": self.aspect_timing,
             "rawScore": self.raw_score,
             "score": self.score,
             "reasons": [reason.to_json() for reason in self.reasons],

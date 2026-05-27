@@ -16,6 +16,13 @@ from .validation import validate_election_inputs
 
 SESSION_PATH = Path.cwd() / ".electional-session.json"
 OBJECTIVES = ("Launch or publish", "Meeting or negotiation", "Creative work", "Relationship timing", "Travel departure")
+DEFAULT_DISPLAY_OPTIONS = {
+    "show_aspects": True,
+    "show_lots": False,
+    "show_nodes": False,
+    "show_fixed_stars": False,
+    "compact_wheel": True,
+}
 
 
 def load_session_state(path: Path = SESSION_PATH) -> dict[str, Any]:
@@ -48,6 +55,7 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
     zodiac_system = get_zodiac_system(str(state.get("zodiac_system") or DEFAULT_ZODIAC_SYSTEM_ID)).name
     house_system = get_house_system(str(state.get("house_system") or DEFAULT_HOUSE_SYSTEM_ID)).name
     aspects = state.get("aspects") if isinstance(state.get("aspects"), dict) else {}
+    display_options = state.get("display_options") if isinstance(state.get("display_options"), dict) else {}
 
     return {
         "date": date_text,
@@ -66,4 +74,8 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
         "step_minutes": str(state.get("step_minutes") or DEFAULT_STEP_MINUTES),
         "minimum_score": str(state.get("minimum_score") or DEFAULT_MINIMUM_SCORE),
         "max_results": str(state.get("max_results") or DEFAULT_MAX_RESULTS),
+        "display_options": {
+            key: bool(display_options.get(key, default_value))
+            for key, default_value in DEFAULT_DISPLAY_OPTIONS.items()
+        },
     }

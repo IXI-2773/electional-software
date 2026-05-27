@@ -1,8 +1,9 @@
-"""Aspect definitions and detection logic."""
+"""Aspect definitions, detection logic, and timing estimates."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from math import floor
 from typing import Iterable, Mapping, Sequence
 
@@ -62,6 +63,7 @@ ASPECTS: tuple[Aspect, ...] = (
 
 ASPECT_BY_ID = {aspect.id: aspect for aspect in ASPECTS}
 ASPECT_PHASE_EPSILON = 0.02
+MAX_PERFECTION_DAYS = 14.0
 
 
 def angular_distance(first_longitude: float, second_longitude: float) -> float:
@@ -75,6 +77,19 @@ def format_orb(orb: float) -> str:
     return f"{degrees} deg {minutes:02d} min"
 
 
+def format_duration(days: float) -> str:
+    total_minutes = max(0, round(days * 24 * 60))
+    if total_minutes < 60:
+        return f"{total_minutes} min"
+    hours, minutes = divmod(total_minutes, 60)
+    if hours < 24:
+        return f"{hours}h {minutes:02d}m" if minutes else f"{hours}h"
+    day_count, remaining_hours = divmod(hours, 24)
+    if remaining_hours:
+        return f"{day_count}d {remaining_hours}h"
+    return f"{day_count}d"
+
+
 def daily_longitude_change(position: Mapping[str, object]) -> float | None:
     motion = position.get("motion")
     if not isinstance(motion, Mapping):
@@ -83,6 +98,10 @@ def daily_longitude_change(position: Mapping[str, object]) -> float | None:
         return float(motion["dailyLongitudeChange"])
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def opposite_signs(first: float, second: float) -> bool:
+    return (first < 0 < second) or (second < 0 < first)
 
 
 def aspect_phase(first: Mapping[str, object], second: Mapping[str, object], aspect: Aspect, orb: float) -> dict[str, object]:
@@ -96,13 +115,30 @@ def aspect_phase(first: Mapping[str, object], second: Mapping[str, object], aspe
             "orbChangePerDay": 0.0,
         }
 
+    current_signed_orb = distance_to_aspect = angular_distance(float(first["longitude"]), float(second["longitude"])) - aspect.angle
     future_distance = angular_distance(
         float(first["longitude"]) + first_motion,
         float(second["longitude"]) + second_motion,
     )
-    future_orb = abs(future_distance - aspect.angle)
+    future_signed_orb = future_distance - aspect.angle
+    future_orb = abs(future_signed_orb)
     orb_change = future_orb - orb
-    if abs(orb_change) <= ASPECT_PHASE_EPSILON:
+    crossed_exact = abs(distance_to_aspect) > ASPECT_PHASE_EPSILON and opposite_signs(current_signed_orb, future_signed_orb)
+    days_to_exact_estimate = None
+    if crossed_exact:
+        denominator = abs(current_signed_orb) + abs(future_signed_orb)
+        days_to_exact_estimate = abs(current_signed_orb) / denominator if denominator else 0.0
+
+    if orb <= ASPECT_PHASE_EPSILON:
+        phase = "exact"
+        label = "Near exact"
+        is_applying = None
+    elif crossed_exact:
+        phase = "applying"
+        label = "Applying"
+        is_applying = True
+        orb_change = -orb
+    elif abs(orb_change) <= ASPECT_PHASE_EPSILON:
         phase = "exact"
         label = "Near exact"
         is_applying = None
@@ -120,13 +156,101 @@ def aspect_phase(first: Mapping[str, object], second: Mapping[str, object], aspe
         "phaseLabel": label,
         "isApplying": is_applying,
         "orbChangePerDay": orb_change,
+        "crossesExactWithinDay": crossed_exact,
+        "daysToExactEstimate": days_to_exact_estimate,
     }
+
+
+def aspect_timing(aspect: Mapping[str, object], moment: datetime | None = None, timezone_name: str | None = None) -> dict[str, object]:
+    if not aspect.get("isApplying"):
+        return {
+            "daysToExact": None,
+            "timeToExactText": "",
+            "perfectsAt": None,
+            "perfectsAtText": "",
+            "timingQuality": "not applying",
+        }
+    try:
+        orb = float(aspect.get("orb", 0))
+        change = float(aspect.get("orbChangePerDay", 0))
+    except (TypeError, ValueError):
+        return {
+            "daysToExact": None,
+            "timeToExactText": "",
+            "perfectsAt": None,
+            "perfectsAtText": "",
+            "timingQuality": "unknown",
+        }
+    estimate = aspect.get("daysToExactEstimate")
+    if estimate is not None:
+        try:
+            days = float(estimate)
+        except (TypeError, ValueError):
+            days = None
+        if days is not None:
+            timing_quality = "soon" if days <= 1 else "near-term" if days <= 3 else "later" if days <= MAX_PERFECTION_DAYS else "beyond scan"
+            payload: dict[str, object] = {
+                "daysToExact": days,
+                "timeToExactText": format_duration(days),
+                "perfectsAt": None,
+                "perfectsAtText": "",
+                "timingQuality": timing_quality,
+            }
+            if moment is not None and days <= MAX_PERFECTION_DAYS:
+                perfection = moment + timedelta(days=days)
+                payload["perfectsAt"] = perfection
+                if timezone_name:
+                    from .time_utils import format_in_timezone
+
+                    payload["perfectsAtText"] = format_in_timezone(perfection, timezone_name)
+                else:
+                    payload["perfectsAtText"] = perfection.isoformat()
+            return payload
+
+    if change >= -ASPECT_PHASE_EPSILON:
+        return {
+            "daysToExact": None,
+            "timeToExactText": "",
+            "perfectsAt": None,
+            "perfectsAtText": "",
+            "timingQuality": "unknown",
+        }
+
+    days = orb / abs(change)
+    timing_quality = "soon" if days <= 1 else "near-term" if days <= 3 else "later" if days <= MAX_PERFECTION_DAYS else "beyond scan"
+    payload: dict[str, object] = {
+        "daysToExact": days,
+        "timeToExactText": format_duration(days),
+        "perfectsAt": None,
+        "perfectsAtText": "",
+        "timingQuality": timing_quality,
+    }
+    if moment is not None and days <= MAX_PERFECTION_DAYS:
+        perfection = moment + timedelta(days=days)
+        payload["perfectsAt"] = perfection
+        if timezone_name:
+            from .time_utils import format_in_timezone
+
+            payload["perfectsAtText"] = format_in_timezone(perfection, timezone_name)
+        else:
+            payload["perfectsAtText"] = perfection.isoformat()
+    return payload
+
+
+def annotate_aspect_timings(
+    aspects: Sequence[Mapping[str, object]],
+    moment: datetime | None = None,
+    timezone_name: str | None = None,
+) -> list[dict[str, object]]:
+    return [{**dict(aspect), **aspect_timing(aspect, moment, timezone_name)} for aspect in aspects]
 
 
 def detect_aspects(
     positions: Sequence[Mapping[str, object]],
     selected_aspect_ids: Iterable[str],
     aspect_orbs: Mapping[str, float] | None = None,
+    moment: datetime | None = None,
+    timezone_name: str | None = None,
 ) -> list[dict[str, object]]:
     selected = [ASPECT_BY_ID[aspect_id] for aspect_id in selected_aspect_ids if aspect_id in ASPECT_BY_ID]
     orb_overrides = aspect_orbs or {}
@@ -159,4 +283,5 @@ def detect_aspects(
                         }
                     )
 
-    return sorted(detected, key=lambda aspect: float(aspect["orb"]))
+    timed = annotate_aspect_timings(detected, moment, timezone_name)
+    return sorted(timed, key=lambda aspect: float(aspect["orb"]))

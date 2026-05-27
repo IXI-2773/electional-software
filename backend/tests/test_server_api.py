@@ -52,6 +52,9 @@ class ServerApiTest(unittest.TestCase):
 
         self.assertIn("Electional Software Report", response["reportText"])
         self.assertIn("Score reasons", response["reportText"])
+        self.assertIn("Planetary hour", response["reportText"])
+        self.assertIn("Calculation backend", response["reportText"])
+        self.assertIn("Rules:", response["reportText"])
         self.assertEqual(response["resultCount"], len(response["windows"]))
 
     def test_search_config_validation_uses_clear_errors(self) -> None:

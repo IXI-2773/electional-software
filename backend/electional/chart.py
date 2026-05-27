@@ -7,14 +7,20 @@ from typing import Iterable
 
 from .aspects import detect_aspects
 from .ephemeris import ENGINE_NAME, format_zodiac_position, get_planet_positions, lunar_phase_from_positions
+from .fixed_stars import detect_fixed_star_contacts, fixed_star_positions
 from .houses import calculate_angles, calculate_house_cusps, enrich_positions_with_houses
 from .locations import LocationPreset
 from .lots import calculate_lots
+from .lunar_nodes import calculate_lunar_nodes
+from .planetary_hours import planetary_hour_context
 from .presets import apply_dignities, filter_positions_for_preset, get_preset
+from .professional import calculation_backend_status
+from .rules import evaluate_electional_rules
 from .scoring import score_breakdown
 from .search import DEFAULT_SEARCH_CONFIG, SearchConfig, rank_search_windows
 from .systems import ayanamsha_for_system, get_house_system, get_zodiac_system
 from .time_utils import format_in_timezone, zoned_time_to_utc
+from .timing import timing_profile
 
 def describe_window(detected_aspects: list[dict[str, object]], positions: list[dict[str, object]], preset: object) -> str:
     scoring_positions = filter_positions_for_preset(positions, preset)
@@ -32,6 +38,8 @@ def describe_window(detected_aspects: list[dict[str, object]], positions: list[d
 
     strongest = detected_aspects[0]
     phase = str(strongest.get("phaseLabel") or "phase unknown").lower()
+    if strongest.get("isApplying") and strongest.get("timeToExactText"):
+        return f"Strongest contact: {strongest['label']} with {strongest['orbText']} orb, {phase}; exact in {strongest['timeToExactText']}."
     return f"Strongest contact: {strongest['label']} with {strongest['orbText']} orb, {phase}."
 
 
@@ -51,22 +59,37 @@ def build_snapshot_for_moment(
     positions = apply_dignities(base_positions, preset)
     lunar_phase = lunar_phase_from_positions(positions)
     lots = calculate_lots(positions, angles, house_cusps, house_system.id)
-    detected = detect_aspects(filter_positions_for_preset(positions, preset), aspects, preset.aspect_orbs)
-    breakdown = score_breakdown(detected, positions, preset)
+    lunar_nodes = calculate_lunar_nodes(moment, zodiac_system.id, angles, house_cusps, house_system.id)
+    detected = detect_aspects(filter_positions_for_preset(positions, preset), aspects, preset.aspect_orbs, moment, location.timezone)
+    timing = timing_profile(detected)
+    fixed_stars = fixed_star_positions(moment, zodiac_system.id)
+    fixed_star_contacts = detect_fixed_star_contacts([*positions, *angles], fixed_stars)
+    planetary_hour = planetary_hour_context(moment, location)
+    rule_evaluations = evaluate_electional_rules(positions, lunar_phase, zodiac_system.id, planetary_hour)
+    breakdown = score_breakdown(detected, positions, preset, fixed_star_contacts, rule_evaluations)
+    backend_status = calculation_backend_status()
 
     return {
         "date": moment,
         "formattedTime": format_in_timezone(moment, location.timezone),
         "engine": ENGINE_NAME,
+        "calculationBackend": backend_status,
+        "calculationNotes": calculation_notes(backend_status, house_system.id, house_cusps, location.latitude, planetary_hour),
         "zodiacSystem": zodiac_system,
         "houseSystem": house_system,
         "houseCusps": house_cusps,
         "lots": lots,
+        "lunarNodes": lunar_nodes,
+        "fixedStars": fixed_stars,
+        "fixedStarContacts": fixed_star_contacts,
         "ayanamsha": ayanamsha_for_system(moment, zodiac_system.id),
         "preset": preset,
         "angles": angles,
         "positions": positions,
         "lunarPhase": lunar_phase,
+        "planetaryHour": planetary_hour,
+        "timingProfile": timing,
+        "ruleEvaluations": rule_evaluations,
         "detectedAspects": detected,
         "score": breakdown["score"],
         "scoreBreakdown": breakdown,
@@ -102,6 +125,26 @@ def build_snapshot(
     aspects = tuple(selected_aspects or preset.aspect_ids)
     moment = zoned_time_to_utc(date_text, time_text, location.timezone)
     return build_snapshot_for_moment(moment, location, preset, aspects, zodiac_system_id, house_system_id)
+
+
+def calculation_notes(
+    backend_status: dict[str, object],
+    house_system_id: str,
+    house_cusps: list[dict[str, object]],
+    latitude: float | None = None,
+    planetary_hour: dict[str, object] | None = None,
+) -> list[str]:
+    notes = []
+    if backend_status.get("fallbackActive"):
+        notes.append("Swiss Ephemeris Python bindings are not active; planetary positions use Astronomy Engine fallback.")
+    cusp_sources = sorted({str(cusp.get("source")) for cusp in house_cusps if cusp.get("source")})
+    if cusp_sources:
+        notes.append(f"House cusps source for {house_system_id}: {', '.join(cusp_sources)}.")
+    if latitude is not None and abs(latitude) >= 60:
+        notes.append("High-latitude chart: sunrise/sunset, quadrant cusps, and planetary-hour timing may need extra review.")
+    if planetary_hour and not planetary_hour.get("available"):
+        notes.append(f"Planetary hour unavailable: {planetary_hour.get('reason', 'sunrise/sunset could not be resolved')}.")
+    return notes
 
 
 def build_transit_windows(

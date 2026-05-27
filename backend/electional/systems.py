@@ -12,6 +12,7 @@ class ZodiacSystem:
     name: str
     mode: str
     description: str
+    astrolog_offset: float | None = None
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,7 @@ class HouseSystem:
 
 DEFAULT_ZODIAC_SYSTEM_ID = "sidereal-lahiri"
 DEFAULT_HOUSE_SYSTEM_ID = "whole-sign"
+ASTROLOG_LAHIRI_OFFSET_FROM_FAGAN = 0.883208
 
 ZODIAC_SYSTEMS: tuple[ZodiacSystem, ...] = (
     ZodiacSystem(
@@ -30,6 +32,28 @@ ZODIAC_SYSTEMS: tuple[ZodiacSystem, ...] = (
         name="Sidereal Lahiri",
         mode="sidereal",
         description="Sidereal zodiac with Lahiri/Chitrapaksha ayanamsha.",
+        astrolog_offset=ASTROLOG_LAHIRI_OFFSET_FROM_FAGAN,
+    ),
+    ZodiacSystem(
+        id="sidereal-fagan-bradley",
+        name="Sidereal Fagan-Bradley",
+        mode="sidereal",
+        description="Astrolog's zero-offset sidereal baseline, useful for Western sidereal comparisons.",
+        astrolog_offset=0.0,
+    ),
+    ZodiacSystem(
+        id="sidereal-krishnamurti",
+        name="Sidereal Krishnamurti",
+        mode="sidereal",
+        description="Sidereal zodiac using Astrolog's Krishnamurti ayanamsha offset.",
+        astrolog_offset=0.98006,
+    ),
+    ZodiacSystem(
+        id="sidereal-raman",
+        name="Sidereal B.V. Raman",
+        mode="sidereal",
+        description="Sidereal zodiac using Astrolog's B.V. Raman ayanamsha offset.",
+        astrolog_offset=2.329509,
     ),
     ZodiacSystem(
         id="tropical",
@@ -41,6 +65,11 @@ ZODIAC_SYSTEMS: tuple[ZodiacSystem, ...] = (
 
 HOUSE_SYSTEMS: tuple[HouseSystem, ...] = (
     HouseSystem(
+        id="placidus",
+        name="Placidus",
+        description="Standard quadrant house system; uses Swiss Ephemeris when available and Porphyry fallback otherwise.",
+    ),
+    HouseSystem(
         id="whole-sign",
         name="Whole Sign",
         description="Each sign from the ascendant sign becomes one house.",
@@ -51,6 +80,11 @@ HOUSE_SYSTEMS: tuple[HouseSystem, ...] = (
         description="Twelve 30 degree houses starting from the exact ascendant.",
     ),
     HouseSystem(
+        id="porphyry",
+        name="Porphyry",
+        description="Quadrants between ASC/MC/DSC/IC are trisected; stable fallback for quadrant-style work.",
+    ),
+    HouseSystem(
         id="topocentric",
         name="Topocentric",
         description="Polich-Page quadrant houses using local latitude-derived pole divisions.",
@@ -59,6 +93,26 @@ HOUSE_SYSTEMS: tuple[HouseSystem, ...] = (
         id="koch",
         name="Koch",
         description="Birthplace house system using time trisections from MC and IC arcs.",
+    ),
+    HouseSystem(
+        id="campanus",
+        name="Campanus",
+        description="Prime-vertical quadrant system; uses Swiss Ephemeris when available and Porphyry fallback otherwise.",
+    ),
+    HouseSystem(
+        id="regiomontanus",
+        name="Regiomontanus",
+        description="Equatorial quadrant system; uses Swiss Ephemeris when available and Porphyry fallback otherwise.",
+    ),
+    HouseSystem(
+        id="alcabitius",
+        name="Alcabitius",
+        description="Classical time-based quadrant system; uses Swiss Ephemeris when available and Porphyry fallback otherwise.",
+    ),
+    HouseSystem(
+        id="sripati",
+        name="Sripati",
+        description="Vedic quadrant-style house division modeled through Porphyry-style quadrant trisection.",
     ),
 )
 
@@ -97,8 +151,9 @@ def lahiri_ayanamsha(moment: datetime) -> float:
 
 def ayanamsha_for_system(moment: datetime, system_id_or_name: str | None) -> float:
     system = get_zodiac_system(system_id_or_name)
-    if system.id == "sidereal-lahiri":
-        return lahiri_ayanamsha(moment)
+    if system.mode == "sidereal":
+        fagan_base = lahiri_ayanamsha(moment) - ASTROLOG_LAHIRI_OFFSET_FROM_FAGAN
+        return fagan_base + float(system.astrolog_offset or 0.0)
     return 0.0
 
 

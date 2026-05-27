@@ -1,12 +1,21 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
 from backend.electional.desktop import (
+    fixed_star_contact_count,
+    compact_time_label,
+    location_summary,
     planet_abbreviation,
+    star_abbreviation,
+    score_band_label,
+    selection_offset_label,
     shift_local_datetime,
+    shift_local_datetime_minutes,
+    summary_chip_lines,
     wheel_degrees,
     window_score_color,
 )
@@ -24,13 +33,16 @@ from backend.electional.references import dignity_table_lines, lot_reference_lin
 from backend.electional.reporting import (
     condition_lines,
     election_flag_lines,
+    format_aspectarian,
     format_aspect_summary,
     format_dignity_summary,
+    format_fixed_star_contact,
     format_lunar_phase,
     format_motion_summary,
     format_planet_focus,
     format_score_breakdown,
     format_window_label,
+    rule_lines,
 )
 from backend.electional.search import build_search_config_from_text, format_search_summary
 from backend.electional.screening import solar_elongation_summary
@@ -42,10 +54,19 @@ class DesktopUiHelpersTest(unittest.TestCase):
     def test_planet_abbreviation_uses_compact_labels(self) -> None:
         self.assertEqual(planet_abbreviation("Mercury"), "Me")
         self.assertEqual(planet_abbreviation("Pluto"), "Pl")
+        self.assertEqual(star_abbreviation("Galactic Center"), "GC")
 
     def test_wheel_degrees_places_ascendant_on_left_side(self) -> None:
         self.assertEqual(wheel_degrees(110.0, 110.0), 180)
         self.assertEqual(wheel_degrees(290.0, 110.0), 0)
+
+    def test_header_helpers_keep_timing_and_location_readable(self) -> None:
+        snapshot = {"formattedTime": "Tue, May 26, 2026, 9:23 PM PDT"}
+        location = LocationPreset("user-home", "Home Base", 33.12, -117.98, "America/Los_Angeles")
+
+        self.assertIn("May 26 9:23 PM PDT", compact_time_label(snapshot))
+        self.assertIn("Home Base", location_summary(location))
+        self.assertIn("America/Los_Angeles", location_summary(location))
 
     def test_validation_accepts_am_pm_time_and_custom_location(self) -> None:
         errors = validate_election_inputs("2026-05-26", "09:00 AM", "34.0522", "-118.2437", "America/Los_Angeles")
@@ -92,6 +113,12 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(next_date, "2026-05-27")
         self.assertEqual(next_time, "01:30")
 
+    def test_shift_local_datetime_minutes_supports_electional_fine_tuning(self) -> None:
+        next_date, next_time = shift_local_datetime_minutes("2026-05-26", "23:58", "America/Los_Angeles", 5)
+
+        self.assertEqual(next_date, "2026-05-27")
+        self.assertEqual(next_time, "00:03")
+
     def test_window_label_summarizes_support_and_stress_counts(self) -> None:
         label = format_window_label(
             1,
@@ -117,9 +144,42 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("Workable election", label)
 
     def test_window_score_color_groups_score_ranges(self) -> None:
-        self.assertEqual(window_score_color(82), "#e2f3ea")
-        self.assertEqual(window_score_color(65), "#fff6d8")
-        self.assertEqual(window_score_color(44), "#f9d9df")
+        self.assertEqual(window_score_color(90), "#d9f4e7")
+        self.assertEqual(window_score_color(82), "#e8f6f1")
+        self.assertEqual(window_score_color(65), "#fff4d6")
+        self.assertEqual(window_score_color(44), "#f8dde3")
+        self.assertEqual(score_band_label(90), "Prime")
+        self.assertEqual(score_band_label(82), "Strong")
+        self.assertEqual(score_band_label(65), "Workable")
+        self.assertEqual(score_band_label(44), "Caution")
+
+    def test_summary_chip_lines_surface_chart_context(self) -> None:
+        snapshot = {
+            "lunarPhase": {"name": "Waxing Gibbous"},
+            "detectedAspects": [{"tone": "support"}, {"tone": "stress"}],
+            "positions": [{"isAngular": True}, {"isAngular": False}],
+            "fixedStarContacts": [{"label": "Venus conjunct Spica"}],
+            "planetaryHour": {"available": True, "hourRuler": "Jupiter"},
+            "ruleEvaluations": {"rules": [{"title": "Mercury combust"}]},
+        }
+
+        self.assertEqual(fixed_star_contact_count(snapshot), 1)
+        self.assertIn("Moon: Waxing Gibbous", summary_chip_lines(snapshot))
+        self.assertIn("Hour: Jupiter", summary_chip_lines(snapshot))
+        self.assertIn("Aspects: +1 / !1", summary_chip_lines(snapshot))
+        self.assertIn("Angular: 1", summary_chip_lines(snapshot))
+        self.assertIn("Fixed stars: 1", summary_chip_lines(snapshot))
+        self.assertIn("Rules: 1", summary_chip_lines(snapshot))
+
+    def test_selection_offset_label_explains_current_vs_selected(self) -> None:
+        start = {"date": datetime(2026, 5, 26, 16, 0)}
+        same = {"date": datetime(2026, 5, 26, 16, 0)}
+        later = {"date": datetime(2026, 5, 26, 18, 30)}
+        earlier = {"date": datetime(2026, 5, 26, 15, 45)}
+
+        self.assertEqual(selection_offset_label(start, same), "Selected equals search start")
+        self.assertEqual(selection_offset_label(start, later), "Selected +2h 30m from start")
+        self.assertEqual(selection_offset_label(start, earlier), "Selected -15m from start")
 
     def test_planet_focus_includes_dignity_and_contacts(self) -> None:
         planet = {
@@ -195,11 +255,15 @@ class DesktopUiHelpersTest(unittest.TestCase):
                 "phase": "applying",
                 "phaseLabel": "Applying",
                 "orbChangePerDay": -0.75,
+                "isApplying": True,
+                "timeToExactText": "2d",
+                "perfectsAtText": "Thu, May 28, 2026, 9:00 AM PDT",
             }
         )
 
         self.assertIn("applying", summary)
         self.assertIn("-0.75 deg/day", summary)
+        self.assertIn("exact in 2d", summary)
 
     def test_condition_lines_collect_lunar_phase_and_retrogrades(self) -> None:
         lines = condition_lines(
@@ -250,6 +314,24 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("Angular malefic", text)
         self.assertIn("favors building", text)
 
+    def test_rule_lines_format_active_electional_rules(self) -> None:
+        lines = rule_lines(
+            {
+                "ruleEvaluations": {
+                    "rules": [
+                        {
+                            "title": "Mercury combust",
+                            "detail": "Mercury is combust the Sun.",
+                            "scoreImpact": -5,
+                        }
+                    ]
+                }
+            }
+        )
+
+        self.assertIn("Mercury combust", lines[0])
+        self.assertIn("-5.0", lines[0])
+
     def test_dignity_table_includes_classical_rulerships(self) -> None:
         lines = dignity_table_lines()
         reference = "\n".join(lines)
@@ -264,9 +346,47 @@ class DesktopUiHelpersTest(unittest.TestCase):
         reference = "\n".join(system_reference_lines())
 
         self.assertIn("Sidereal Lahiri", reference)
+        self.assertIn("Sidereal Fagan-Bradley", reference)
         self.assertIn("Topocentric", reference)
         self.assertIn("Polich-Page", reference)
         self.assertIn("Koch", reference)
+        self.assertIn("sefstars.txt", reference)
+
+    def test_fixed_star_contact_summary_is_human_readable(self) -> None:
+        summary = format_fixed_star_contact(
+            {
+                "label": "Venus conjunct Spica",
+                "orbText": "0 deg 14 min",
+                "tone": "support",
+                "score": 4.0,
+            }
+        )
+
+        self.assertIn("Venus conjunct Spica", summary)
+        self.assertIn("+4.0", summary)
+
+    def test_aspectarian_formats_detected_contacts(self) -> None:
+        table = format_aspectarian(
+            {
+                "positions": [{"name": "Sun"}, {"name": "Moon"}, {"name": "Venus"}],
+                "detectedAspects": [
+                    {
+                        "bodies": ["Sun", "Moon"],
+                        "aspectName": "Trine",
+                        "tone": "support",
+                    },
+                    {
+                        "bodies": ["Moon", "Venus"],
+                        "aspectName": "Square",
+                        "tone": "stress",
+                    },
+                ],
+            }
+        )
+
+        self.assertIn("Aspectarian", table)
+        self.assertIn("+Tri", table)
+        self.assertIn("!Sqr", table)
 
     def test_lot_reference_includes_new_hermetic_lots(self) -> None:
         reference = "\n".join(lot_reference_lines())
@@ -303,6 +423,7 @@ class DesktopUiHelpersTest(unittest.TestCase):
                 "step_minutes": "30",
                 "minimum_score": "70",
                 "max_results": "12",
+                "display_options": {"show_aspects": False, "compact_wheel": True},
             }
 
             save_session_state(state, path)
@@ -315,6 +436,9 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(loaded["step_minutes"], "30")
         self.assertEqual(loaded["minimum_score"], "70")
         self.assertEqual(loaded["max_results"], "12")
+        self.assertFalse(loaded["display_options"]["show_aspects"])
+        self.assertTrue(loaded["display_options"]["compact_wheel"])
+        self.assertFalse(loaded["display_options"]["show_fixed_stars"])
 
     def test_user_locations_round_trip(self) -> None:
         with TemporaryDirectory() as temp_dir:

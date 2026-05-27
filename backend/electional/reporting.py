@@ -65,7 +65,43 @@ def condition_lines(snapshot: dict[str, object]) -> list[str]:
             "- Stationary: "
             + ", ".join(f"{planet['name']} ({format_motion_summary(planet)})" for planet in stationary)
         )
+    rule_evaluations = snapshot.get("ruleEvaluations", {})
+    if isinstance(rule_evaluations, dict):
+        lunar_context = rule_evaluations.get("lunarContext", {})
+        planetary_hour = rule_evaluations.get("planetaryHour", {})
+        if isinstance(lunar_context, dict):
+            nakshatra = lunar_context.get("nakshatra", {})
+            tithi = lunar_context.get("tithi", {})
+            lines.extend(["", "Sidereal Lunar Context"])
+            if isinstance(nakshatra, dict):
+                lines.append(
+                    f"- Nakshatra: {nakshatra.get('name')} pada {nakshatra.get('pada')} "
+                    f"(#{nakshatra.get('index')})."
+                )
+            if isinstance(tithi, dict):
+                lines.append(f"- Tithi: {tithi.get('paksha')} {tithi.get('name')} (#{tithi.get('number')}).")
+        if isinstance(planetary_hour, dict) and planetary_hour.get("available"):
+            lines.extend(
+                [
+                    "",
+                    "Planetary Hour",
+                    (
+                        f"- Day ruler: {planetary_hour.get('dayRuler')}; "
+                        f"{planetary_hour.get('period')} hour {planetary_hour.get('hourNumber')} "
+                        f"ruled by {planetary_hour.get('hourRuler')} "
+                        f"({float(planetary_hour.get('scoreImpact', 0)):+.1f})."
+                    ),
+                    f"- Period: {planetary_hour.get('periodStartText')} to {planetary_hour.get('periodEndText')}.",
+                ]
+            )
+
     lines.extend(["", "Election Flags", *election_flag_lines(snapshot)])
+    rules = rule_lines(snapshot)
+    if rules:
+        lines.extend(["", "Pure Python Rules", *rules])
+    timing = snapshot.get("timingProfile", {})
+    if isinstance(timing, dict):
+        lines.extend(["", "Aspect Timing", f"- {timing.get('summary', 'Timing profile unavailable.')}"])
     return lines
 
 
@@ -119,9 +155,14 @@ def election_flag_lines(snapshot: dict[str, object]) -> list[str]:
 def format_aspect_summary(aspect: dict[str, object]) -> str:
     phase_label = str(aspect.get("phaseLabel") or "Unknown")
     change = float(aspect.get("orbChangePerDay", 0))
+    timing = ""
+    if aspect.get("isApplying") and aspect.get("timeToExactText"):
+        timing = f", exact in {aspect['timeToExactText']}"
+        if aspect.get("perfectsAtText"):
+            timing += f" near {aspect['perfectsAtText']}"
     if aspect.get("phase") == "unknown":
         return f"{aspect['label']} ({aspect['orbText']} orb, phase unknown)"
-    return f"{aspect['label']} ({aspect['orbText']} orb, {phase_label.lower()}, {change:+.2f} deg/day)"
+    return f"{aspect['label']} ({aspect['orbText']} orb, {phase_label.lower()}, {change:+.2f} deg/day{timing})"
 
 
 def format_planet_focus(planet: dict[str, object], aspects: list[dict[str, object]]) -> str:
@@ -162,9 +203,75 @@ def format_score_breakdown(snapshot: dict[str, object]) -> str:
         f"close contacts {breakdown.get('closeContacts', 0)}; "
         f"angularity {float(breakdown.get('angularity', 0)):.1f}; "
         f"dignity {float(breakdown.get('dignity', 0)):.1f}; "
+        f"fixed stars {float(breakdown.get('fixedStar', 0)):+.1f}; "
+        f"rules {float(breakdown.get('electionalRules', 0)):+.1f}; "
+        f"timing {float(breakdown.get('aspectTiming', 0)):+.1f}; "
         f"retrograde pressure {float(breakdown.get('retrogradePressure', 0)):.1f}; "
         f"raw {float(breakdown.get('rawScore', 0)):.1f} -> final {breakdown.get('score', snapshot.get('score', '?'))}."
     )
+
+
+def format_aspectarian(snapshot: dict[str, object]) -> str:
+    """Render a compact aspectarian-style table for the selected chart."""
+
+    planets = [planet for planet in snapshot.get("positions", []) if isinstance(planet, dict)]
+    aspects = snapshot.get("detectedAspects", [])
+    if not planets:
+        return "Aspectarian unavailable."
+    names = [str(planet.get("name", "")) for planet in planets]
+    abbreviations = [name[:3].title() for name in names]
+    by_pair = {}
+    if isinstance(aspects, list):
+        for aspect in aspects:
+            if not isinstance(aspect, dict):
+                continue
+            bodies = aspect.get("bodies", [])
+            if not isinstance(bodies, list) or len(bodies) != 2:
+                continue
+            key = frozenset(str(body) for body in bodies)
+            by_pair[key] = aspect
+
+    lines = ["Aspectarian", "      " + " ".join(f"{abbr:>4}" for abbr in abbreviations)]
+    glyphs = {
+        "Conjunction": "Conj",
+        "Trine": "Tri",
+        "Square": "Sqr",
+        "Opposition": "Opp",
+        "Sextile": "Sex",
+    }
+    for row_index, row_name in enumerate(names):
+        row = [f"{abbreviations[row_index]:<5}"]
+        for column_index, column_name in enumerate(names):
+            if column_index <= row_index:
+                row.append("   .")
+                continue
+            aspect = by_pair.get(frozenset((row_name, column_name)))
+            if not aspect:
+                row.append("   -")
+                continue
+            marker = glyphs.get(str(aspect.get("aspectName")), str(aspect.get("aspectName", ""))[:3].title())
+            tone = "!" if aspect.get("tone") == "stress" else "+" if aspect.get("tone") == "support" else "*"
+            row.append(f"{tone}{marker[:3]:>3}")
+        lines.append(" ".join(row))
+
+    lines.extend(["", "Legend: + supportive, ! stressful, * mixed."])
+    return "\n".join(lines)
+
+
+def rule_lines(snapshot: dict[str, object]) -> list[str]:
+    rule_evaluations = snapshot.get("ruleEvaluations")
+    if not isinstance(rule_evaluations, dict):
+        return []
+    rules = rule_evaluations.get("rules", [])
+    if not isinstance(rules, list):
+        return []
+    lines = []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        impact = float(rule.get("scoreImpact", 0))
+        lines.append(f"- {rule.get('title', 'Rule')}: {rule.get('detail', '')} ({impact:+.1f})")
+    return lines
 
 
 def score_reason_lines(snapshot: dict[str, object]) -> list[str]:
@@ -191,6 +298,12 @@ def format_window_label(rank: int, window: dict[str, object]) -> str:
     return f"{rank}. {window['time']}  Score {window['score']}  +{support}/!{stress}  {window['title']}"
 
 
+def format_fixed_star_contact(contact: dict[str, object]) -> str:
+    score = float(contact.get("score", 0))
+    score_text = f"{score:+.1f}" if score else "0.0"
+    return f"{contact['label']} ({contact['orbText']} orb, {contact.get('tone', 'mixed')}, {score_text})"
+
+
 def build_report_text(
     selected_window: dict[str, object] | None,
     windows: list[dict[str, object]],
@@ -200,6 +313,10 @@ def build_report_text(
         return "No electional report calculated."
 
     aspects = "\n".join(f"- {format_aspect_summary(aspect)}" for aspect in selected_window["detectedAspects"])
+    fixed_star_contacts = "\n".join(
+        f"- {format_fixed_star_contact(contact)}: {contact.get('note', '')}"
+        for contact in selected_window.get("fixedStarContacts", [])
+    )
     planets = "\n".join(
         (
             f"- {planet['name']}: {format_position(planet)} House {planet['house']} "
@@ -214,7 +331,37 @@ def build_report_text(
         )
         for lot in selected_window.get("lots", [])
     )
+    nodes = "\n".join(
+        (
+            f"- {node['name']}: {format_position(node)} House {node['house']} "
+            f"({node.get('calculation', 'node calculation')})"
+        )
+        for node in selected_window.get("lunarNodes", [])
+    )
     ranked_windows = "\n".join(format_window_label(index, window) for index, window in enumerate(windows, start=1))
+    backend = selected_window.get("calculationBackend", {})
+    backend_lines = []
+    if isinstance(backend, dict):
+        backend_lines.extend(
+            [
+                f"- Active engine: {backend.get('activeEngine', selected_window['engine'])}",
+                f"- Ephemeris path: {backend.get('ephemerisPath', 'n/a')}",
+                f"- Ephemeris files: {backend.get('ephemerisFileCount', 'n/a')}",
+            ]
+        )
+        if backend.get("fallbackReason"):
+            backend_lines.append(f"- Fallback: {backend['fallbackReason']}")
+    notes = "\n".join(f"- {note}" for note in selected_window.get("calculationNotes", []))
+    rules = "\n".join(rule_lines(selected_window))
+    planetary_hour = selected_window.get("planetaryHour", {})
+    planetary_hour_lines = []
+    if isinstance(planetary_hour, dict) and planetary_hour.get("available"):
+        planetary_hour_lines = [
+            f"- Day ruler: {planetary_hour.get('dayRuler')}",
+            f"- Hour ruler: {planetary_hour.get('hourRuler')}",
+            f"- Hour: {planetary_hour.get('period')} {planetary_hour.get('hourNumber')}",
+            f"- Period: {planetary_hour.get('periodStartText')} to {planetary_hour.get('periodEndText')}",
+        ]
 
     return (
         "Electional Software Report\n"
@@ -225,13 +372,21 @@ def build_report_text(
         f"Ayanamsha: {float(selected_window['ayanamsha']):.3f} deg\n"
         f"Score: {selected_window['score']}\n"
         f"Lunar phase: {format_lunar_phase(selected_window)}\n"
+        f"Aspect timing: {selected_window.get('timingProfile', {}).get('summary', 'Timing profile unavailable.')}\n"
         f"Score explanation: {format_score_breakdown(selected_window)}\n"
         f"Score reasons:\n{chr(10).join(score_reason_lines(selected_window))}\n"
+        f"Planetary hour:\n{chr(10).join(planetary_hour_lines) or '- Planetary hour unavailable.'}\n"
+        f"Calculation backend:\n{chr(10).join(backend_lines) or '- Backend unavailable.'}\n"
+        f"Calculation notes:\n{notes or '- No calculation warnings.'}\n"
         f"Conditions:\n{chr(10).join(condition_lines(selected_window))}\n"
+        f"Rules:\n{rules or '- No active caution/support rules.'}\n"
         f"Window: {selected_window.get('title', 'Electional window')}\n"
         f"Note: {selected_window.get('note', '')}\n\n"
         f"Ranked Windows:\n{ranked_windows}\n\n"
         f"Aspects:\n{aspects or '- No selected major aspects in orb.'}\n\n"
+        f"Aspectarian:\n{format_aspectarian(selected_window)}\n\n"
+        f"Fixed Star Contacts:\n{fixed_star_contacts or '- No fixed-star conjunctions within 1 degree.'}\n\n"
+        f"Lunar Nodes:\n{nodes or '- No lunar nodes calculated.'}\n\n"
         f"Lots:\n{lots or '- No lots calculated.'}\n\n"
         f"Planets:\n{planets}\n"
     )

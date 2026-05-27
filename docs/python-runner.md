@@ -15,10 +15,10 @@ Open Python Runner.bat
 
 This opens:
 
-- A Python shell for running code.
-- `desktop_app.py`, the desktop application launcher.
-- `backend/electional/desktop.py`, the native UI code.
-- `backend/electional/chart.py`, the electional chart engine.
+- A single Python shell for running project code.
+- A startup tip showing the project path and a useful chart-engine import.
+
+It no longer opens multiple source editor windows by default.
 
 ## Run The App
 

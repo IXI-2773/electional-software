@@ -8,6 +8,7 @@ from math import atan, atan2, cos, floor, radians, sin, tan
 import astronomy
 
 from .ephemeris import get_zodiac_position, normalize_degrees
+from .professional import PROFESSIONAL_HOUSE_SYSTEM_IDS, swiss_house_cusps
 from .systems import apply_zodiac_system
 from .time_utils import astronomy_time_string
 
@@ -104,7 +105,7 @@ def house_number(
     house_system_id: str = "whole-sign",
     house_cusps: list[dict[str, object]] | None = None,
 ) -> int:
-    if house_system_id in {"koch", "topocentric"} and house_cusps:
+    if house_system_id in {"koch", "topocentric", "placidus", "porphyry", "campanus", "regiomontanus", "alcabitius", "sripati"} and house_cusps:
         return cusp_house(longitude, house_cusps)
     if house_system_id == "equal-house":
         return equal_house(longitude, ascendant_longitude)
@@ -117,6 +118,26 @@ def calculate_angles(
     longitude: float,
     zodiac_system_id: str = "tropical",
 ) -> list[dict[str, object]]:
+    professional = swiss_house_cusps(moment, latitude, longitude, "placidus")
+    if professional:
+        ascendant = float(professional["ascendant"])
+        midheaven = float(professional["midheaven"])
+        longitudes = (
+            ascendant,
+            midheaven,
+            normalize_degrees(ascendant + 180),
+            normalize_degrees(midheaven + 180),
+        )
+        return [
+            {
+                **definition,
+                "longitude": apply_zodiac_system(angle_longitude, moment, zodiac_system_id),
+                "tropicalLongitude": angle_longitude,
+                "zodiac": get_zodiac_position(apply_zodiac_system(angle_longitude, moment, zodiac_system_id)),
+            }
+            for definition, angle_longitude in zip(ANGLE_DEFINITIONS, longitudes)
+        ]
+
     local_sidereal = local_sidereal_degrees(moment, longitude)
     obliquity = true_obliquity(moment)
     ascendant = calculate_ascendant(local_sidereal, latitude, obliquity)
@@ -222,6 +243,25 @@ def koch_cusp_longitudes(local_sidereal: float, obliquity: float, latitude: floa
     return tropical
 
 
+def quadrant_trisection_cusps(ascendant: float, midheaven: float) -> dict[int, float]:
+    descendant = normalize_degrees(ascendant + 180)
+    ic = normalize_degrees(midheaven + 180)
+    return {
+        1: ascendant,
+        2: normalize_degrees(ascendant + ((ic - ascendant) % 360) / 3),
+        3: normalize_degrees(ascendant + ((ic - ascendant) % 360) * 2 / 3),
+        4: ic,
+        5: normalize_degrees(ic + ((descendant - ic) % 360) / 3),
+        6: normalize_degrees(ic + ((descendant - ic) % 360) * 2 / 3),
+        7: descendant,
+        8: normalize_degrees(descendant + ((midheaven - descendant) % 360) / 3),
+        9: normalize_degrees(descendant + ((midheaven - descendant) % 360) * 2 / 3),
+        10: midheaven,
+        11: normalize_degrees(midheaven + ((ascendant - midheaven) % 360) / 3),
+        12: normalize_degrees(midheaven + ((ascendant - midheaven) % 360) * 2 / 3),
+    }
+
+
 def calculate_house_cusps(
     moment: datetime,
     latitude: float,
@@ -238,7 +278,31 @@ def calculate_house_cusps(
 
     if house_system_id == "equal-house":
         longitudes = [normalize_degrees(asc + index * 30) for index in range(12)]
-    elif house_system_id in {"koch", "topocentric"}:
+    elif house_system_id in PROFESSIONAL_HOUSE_SYSTEM_IDS:
+        professional = swiss_house_cusps(moment, latitude, longitude, house_system_id)
+        if professional:
+            return [
+                {
+                    "house": index + 1,
+                    "longitude": apply_zodiac_system(tropical_longitude, moment, zodiac_system_id),
+                    "tropicalLongitude": tropical_longitude,
+                    "zodiac": get_zodiac_position(apply_zodiac_system(tropical_longitude, moment, zodiac_system_id)),
+                    "source": professional["source"],
+                }
+                for index, tropical_longitude in enumerate(professional["cusps"])
+            ]
+        if house_system_id not in {"koch", "topocentric"}:
+            tropical = quadrant_trisection_cusps(float(ascendant["tropicalLongitude"]), float(midheaven["tropicalLongitude"]))
+            return [
+                {
+                    "house": house,
+                    "longitude": apply_zodiac_system(tropical[house], moment, zodiac_system_id),
+                    "tropicalLongitude": tropical[house],
+                    "zodiac": get_zodiac_position(apply_zodiac_system(tropical[house], moment, zodiac_system_id)),
+                    "source": "Porphyry fallback",
+                }
+                for house in range(1, 13)
+            ]
         local_sidereal = local_sidereal_degrees(moment, longitude)
         obliquity = true_obliquity(moment)
         if house_system_id == "koch":
@@ -265,6 +329,19 @@ def calculate_house_cusps(
                 "longitude": apply_zodiac_system(tropical[house], moment, zodiac_system_id),
                 "tropicalLongitude": tropical[house],
                 "zodiac": get_zodiac_position(apply_zodiac_system(tropical[house], moment, zodiac_system_id)),
+                "source": "Python fallback",
+            }
+            for house in range(1, 13)
+        ]
+    elif house_system_id in {"porphyry", "sripati"}:
+        tropical = quadrant_trisection_cusps(float(ascendant["tropicalLongitude"]), float(midheaven["tropicalLongitude"]))
+        return [
+            {
+                "house": house,
+                "longitude": apply_zodiac_system(tropical[house], moment, zodiac_system_id),
+                "tropicalLongitude": tropical[house],
+                "zodiac": get_zodiac_position(apply_zodiac_system(tropical[house], moment, zodiac_system_id)),
+                "source": "Python quadrant trisection",
             }
             for house in range(1, 13)
         ]

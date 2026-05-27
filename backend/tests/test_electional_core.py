@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import unittest
 
-from backend.electional.aspects import detect_aspects
+from backend.electional.aspects import aspect_timing, detect_aspects
 from backend.electional.lots import calculate_lots, lot_longitude
 from backend.electional.presets import (
     apply_dignities,
@@ -13,6 +14,7 @@ from backend.electional.presets import (
     summarize_orb,
 )
 from backend.electional.scoring import score_breakdown, score_breakdown_model, score_window
+from backend.electional.timing import timing_profile
 
 
 def position(
@@ -76,6 +78,57 @@ class ElectionalCoreTest(unittest.TestCase):
         self.assertTrue(applying[0]["isApplying"])
         self.assertEqual(separating[0]["phase"], "separating")
         self.assertFalse(separating[0]["isApplying"])
+
+    def test_applying_aspects_include_perfection_timing(self) -> None:
+        preset = get_preset("medieval-electional")
+        detected = detect_aspects(
+            [
+                position("Venus", 0, "Aries", daily_change=0),
+                position("Jupiter", 118, "Cancer", daily_change=4),
+            ],
+            ["trine"],
+            preset.aspect_orbs,
+            datetime(2026, 5, 26, 16, tzinfo=timezone.utc),
+            "America/Los_Angeles",
+        )
+
+        self.assertEqual(detected[0]["phase"], "applying")
+        self.assertAlmostEqual(float(detected[0]["daysToExact"]), 0.5, delta=0.01)
+        self.assertEqual(detected[0]["timeToExactText"], "12h")
+        self.assertTrue(detected[0]["crossesExactWithinDay"])
+        self.assertEqual(detected[0]["timingQuality"], "soon")
+        self.assertIn("PDT", detected[0]["perfectsAtText"])
+
+    def test_separating_aspect_has_no_perfection_timing(self) -> None:
+        timing = aspect_timing({"isApplying": False, "orb": 1, "orbChangePerDay": 1})
+
+        self.assertIsNone(timing["daysToExact"])
+        self.assertEqual(timing["timingQuality"], "not applying")
+
+    def test_timing_profile_summarizes_next_support_and_stress(self) -> None:
+        profile = timing_profile(
+            [
+                {
+                    "label": "Venus trine Jupiter",
+                    "tone": "support",
+                    "isApplying": True,
+                    "daysToExact": 0.5,
+                    "timeToExactText": "12h",
+                },
+                {
+                    "label": "Mars square Saturn",
+                    "tone": "stress",
+                    "isApplying": True,
+                    "daysToExact": 1.5,
+                    "timeToExactText": "1d 12h",
+                },
+            ]
+        )
+
+        self.assertEqual(profile["applyingCount"], 2)
+        self.assertEqual(profile["nextSupport"]["label"], "Venus trine Jupiter")
+        self.assertEqual(profile["nextStress"]["label"], "Mars square Saturn")
+        self.assertIn("Next exact contact", profile["summary"])
 
     def test_traditional_lilly_filters_outer_planets(self) -> None:
         preset = get_preset("traditional-lilly")
@@ -158,6 +211,18 @@ class ElectionalCoreTest(unittest.TestCase):
 
         self.assertEqual(breakdown["applyingSupport"], 1)
         self.assertTrue(any(reason["code"] == "applying-support" for reason in breakdown["reasons"]))
+
+    def test_score_breakdown_rewards_supportive_aspects_perfecting_soon(self) -> None:
+        preset = get_preset("traditional-lilly")
+        positions = apply_dignities([position("Venus", 45, "Taurus"), position("Moon", 165, "Virgo")], preset)
+        later = [{"aspectId": "trine", "tone": "support", "orb": 0.5, "isApplying": True, "timingQuality": "later"}]
+        soon = [{"aspectId": "trine", "tone": "support", "orb": 0.5, "isApplying": True, "timingQuality": "soon"}]
+
+        later_breakdown = score_breakdown(later, positions, preset)
+        soon_breakdown = score_breakdown(soon, positions, preset)
+
+        self.assertGreater(soon_breakdown["aspectTiming"], later_breakdown["aspectTiming"])
+        self.assertTrue(any(reason["code"] == "aspect-timing" for reason in soon_breakdown["reasons"]))
 
     def test_score_breakdown_penalizes_retrograde_pressure(self) -> None:
         preset = get_preset("traditional-lilly")

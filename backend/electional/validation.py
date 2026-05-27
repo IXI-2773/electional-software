@@ -53,14 +53,23 @@ def parse_optional_int(text: str, field_name: str, errors: list[str], *, minimum
     return value
 
 
-def validate_search_inputs(scan_hours_text: str, step_minutes_text: str, minimum_score_text: str, max_results_text: str) -> list[str]:
+def validate_search_inputs(
+    scan_hours_text: str,
+    step_minutes_text: str,
+    minimum_score_text: str,
+    max_results_text: str,
+    minimum_fit_text: str = "",
+) -> list[str]:
     errors: list[str] = []
     scan_hours = parse_optional_int(scan_hours_text, "Scan hours", errors, minimum=0)
     step_minutes = parse_optional_int(step_minutes_text, "Step minutes", errors, minimum=1)
     minimum_score = parse_optional_int(minimum_score_text, "Minimum score", errors, minimum=10)
     parse_optional_int(max_results_text, "Max results", errors, minimum=1)
+    minimum_fit = parse_optional_int(minimum_fit_text, "Minimum fit", errors, minimum=0)
     if minimum_score is not None and minimum_score > 99:
         errors.append("Minimum score must be 99 or lower.")
+    if minimum_fit is not None and minimum_fit > 5:
+        errors.append("Minimum fit must be 5 or lower.")
     if scan_hours is not None and step_minutes is not None and scan_hours * 60 < step_minutes:
         errors.append("Step minutes must fit inside the scan range.")
     return errors

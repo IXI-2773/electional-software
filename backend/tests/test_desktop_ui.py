@@ -4,12 +4,14 @@ from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-
 from backend.electional.desktop import (
+    aspect_curve_points,
+    body_marker_offsets,
     fixed_star_contact_count,
     compact_time_label,
     location_summary,
     planet_abbreviation,
+    planet_marker_offsets,
     star_abbreviation,
     score_band_label,
     selection_offset_label,
@@ -25,12 +27,22 @@ from backend.electional.locations import (
     build_custom_location,
     combined_location_names,
     default_location_for_timezone,
+    home_location_for_app,
+    load_home_location_name,
     load_user_locations,
+    save_home_location_name,
     save_user_locations,
     upsert_user_location,
 )
+from backend.electional.presets import get_preset
 from backend.electional.references import dignity_table_lines, lot_reference_lines, system_reference_lines
 from backend.electional.reporting import (
+    build_classical_point_data_page,
+    build_comparison_export_text,
+    build_decision_brief_page,
+    build_medieval_data_page,
+    build_transit_search_page,
+    build_window_comparison_page,
     condition_lines,
     constellation_lines,
     election_flag_lines,
@@ -49,7 +61,16 @@ from backend.electional.reporting import (
     score_accounting_lines,
     score_evaluation_lines,
 )
-from backend.electional.search import build_search_config_from_text, format_search_summary
+from backend.electional.scoring import score_breakdown
+from backend.electional.search import (
+    build_search_config_from_text,
+    format_search_summary,
+    has_angular_malefic,
+    has_applying_support,
+    has_major_stress,
+    moon_is_non_void,
+    rank_search_windows,
+)
 from backend.electional.screening import solar_elongation_summary
 from backend.electional.session import clean_session_state, load_session_state, save_session_state
 from backend.electional.validation import validate_election_inputs, validate_search_inputs
@@ -64,6 +85,36 @@ class DesktopUiHelpersTest(unittest.TestCase):
     def test_wheel_degrees_places_ascendant_on_left_side(self) -> None:
         self.assertEqual(wheel_degrees(110.0, 110.0), 180)
         self.assertEqual(wheel_degrees(290.0, 110.0), 0)
+
+    def test_planet_marker_offsets_spread_close_cluster_symmetrically(self) -> None:
+        offsets = planet_marker_offsets([10.0, 13.0, 16.0], compact=False)
+
+        self.assertLess(offsets[0][0], offsets[1][0])
+        self.assertLess(offsets[1][0], offsets[2][0])
+        self.assertGreater(offsets[0][1], offsets[1][1])
+        self.assertGreater(offsets[2][1], offsets[1][1])
+
+    def test_planet_marker_offsets_merge_wraparound_cluster(self) -> None:
+        offsets = planet_marker_offsets([358.0, 2.0, 6.0], compact=True)
+
+        self.assertTrue(all(radial > 0 for _, radial in offsets))
+        self.assertLess(offsets[0][0], offsets[1][0])
+        self.assertLess(offsets[1][0], offsets[2][0])
+
+    def test_body_marker_offsets_support_lots_and_nodes_too(self) -> None:
+        offsets = body_marker_offsets([120.0, 123.0], compact=False, crowd_threshold=10.0, angle_step=4.5, radial_step=10.0)
+
+        self.assertEqual(len(offsets), 2)
+        self.assertLess(offsets[0][0], offsets[1][0])
+        self.assertTrue(all(radial > 0 for _, radial in offsets))
+
+    def test_aspect_curve_points_route_through_inner_control_point(self) -> None:
+        points = aspect_curve_points(0.0, 0.0, 100.0, 20.0, 140.0, compact=False, lane_index=1)
+
+        self.assertEqual(len(points), 6)
+        control_x, control_y = points[2], points[3]
+        control_radius = (control_x ** 2 + control_y ** 2) ** 0.5
+        self.assertLess(control_radius, 100.0)
 
     def test_header_helpers_keep_timing_and_location_readable(self) -> None:
         snapshot = {"formattedTime": "Tue, May 26, 2026, 9:23 PM PDT"}
@@ -91,20 +142,112 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("Time zone must be a valid IANA name like America/Los_Angeles.", errors)
 
     def test_search_config_parses_optional_desktop_controls(self) -> None:
-        config = build_search_config_from_text("12", "30", "60", "8")
+        config = build_search_config_from_text("12", "30", "60", "8", "2", True)
 
         self.assertEqual(config.end_offset_minutes, 720)
         self.assertEqual(config.step_minutes, 30)
         self.assertEqual(config.minimum_score, 60)
         self.assertEqual(config.max_results, 8)
-        self.assertEqual(format_search_summary(config), "Scan 12h from start, every 30m; score >= 60, top 8.")
+        self.assertEqual(config.minimum_fit, 2)
+        self.assertTrue(config.avoid_major_stress)
+        self.assertEqual(format_search_summary(config), "Scan 12h from start, every 30m; score >= 60, fit >= 2, no major stress, top 8.")
 
     def test_search_validation_rejects_impossible_values(self) -> None:
-        errors = validate_search_inputs("1", "90", "100", "0")
+        errors = validate_search_inputs("1", "90", "100", "0", "9")
 
         self.assertIn("Step minutes must fit inside the scan range.", errors)
         self.assertIn("Minimum score must be 99 or lower.", errors)
         self.assertIn("Max results must be at least 1.", errors)
+        self.assertIn("Minimum fit must be 5 or lower.", errors)
+
+    def test_rank_search_windows_can_filter_for_fit_and_major_stress(self) -> None:
+        clean_high_fit = {
+            "score": 90,
+            "scoreBreakdown": {"objectiveMatches": 2},
+            "detectedAspects": [{"tone": "support", "orb": 1.1, "isApplying": True}],
+            "positions": [{"name": "Jupiter", "isAngular": True, "closestAngle": {"distance": 2.0}}],
+        }
+        stressed = {
+            "score": 95,
+            "scoreBreakdown": {"objectiveMatches": 3},
+            "detectedAspects": [{"tone": "stress", "orb": 0.8, "isApplying": True}],
+            "positions": [{"name": "Mars", "isAngular": True, "closestAngle": {"distance": 2.0}}],
+        }
+        low_fit = {
+            "score": 92,
+            "scoreBreakdown": {"objectiveMatches": 0},
+            "detectedAspects": [],
+            "positions": [],
+        }
+
+        ranked = rank_search_windows(
+            [stressed, clean_high_fit, low_fit],
+            build_search_config_from_text("12", "30", "60", "", "2", True),
+        )
+
+        self.assertEqual(ranked, [clean_high_fit])
+
+    def test_rank_search_windows_can_require_support_avoid_angular_malefics_and_keep_moon_non_void(self) -> None:
+        clean = {
+            "score": 88,
+            "scoreBreakdown": {"objectiveMatches": 2},
+            "detectedAspects": [{"tone": "support", "orb": 1.2, "isApplying": True}],
+            "positions": [{"name": "Jupiter", "isAngular": True, "closestAngle": {"distance": 2.0}}],
+            "moonCondition": {"voidOfCourse": {"isVoid": False}},
+        }
+        no_support = {
+            "score": 90,
+            "scoreBreakdown": {"objectiveMatches": 2},
+            "detectedAspects": [{"tone": "support", "orb": 2.8, "isApplying": False}],
+            "positions": [],
+            "moonCondition": {"voidOfCourse": {"isVoid": False}},
+        }
+        angular_malefic = {
+            "score": 92,
+            "scoreBreakdown": {"objectiveMatches": 2},
+            "detectedAspects": [{"tone": "support", "orb": 1.0, "isApplying": True}],
+            "positions": [{"name": "Mars", "isAngular": True, "closestAngle": {"distance": 2.0}}],
+            "moonCondition": {"voidOfCourse": {"isVoid": False}},
+        }
+        void_moon = {
+            "score": 89,
+            "scoreBreakdown": {"objectiveMatches": 2},
+            "detectedAspects": [{"tone": "support", "orb": 1.0, "isApplying": True}],
+            "positions": [],
+            "moonCondition": {"voidOfCourse": {"isVoid": True}},
+        }
+
+        ranked = rank_search_windows(
+            [void_moon, angular_malefic, no_support, clean],
+            build_search_config_from_text("12", "30", "60", "", "2", False, True, True, True),
+        )
+
+        self.assertEqual(ranked, [clean])
+
+    def test_has_major_stress_detects_tight_stress_or_angular_malefic(self) -> None:
+        self.assertTrue(
+            has_major_stress(
+                {
+                    "detectedAspects": [{"tone": "stress", "orb": 0.9, "isApplying": False}],
+                    "positions": [],
+                }
+            )
+        )
+
+    def test_deeper_search_helpers_detect_support_malefics_and_void_moon(self) -> None:
+        self.assertTrue(has_applying_support({"detectedAspects": [{"tone": "support", "isApplying": True}]}))
+        self.assertTrue(
+            has_angular_malefic({"positions": [{"name": "Saturn", "isAngular": True, "closestAngle": {"distance": 3.0}}]})
+        )
+        self.assertFalse(moon_is_non_void({"moonCondition": {"voidOfCourse": {"isVoid": True}}}))
+        self.assertTrue(
+            has_major_stress(
+                {
+                    "detectedAspects": [],
+                    "positions": [{"name": "Saturn", "isAngular": True, "closestAngle": {"distance": 2.5}}],
+                }
+            )
+        )
 
     def test_default_location_matches_local_timezone(self) -> None:
         location = default_location_for_timezone(DEFAULT_TIMEZONE)
@@ -149,10 +292,10 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("Workable election", label)
 
     def test_window_score_color_groups_score_ranges(self) -> None:
-        self.assertEqual(window_score_color(90), "#d9f4e7")
-        self.assertEqual(window_score_color(82), "#e8f6f1")
-        self.assertEqual(window_score_color(65), "#fff4d6")
-        self.assertEqual(window_score_color(44), "#f8dde3")
+        self.assertEqual(window_score_color(90), "#e6f6ef")
+        self.assertEqual(window_score_color(82), "#eef7f5")
+        self.assertEqual(window_score_color(65), "#fff5df")
+        self.assertEqual(window_score_color(44), "#f9e7eb")
         self.assertEqual(score_band_label(90), "Prime")
         self.assertEqual(score_band_label(82), "Strong")
         self.assertEqual(score_band_label(65), "Workable")
@@ -161,20 +304,20 @@ class DesktopUiHelpersTest(unittest.TestCase):
     def test_summary_chip_lines_surface_chart_context(self) -> None:
         snapshot = {
             "lunarPhase": {"name": "Waxing Gibbous"},
-            "detectedAspects": [{"tone": "support"}, {"tone": "stress"}],
-            "positions": [{"isAngular": True}, {"isAngular": False}],
             "fixedStarContacts": [{"label": "Venus conjunct Spica"}],
             "planetaryHour": {"available": True, "hourRuler": "Jupiter"},
-            "ruleEvaluations": {"rules": [{"title": "Mercury combust"}]},
+            "zodiacSystem": type("System", (), {"name": "Sidereal Lahiri"})(),
+            "houseSystem": type("HouseSystem", (), {"name": "Koch"})(),
         }
 
         self.assertEqual(fixed_star_contact_count(snapshot), 1)
-        self.assertIn("Moon: Waxing Gibbous", summary_chip_lines(snapshot))
-        self.assertIn("Hour: Jupiter", summary_chip_lines(snapshot))
-        self.assertIn("Aspects: +1 / !1", summary_chip_lines(snapshot))
-        self.assertIn("Angular: 1", summary_chip_lines(snapshot))
-        self.assertIn("Fixed stars: 1", summary_chip_lines(snapshot))
-        self.assertIn("Rules: 1", summary_chip_lines(snapshot))
+        chips = summary_chip_lines(snapshot, "Classical 7")
+
+        self.assertIn("Moon: Waxing Gibbous", chips)
+        self.assertIn("Hour: Jupiter", chips)
+        self.assertIn("Points: Classical 7", chips)
+        self.assertIn("Zodiac: Sidereal Lahiri", chips)
+        self.assertIn("Houses: Koch", chips)
 
     def test_selection_offset_label_explains_current_vs_selected(self) -> None:
         start = {"date": datetime(2026, 5, 26, 16, 0)}
@@ -250,6 +393,35 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("support 1", summary)
         self.assertIn("retrograde pressure 3.0", summary)
         self.assertIn("raw 72.4 -> final 72", summary)
+
+    def test_score_breakdown_applies_objective_specific_weighting(self) -> None:
+        preset = get_preset("traditional-lilly")
+        positions = [
+            {
+                "name": "Mercury",
+                "isAngular": False,
+                "isRetrograde": True,
+                "dignity": {"score": 0},
+            },
+            {
+                "name": "Jupiter",
+                "isAngular": True,
+                "isRetrograde": False,
+                "closestAngle": {"distance": 2.0},
+                "dignity": {"score": 3},
+            },
+        ]
+        aspects = [
+            {"aspectId": "trine", "tone": "support", "orb": 1.0, "isApplying": True, "timingQuality": "soon"},
+            {"aspectId": "square", "tone": "stress", "orb": 1.0, "isApplying": True, "timingQuality": "soon"},
+        ]
+
+        launch = score_breakdown(aspects, positions, preset, objective="Launch or publish")
+        travel = score_breakdown(aspects, positions, preset, objective="Travel departure")
+
+        self.assertNotEqual(launch["score"], travel["score"])
+        reasons = travel["reasons"]
+        self.assertTrue(any(reason.get("code") == "objective-weighting" for reason in reasons))
 
     def test_score_accounting_and_evaluation_lines_are_human_readable(self) -> None:
         snapshot = {
@@ -546,6 +718,8 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertTrue(loaded["display_options"]["compact_wheel"])
         self.assertFalse(loaded["display_options"]["show_fixed_stars"])
         self.assertEqual(loaded["display_options"]["wheel_zoom"], 0.94)
+        self.assertEqual(loaded["display_options"]["point_set"], "ten-planets")
+        self.assertEqual(loaded["display_options"]["page_mode"], "wheel")
 
     def test_user_locations_round_trip(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -559,6 +733,34 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(loaded[0].name, "Home Base")
         self.assertEqual(loaded[0].timezone, "America/Los_Angeles")
 
+    def test_home_location_name_round_trip(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "location-settings.json"
+
+            save_home_location_name("Temple Office", path)
+            loaded = load_home_location_name(path)
+            save_home_location_name(None, path)
+            cleared = load_home_location_name(path)
+
+        self.assertEqual(loaded, "Temple Office")
+        self.assertIsNone(cleared)
+
+    def test_home_location_for_app_prefers_saved_home(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            settings_path = Path(temp_dir) / "location-settings.json"
+            save_home_location_name("Temple Office", settings_path)
+            location = home_location_for_app(
+                user_locations=[LocationPreset("user-temple", "Temple Office", 35.0, -120.0, "America/Los_Angeles")],
+                settings_path=settings_path,
+            )
+
+        self.assertEqual(location.name, "Temple Office")
+
+    def test_session_state_infers_full_point_set_from_legacy_lot_display(self) -> None:
+        loaded = clean_session_state({"display_options": {"show_lots": True}})
+
+        self.assertEqual(loaded["display_options"]["point_set"], "full-electional")
+
     def test_user_location_upsert_replaces_same_name(self) -> None:
         original = LocationPreset("user-home", "Home Base", 33.0, -118.0, "America/Los_Angeles")
         updated = LocationPreset("user-home", "Home Base", 34.0, -119.0, "America/Los_Angeles")
@@ -567,6 +769,210 @@ class DesktopUiHelpersTest(unittest.TestCase):
 
         self.assertEqual(len(locations), 1)
         self.assertEqual(locations[0].latitude, 34.0)
+
+    def test_medieval_data_page_summarizes_classical_context(self) -> None:
+        snapshot = {
+            "preset": type("Preset", (), {"name": "Traditional Lilly"})(),
+            "zodiacSystem": type("System", (), {"name": "Sidereal Lahiri"})(),
+            "houseSystem": type("HouseSystem", (), {"name": "Koch"})(),
+            "ayanamsha": 24.1,
+            "score": 92,
+            "lunarPhase": {"name": "Waxing Gibbous", "illumination": 0.72, "ageDays": 10.2, "isWaxing": True},
+            "judgmentContexts": {
+                "significatorContext": {"summaryLines": ["- Jupiter signifies launch success."]},
+                "moonCondition": {"summaryLines": ["- Moon applies to a benefic."]},
+                "houseRulerContext": {"summaryLines": ["- 10th ruler is dignified."]},
+                "receptionContext": {"summaryLines": ["- Venus receives Mercury by sign."]},
+                "planetConditionContext": {"summaryLines": ["- Jupiter is angular."]},
+            },
+            "lots": [{"name": "Part of Fortune", "zodiac": {"sign": "Aries", "degree": 12, "minute": 0}, "house": 10, "formula": "ASC + Moon - Sun"}],
+        }
+
+        text = build_medieval_data_page(snapshot)
+
+        self.assertIn("Medieval Data Page", text)
+        self.assertIn("Traditional Lilly", text)
+        self.assertIn("Part of Fortune", text)
+        self.assertIn("Verdict", text)
+        self.assertIn("Balance of Testimony", text)
+        self.assertIn("Moon and Significators", text)
+
+    def test_classical_point_data_page_summarizes_positions_lots_and_nodes(self) -> None:
+        snapshot = {
+            "preset": type("Preset", (), {"name": "Traditional Lilly"})(),
+            "zodiacSystem": type("System", (), {"name": "Sidereal Lahiri"})(),
+            "houseSystem": type("HouseSystem", (), {"name": "Koch"})(),
+            "ayanamsha": 24.1,
+            "score": 92,
+            "positions": [
+                {
+                    "name": "Jupiter",
+                    "house": 10,
+                    "zodiac": {"sign": "Aries", "degree": 12, "minute": 0},
+                    "dignity": {"label": "Domicile", "boundLord": "Jupiter", "isOwnBound": False},
+                    "motion": {"label": "Direct", "dailyLongitudeChange": 0.23},
+                    "closestAngle": {"shortName": "MC", "distance": 2.1},
+                }
+            ],
+            "angles": [{"shortName": "ASC", "zodiac": {"sign": "Cancer", "degree": 20, "minute": 8}}],
+            "houseCusps": [{"house": 10, "zodiac": {"sign": "Aries", "degree": 6, "minute": 32}}],
+            "lots": [
+                {
+                    "name": "Part of Fortune",
+                    "zodiac": {"sign": "Aries", "degree": 12, "minute": 0},
+                    "house": 10,
+                    "formula": "ASC + Moon - Sun",
+                    "topic": "Prosperity",
+                }
+            ],
+            "lunarNodes": [
+                {
+                    "name": "True North Node",
+                    "zodiac": {"sign": "Pisces", "degree": 18, "minute": 30},
+                    "house": 9,
+                    "calculation": "true node",
+                }
+            ],
+            "fixedStarContacts": [{"label": "Venus conjunct Spica", "orbText": "0 deg 14 min", "tone": "support", "score": 4.0}],
+        }
+
+        text = build_classical_point_data_page(snapshot)
+
+        self.assertIn("Classical Point Data", text)
+        self.assertIn("Jupiter", text)
+        self.assertIn("House Cusps", text)
+        self.assertIn("Part of Fortune", text)
+        self.assertIn("True North Node", text)
+        self.assertIn("Venus conjunct Spica", text)
+
+    def test_transit_search_page_summarizes_ranked_windows(self) -> None:
+        input_snapshot = {"date": datetime(2026, 5, 26, 9, 0), "formattedTime": "Tue, May 26, 2026, 9:00 AM PDT"}
+        selected_window = {
+            "date": datetime(2026, 5, 26, 11, 0),
+            "formattedTime": "Tue, May 26, 2026, 11:00 AM PDT",
+            "title": "Launch or publish",
+            "score": 94,
+            "note": "Strong angular benefic support.",
+            "detectedAspects": [{"label": "Sun trine Jupiter"}],
+            "timingProfile": {"summary": "Next support perfects within the hour."},
+            "preset": type("Preset", (), {"name": "Traditional Lilly"})(),
+        }
+        windows = [selected_window]
+        location = LocationPreset("los-angeles", "Los Angeles, CA", 34.0522, -118.2437, "America/Los_Angeles")
+
+        text = build_transit_search_page(input_snapshot, selected_window, windows, location, "Scan 12h from start, every 30m; score >= 70.")
+
+        self.assertIn("Transit Search Page", text)
+        self.assertIn("Difference: +2h", text)
+        self.assertIn("Los Angeles, CA", text)
+        self.assertIn("Sun trine Jupiter", text)
+
+    def test_decision_brief_page_translates_score_into_guidance(self) -> None:
+        input_snapshot = {"date": datetime(2026, 5, 26, 9, 0)}
+        selected_window = {
+            "date": datetime(2026, 5, 26, 11, 0),
+            "formattedTime": "Tue, May 26, 2026, 11:00 AM PDT",
+            "score": 94,
+            "note": "Strong angular benefic support.",
+            "detectedAspects": [
+                {"label": "Sun trine Jupiter", "tone": "support"},
+                {"label": "Mars square Pluto", "tone": "stress"},
+            ],
+            "timingProfile": {"summary": "Next support perfects within the hour."},
+            "scoreBreakdown": {
+                "objectiveMatches": 2,
+                "evaluation": {
+                    "band": "Prime",
+                    "grade": "A",
+                    "strengths": ["Objective fit +8.0"],
+                    "risks": ["Risk pressure -2.0"],
+                },
+                "reasons": [{"label": "Preferred aspect types", "value": 8.0, "count": 2}],
+            },
+        }
+        location = LocationPreset("los-angeles", "Los Angeles, CA", 34.0522, -118.2437, "America/Los_Angeles")
+
+        text = build_decision_brief_page(input_snapshot, selected_window, "Launch or publish", location)
+
+        self.assertIn("Decision Brief", text)
+        self.assertIn("Objective fit: High fit", text)
+        self.assertIn("Why It Matches", text)
+        self.assertIn("Watchouts", text)
+        self.assertIn("Sun trine Jupiter", text)
+
+    def test_decision_brief_page_uses_objective_specific_guidance(self) -> None:
+        input_snapshot = {"date": datetime(2026, 5, 26, 9, 0)}
+        selected_window = {
+            "date": datetime(2026, 5, 26, 11, 0),
+            "formattedTime": "Tue, May 26, 2026, 11:00 AM PDT",
+            "score": 83,
+            "note": "Strong angular benefic support.",
+            "detectedAspects": [{"label": "Venus trine Jupiter", "tone": "support"}],
+            "positions": [{"name": "Jupiter", "isAngular": True}],
+            "timingProfile": {"summary": "Support perfects soon."},
+            "scoreBreakdown": {
+                "objectiveMatches": 1,
+                "evaluation": {"band": "Strong", "grade": "B", "strengths": ["Objective fit +4.0"], "risks": []},
+                "reasons": [{"label": "Preferred aspect types", "value": 4.0, "count": 1}],
+            },
+        }
+        location = LocationPreset("los-angeles", "Los Angeles, CA", 34.0522, -118.2437, "America/Los_Angeles")
+
+        launch_text = build_decision_brief_page(input_snapshot, selected_window, "Launch or publish", location)
+        money_text = build_decision_brief_page(input_snapshot, selected_window, "Money or business", location)
+
+        self.assertIn("visibility, momentum", launch_text)
+        self.assertIn("steadier value, practical gains", money_text)
+
+    def test_window_comparison_page_summarizes_top_candidates(self) -> None:
+        input_snapshot = {"date": datetime(2026, 5, 26, 9, 0)}
+        windows = [
+            {
+                "date": datetime(2026, 5, 26, 11, 0),
+                "formattedTime": "Tue, May 26, 2026, 11:00 AM PDT",
+                "score": 94,
+                "title": "High-priority election",
+                "note": "Strong angular benefic support.",
+                "detectedAspects": [{"tone": "support"}],
+                "positions": [{"isAngular": True}],
+                "timingProfile": {"summary": "Next support perfects within the hour."},
+                "scoreBreakdown": {
+                    "objectiveMatches": 2,
+                    "evaluation": {"band": "Prime", "strengths": ["Objective fit +8.0"], "risks": ["Risk pressure -2.0"]},
+                },
+            }
+        ]
+
+        text = build_window_comparison_page(input_snapshot, windows, "Launch or publish")
+
+        self.assertIn("Candidate Comparison", text)
+        self.assertIn("Fit 2", text)
+        self.assertIn("Strength: Objective fit +8.0", text)
+        self.assertIn("Risk: Risk pressure -2.0", text)
+
+    def test_comparison_export_text_combines_brief_and_comparison(self) -> None:
+        input_snapshot = {"date": datetime(2026, 5, 26, 9, 0)}
+        selected_window = {
+            "date": datetime(2026, 5, 26, 11, 0),
+            "formattedTime": "Tue, May 26, 2026, 11:00 AM PDT",
+            "score": 94,
+            "title": "High-priority election",
+            "note": "Strong angular benefic support.",
+            "detectedAspects": [{"label": "Sun trine Jupiter", "tone": "support"}],
+            "positions": [{"name": "Jupiter", "isAngular": True}],
+            "timingProfile": {"summary": "Next support perfects within the hour."},
+            "scoreBreakdown": {
+                "objectiveMatches": 2,
+                "evaluation": {"band": "Prime", "grade": "A", "strengths": ["Objective fit +8.0"], "risks": []},
+                "reasons": [{"label": "Preferred aspect types", "value": 8.0, "count": 2}],
+            },
+        }
+        location = LocationPreset("los-angeles", "Los Angeles, CA", 34.0522, -118.2437, "America/Los_Angeles")
+        text = build_comparison_export_text(input_snapshot, selected_window, [selected_window], "Launch or publish", location)
+
+        self.assertIn("Electional Decision Sheet", text)
+        self.assertIn("Decision Brief", text)
+        self.assertIn("Candidate Comparison", text)
 
     def test_combined_location_names_include_custom_saved_places(self) -> None:
         names = combined_location_names([LocationPreset("user-temple", "Temple Office", 35.0, -120.0, "America/Los_Angeles")])

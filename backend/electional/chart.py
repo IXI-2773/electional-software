@@ -78,7 +78,7 @@ def build_snapshot_for_moment(
         constellation_context,
         judgment_contexts,
     )
-    breakdown = score_breakdown(detected, positions, preset, fixed_star_contacts, rule_evaluations)
+    breakdown = score_breakdown(detected, positions, preset, fixed_star_contacts, rule_evaluations, objective)
     backend_status = calculation_backend_status()
 
     return {

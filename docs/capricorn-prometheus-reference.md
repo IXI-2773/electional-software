@@ -63,6 +63,22 @@ Wheel/page style references:
 - `Page Designs\medieval wheel 1.page_design`
 - `Page Designs\lilly_dignities.page_design`
 
+Point/page combinations now confirmed by directory names:
+
+- `Point Configurations\7 Planets.pt_conf`
+- `Point Configurations\10 Planets.pt_conf`
+- `Point Configurations\part of fortune.pt_conf`
+- `Point Configurations\planets_nodes_pof.pt_conf`
+- `Page Designs\wheel_aspectarian.page_design`
+- `Page Designs\single wheel.page_design`
+- `Page Designs\medieval data page 1.page_design`
+- `Page Designs\classical_point_data.page_design`
+
+These filenames reinforce an important desktop design rule for this project:
+
+- Point configuration should be its own control, separate from page/view mode.
+- Wheel context should stay compact, while dense data belongs in dedicated pages such as aspectarian or medieval data views.
+
 ## Import Strategy
 
 1. Build a local decoder that extracts zlib chunks and UTF-16 strings from the config files.
@@ -77,7 +93,7 @@ Wheel/page style references:
 - Add a `Transit 1 degree` electional scoring preset.
 - Add UI theme choices inspired by `classic`, `black`, `Euro`, and `traditional` wheel designs.
 - Add Arabic Parts as optional electional targets, especially Fortune, Spirit, 10th-house lots, and horary lots. Fortune and Spirit are now implemented as first Lots.
-- Add page modes: `Wheel`, `Wheel + Aspectarian`, `Medieval Data`, and `Transit Search`.
+- Add page modes: `Wheel`, `Wheel + Aspectarian`, `Classical Point Data`, `Medieval Data`, and `Transit Search`.
 - Add point-set presets for `7 Classical`, `10 Planets`, `Planets + Nodes`, and `Planets + Fortune`.
 - Keep sidereal systems prominent, with Lahiri as the first implemented sidereal mode and tropical preserved as an optional comparison system.
 - Add major house systems incrementally. Whole Sign and Equal House are simple foundations; Topocentric/Polich-Page and Koch are now modeled as the first quadrant-style house systems.

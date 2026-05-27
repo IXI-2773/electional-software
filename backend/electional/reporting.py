@@ -5,8 +5,9 @@ from __future__ import annotations
 BENEFIC_NAMES = {"Venus", "Jupiter"}
 CHALLENGING_NAMES = {"Mars", "Saturn"}
 
-from .chart import format_position
+from .chart import format_angle, format_position
 from .locations import LocationPreset
+from .search import has_major_stress
 
 
 def format_dignity_summary(planet: dict[str, object]) -> str:
@@ -189,6 +190,378 @@ def format_planet_focus(planet: dict[str, object], aspects: list[dict[str, objec
     else:
         lines.append("No selected major aspects are currently in orb for this body.")
     return "\n".join(lines)
+
+
+def build_medieval_data_page(snapshot: dict[str, object]) -> str:
+    evaluation_lines = score_evaluation_lines(snapshot)
+    reason_lines = score_reason_lines(snapshot)[:5]
+    flag_lines = election_flag_lines(snapshot)[:4]
+    active_rules = rule_lines(snapshot)[:6]
+    supportive = [
+        str(aspect.get("label"))
+        for aspect in snapshot.get("detectedAspects", [])
+        if isinstance(aspect, dict) and aspect.get("tone") == "support"
+    ][:4]
+    stressful = [
+        str(aspect.get("label"))
+        for aspect in snapshot.get("detectedAspects", [])
+        if isinstance(aspect, dict) and aspect.get("tone") == "stress"
+    ][:4]
+    angular = [
+        f"{planet.get('name')} near {planet.get('closestAngle', {}).get('shortName', 'angle')}"
+        for planet in snapshot.get("positions", [])
+        if isinstance(planet, dict) and planet.get("isAngular")
+    ][:4]
+    planetary_hour = snapshot.get("planetaryHour", {})
+    planetary_hour_line = (
+        f"- {planetary_hour.get('period', 'n/a').title()} hour {planetary_hour.get('hourNumber')} ruled by {planetary_hour.get('hourRuler')}"
+        if isinstance(planetary_hour, dict) and planetary_hour.get("available")
+        else "- Planetary hour unavailable."
+    )
+    lot_lines = (
+        "\n".join(
+            f"- {lot['name']}: {format_position(lot)} H{lot['house']} | {lot['formula']}"
+            + (f" | {lot.get('topic')}" if lot.get("topic") else "")
+            for lot in snapshot.get("lots", [])
+        )
+        if snapshot.get("lots")
+        else "- No lots calculated."
+    )
+    return (
+        f"Medieval Data Page\n"
+        f"Model: {snapshot['preset'].name}\n"
+        f"Zodiac: {snapshot['zodiacSystem'].name}\n"
+        f"House system: {snapshot['houseSystem'].name}\n"
+        f"Ayanamsha: {float(snapshot['ayanamsha']):.3f} deg\n"
+        f"Score: {snapshot['score']}\n"
+        f"Lunar phase: {format_lunar_phase(snapshot)}\n\n"
+        "Verdict\n"
+        + "\n".join(evaluation_lines)
+        + "\n\nBalance of Testimony\n"
+        + (f"- Supportive contacts: {', '.join(supportive)}\n" if supportive else "- Supportive contacts: none selected in orb.\n")
+        + (f"- Stressful contacts: {', '.join(stressful)}\n" if stressful else "- Stressful contacts: none selected in orb.\n")
+        + (f"- Angular emphasis: {', '.join(angular)}\n" if angular else "- Angular emphasis: none among the currently selected planets.\n")
+        + f"{planetary_hour_line}\n\n"
+        + "Score Reasons\n"
+        + "\n".join(reason_lines)
+        + "\n\nElection Flags\n"
+        + "\n".join(flag_lines)
+        + "\n\nMoon and Significators\n"
+        + "\n".join(judgment_context_lines(snapshot, "significatorContext"))
+        + "\n\n"
+        + "\n".join(judgment_context_lines(snapshot, "moonCondition"))
+        + "\n\nHouse Rulers and Reception\n"
+        + "\n".join(judgment_context_lines(snapshot, "houseRulerContext"))
+        + "\n\n"
+        + "\n".join(judgment_context_lines(snapshot, "receptionContext"))
+        + "\n\nPlanet Condition and Aspects\n"
+        + "\n".join(judgment_context_lines(snapshot, "planetConditionContext"))
+        + "\n\n"
+        + "\n".join(judgment_context_lines(snapshot, "advancedAspectContext"))
+        + "\n\nRules\n"
+        + ("\n".join(active_rules) if active_rules else "- No active caution/support rules.")
+        + "\n\nLots\n"
+        + lot_lines
+    )
+
+
+def build_transit_search_page(
+    input_snapshot: dict[str, object],
+    selected_window: dict[str, object],
+    windows: list[dict[str, object]],
+    location: LocationPreset,
+    search_summary: str,
+) -> str:
+    try:
+        delta_minutes = round((selected_window["date"] - input_snapshot["date"]).total_seconds() / 60)
+    except (KeyError, TypeError, AttributeError):
+        delta_label = "n/a"
+    else:
+        sign = "+" if delta_minutes >= 0 else "-"
+        minutes = abs(int(delta_minutes))
+        hours, remaining_minutes = divmod(minutes, 60)
+        if hours and remaining_minutes:
+            delta_label = f"{sign}{hours}h {remaining_minutes}m"
+        elif hours:
+            delta_label = f"{sign}{hours}h"
+        else:
+            delta_label = f"{sign}{remaining_minutes}m"
+
+    ranked_lines = []
+    for index, window in enumerate(windows[:8], start=1):
+        aspect_labels = ", ".join(str(aspect.get("label")) for aspect in window.get("detectedAspects", [])[:2] if isinstance(aspect, dict))
+        ranked_lines.append(
+            f"#{index}  {window.get('formattedTime', 'time n/a')}  "
+            f"score {window.get('score', '?')}  "
+            f"{window.get('note', 'No note available.')}"
+            + (f"  [{aspect_labels}]" if aspect_labels else "")
+        )
+
+    return (
+        "Transit Search Page\n"
+        f"Objective: {selected_window.get('title', 'Electional window')}\n"
+        f"Location: {location.name}\n"
+        f"Search profile: {search_summary}\n"
+        f"Point configuration: {selected_window.get('preset').name if selected_window.get('preset') else 'n/a'}\n\n"
+        "Current State\n"
+        f"- Search start: {input_snapshot.get('formattedTime', 'n/a')}\n"
+        f"- Selected window: {selected_window.get('formattedTime', 'n/a')}\n"
+        f"- Difference: {delta_label}\n"
+        f"- Selected score: {selected_window.get('score', '?')}\n"
+        f"- Timing summary: {selected_window.get('timingProfile', {}).get('summary', 'Timing profile unavailable.')}\n\n"
+        "Ranked Windows\n"
+        + ("\n".join(ranked_lines) if ranked_lines else "- No ranked windows matched the current filters.")
+    )
+
+
+def build_decision_brief_page(
+    input_snapshot: dict[str, object],
+    selected_window: dict[str, object],
+    objective: str,
+    location: LocationPreset,
+) -> str:
+    breakdown = selected_window.get("scoreBreakdown", {})
+    evaluation = breakdown.get("evaluation", {}) if isinstance(breakdown, dict) else {}
+    strengths = evaluation.get("strengths", []) if isinstance(evaluation, dict) else []
+    risks = evaluation.get("risks", []) if isinstance(evaluation, dict) else []
+    fit_matches = int(breakdown.get("objectiveMatches", 0)) if isinstance(breakdown, dict) else 0
+    support_aspects = [
+        str(aspect.get("label"))
+        for aspect in selected_window.get("detectedAspects", [])
+        if isinstance(aspect, dict) and aspect.get("tone") == "support"
+    ][:3]
+    stress_aspects = [
+        str(aspect.get("label"))
+        for aspect in selected_window.get("detectedAspects", [])
+        if isinstance(aspect, dict) and aspect.get("tone") == "stress"
+    ][:3]
+    try:
+        delta_minutes = round((selected_window["date"] - input_snapshot["date"]).total_seconds() / 60)
+    except (KeyError, TypeError, AttributeError):
+        delta_label = "n/a"
+    else:
+        sign = "+" if delta_minutes >= 0 else "-"
+        minutes = abs(int(delta_minutes))
+        hours, remaining = divmod(minutes, 60)
+        delta_label = f"{sign}{hours}h {remaining}m" if hours and remaining else f"{sign}{hours}h" if hours else f"{sign}{remaining}m"
+
+    fit_label = "High fit" if fit_matches >= 2 else "Moderate fit" if fit_matches == 1 else "Open fit"
+    action_lines = objective_recommendation_lines(selected_window, objective)
+
+    return (
+        "Decision Brief\n"
+        f"Objective: {objective}\n"
+        f"Location: {location.name}\n"
+        f"Selected window: {selected_window.get('formattedTime', 'n/a')}\n"
+        f"Window quality: {evaluation.get('band', 'n/a')} / Grade {evaluation.get('grade', 'n/a')}\n"
+        f"Objective fit: {fit_label} ({fit_matches} preferred aspect match{'es' if fit_matches != 1 else ''})\n"
+        f"Timing offset from search start: {delta_label}\n\n"
+        "Recommendation\n"
+        f"- {selected_window.get('note', 'No recommendation note available.')}\n"
+        + "\n".join(action_lines)
+        + "\n\n"
+        "Why It Matches\n"
+        + ("- Strengths: " + "; ".join(str(item) for item in strengths[:3]) + "\n" if strengths else "- Strengths: no strong support categories surfaced.\n")
+        + ("- Supportive contacts: " + "; ".join(support_aspects) + "\n" if support_aspects else "- Supportive contacts: none currently selected in orb.\n")
+        + "\n"
+        "Watchouts\n"
+        + ("- Risks: " + "; ".join(str(item) for item in risks[:3]) + "\n" if risks else "- Risks: no major risk categories surfaced.\n")
+        + ("- Stressful contacts: " + "; ".join(stress_aspects) + "\n" if stress_aspects else "- Stressful contacts: none currently selected in orb.\n")
+        + "\n"
+        "Understanding\n"
+        + "\n".join(score_reason_lines(selected_window)[:5])
+        + "\n\nTiming\n"
+        + f"- {selected_window.get('timingProfile', {}).get('summary', 'Timing profile unavailable.')}\n"
+        + "\n".join(election_flag_lines(selected_window)[:3])
+    )
+
+
+def objective_recommendation_lines(selected_window: dict[str, object], objective: str) -> list[str]:
+    objective_key = objective.lower()
+    score = int(selected_window.get("score", 0))
+    fit = int(selected_window.get("scoreBreakdown", {}).get("objectiveMatches", 0))
+    major_stress = has_major_stress(selected_window)
+    support_labels = [
+        str(aspect.get("label"))
+        for aspect in selected_window.get("detectedAspects", [])
+        if isinstance(aspect, dict) and aspect.get("tone") == "support"
+    ]
+    angular_labels = [
+        str(planet.get("name"))
+        for planet in selected_window.get("positions", [])
+        if isinstance(planet, dict) and planet.get("isAngular")
+    ]
+
+    if "launch" in objective_key or "publish" in objective_key:
+        lines = [
+            "- Favor this when the goal is visibility, momentum, and a confident public start."
+        ]
+        if fit >= 2:
+            lines.append("- The window matches the launch objective strongly enough to prioritize over nearby alternatives.")
+        if angular_labels:
+            lines.append(f"- Angular emphasis can help visibility and traction: {', '.join(angular_labels[:2])}.")
+    elif "meeting" in objective_key or "negotiation" in objective_key:
+        lines = [
+            "- Favor this when you want smoother agreement, listening, and lower friction."
+        ]
+        if support_labels:
+            lines.append(f"- Supportive contacts may help cooperation and tone-setting: {', '.join(support_labels[:2])}.")
+        if major_stress:
+            lines.append("- Be cautious: the chart still carries enough tension to trigger defensiveness or hard bargaining.")
+    elif "travel" in objective_key:
+        lines = [
+            "- Favor this when reliability, clean timing, and fewer disruptions matter more than publicity."
+        ]
+        if score >= 76:
+            lines.append("- This looks usable for departure timing if logistics and local conditions are already in place.")
+        if major_stress:
+            lines.append("- Watch for avoidable pressure or delays before locking the departure time.")
+    elif "money" in objective_key or "business" in objective_key:
+        lines = [
+            "- Favor this when the aim is steadier value, practical gains, and manageable downside."
+        ]
+        if fit >= 1:
+            lines.append("- The chart shows at least one direct objective match, which is useful for business timing.")
+        if major_stress:
+            lines.append("- Risk controls matter here because the stress profile is still strong enough to erode gains.")
+    else:
+        lines = [
+            f"- Use this when you want a cleaner {objective.lower()} push with the current support profile."
+            if score >= 76
+            else f"- Use this carefully for {objective.lower()} only if the timing constraints matter more than perfect conditions."
+        ]
+
+    if major_stress and all("stress" not in line.lower() and "risk" not in line.lower() for line in lines):
+        lines.append("- Major stress is present, so give extra weight to downside management before committing.")
+    return lines
+
+
+def build_window_comparison_page(
+    input_snapshot: dict[str, object],
+    windows: list[dict[str, object]],
+    objective: str,
+) -> str:
+    lines = ["Candidate Comparison", f"Objective: {objective}", ""]
+    if not windows:
+        return "\n".join(lines + ["- No candidate windows available."])
+    for index, window in enumerate(windows[:6], start=1):
+        breakdown = window.get("scoreBreakdown", {})
+        evaluation = breakdown.get("evaluation", {}) if isinstance(breakdown, dict) else {}
+        fit_matches = int(breakdown.get("objectiveMatches", 0)) if isinstance(breakdown, dict) else 0
+        strengths = evaluation.get("strengths", []) if isinstance(evaluation, dict) else []
+        risks = evaluation.get("risks", []) if isinstance(evaluation, dict) else []
+        support = sum(1 for aspect in window.get("detectedAspects", []) if isinstance(aspect, dict) and aspect.get("tone") == "support")
+        stress = sum(1 for aspect in window.get("detectedAspects", []) if isinstance(aspect, dict) and aspect.get("tone") == "stress")
+        angular = sum(1 for planet in window.get("positions", []) if isinstance(planet, dict) and planet.get("isAngular"))
+        try:
+            delta_minutes = round((window["date"] - input_snapshot["date"]).total_seconds() / 60)
+        except (KeyError, TypeError, AttributeError):
+            delta_label = "n/a"
+        else:
+            sign = "+" if delta_minutes >= 0 else "-"
+            minutes = abs(int(delta_minutes))
+            hours, remaining = divmod(minutes, 60)
+            delta_label = f"{sign}{hours}h {remaining}m" if hours and remaining else f"{sign}{hours}h" if hours else f"{sign}{remaining}m"
+        lines.extend(
+            [
+                f"#{index}  {window.get('formattedTime', 'n/a')}  Score {window.get('score', '?')}  {evaluation.get('band', 'n/a')}",
+                f"  Fit {fit_matches}  +{support}/!{stress}  Angular {angular}  Offset {delta_label}",
+                f"  Best use: {window.get('title', 'Electional window')}",
+                f"  Strength: {strengths[0] if strengths else 'n/a'}",
+                f"  Risk: {risks[0] if risks else 'n/a'}",
+                f"  Timing: {window.get('timingProfile', {}).get('summary', 'Timing profile unavailable.')}",
+                f"  Note: {window.get('note', '')}",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip()
+
+
+def build_comparison_export_text(
+    input_snapshot: dict[str, object],
+    selected_window: dict[str, object],
+    windows: list[dict[str, object]],
+    objective: str,
+    location: LocationPreset,
+) -> str:
+    return (
+        "Electional Decision Sheet\n"
+        f"Objective: {objective}\n"
+        f"Location: {location.name}\n\n"
+        + build_decision_brief_page(input_snapshot, selected_window, objective, location)
+        + "\n\n"
+        + build_window_comparison_page(input_snapshot, windows, objective)
+    )
+
+
+def build_classical_point_data_page(snapshot: dict[str, object]) -> str:
+    planet_lines = []
+    for planet in snapshot.get("positions", []):
+        if not isinstance(planet, dict):
+            continue
+        angular = f" | {planet.get('closestAngle', {}).get('shortName', 'angle')} {float(planet.get('closestAngle', {}).get('distance', 0)):.1f} deg" if isinstance(planet.get("closestAngle"), dict) else ""
+        planet_lines.append(
+            f"- {planet.get('name', 'Planet')}: {format_position(planet)} | H{planet.get('house', '?')} | "
+            f"{format_dignity_summary(planet)} | {format_motion_summary(planet)}{angular}"
+        )
+
+    lot_lines = []
+    for lot in snapshot.get("lots", []):
+        if not isinstance(lot, dict):
+            continue
+        lot_lines.append(
+            f"- {lot.get('name', 'Lot')}: {format_position(lot)} | H{lot.get('house', '?')} | "
+            f"{lot.get('formula', 'Formula n/a')}"
+            + (f" | {lot.get('topic')}" if lot.get("topic") else "")
+        )
+
+    node_lines = []
+    for node in snapshot.get("lunarNodes", []):
+        if not isinstance(node, dict):
+            continue
+        node_lines.append(
+            f"- {node.get('name', 'Node')}: {format_position(node)} | H{node.get('house', '?')} | "
+            f"{node.get('calculation', 'node calculation')}"
+        )
+
+    cusp_lines = []
+    for cusp in snapshot.get("houseCusps", []):
+        if not isinstance(cusp, dict):
+            continue
+        cusp_lines.append(f"- House {cusp.get('house', '?')}: {format_position(cusp)}")
+
+    angle_lines = []
+    for angle in snapshot.get("angles", []):
+        if not isinstance(angle, dict):
+            continue
+        angle_lines.append(f"- {format_angle(angle)}")
+
+    star_contact_lines = []
+    for contact in snapshot.get("fixedStarContacts", []):
+        if not isinstance(contact, dict):
+            continue
+        star_contact_lines.append(f"- {format_fixed_star_contact(contact)}")
+
+    return (
+        "Classical Point Data\n"
+        f"Model: {snapshot['preset'].name}\n"
+        f"Zodiac: {snapshot['zodiacSystem'].name}\n"
+        f"House system: {snapshot['houseSystem'].name}\n"
+        f"Ayanamsha: {float(snapshot['ayanamsha']):.3f} deg\n"
+        f"Score: {snapshot['score']}\n\n"
+        "Planets\n"
+        + ("\n".join(planet_lines) if planet_lines else "- No planets calculated.")
+        + "\n\nAngles\n"
+        + ("\n".join(angle_lines) if angle_lines else "- No angles calculated.")
+        + "\n\nHouse Cusps\n"
+        + ("\n".join(cusp_lines) if cusp_lines else "- No house cusps calculated.")
+        + "\n\nArabic Lots\n"
+        + ("\n".join(lot_lines) if lot_lines else "- No lots calculated.")
+        + "\n\nLunar Nodes\n"
+        + ("\n".join(node_lines) if node_lines else "- No lunar nodes calculated.")
+        + "\n\nFixed Star Contacts\n"
+        + ("\n".join(star_contact_lines) if star_contact_lines else "- No fixed-star conjunctions within 1 degree.")
+    )
 
 
 def format_score_breakdown(snapshot: dict[str, object]) -> str:

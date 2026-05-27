@@ -8,7 +8,7 @@ A private work-in-progress application for electional astrology: transits, aspec
 - The primary interface is a native Python desktop application.
 - The desktop UI requires no browser and no browser JavaScript.
 - The desktop UI supports preset cities, custom latitude/longitude/timezone entries, and built-in validation.
-- Custom locations can be saved, reused from the Location preset dropdown, and forgotten later.
+- Custom locations can be saved, reused from the Location preset dropdown, marked as Home, and forgotten later.
 - Ranked candidate windows are selectable in the desktop UI and can be applied back to the input time.
 - Promising candidate windows can be shortlisted, compared in a dedicated tab, copied, cleared, or saved as a shortlist report.
 - Selected windows and shortlists can be exported as `.ics` calendar files from the desktop UI.
@@ -16,18 +16,31 @@ A private work-in-progress application for electional astrology: transits, aspec
 - The chart workspace includes degree ticks and a bottom interpretation panel for the selected window.
 - Quick time controls and support/stress counts make candidate-window scanning faster.
 - The chart workspace now keeps Search Start, Selected Window, and Difference visible so ranked windows do not get confused with the input chart.
-- Preferences can apply zodiac, house, objective, model, and search defaults from one dialog.
+- Preferences can apply zodiac, house, objective, model, page mode, point configuration, home location, and search defaults from one dialog.
 - Wheel view controls can toggle aspects, Lots, nodes, fixed-star markers, and compact mode without recalculating.
+- Point configuration presets now switch the visible wheel set between Classical 7, 10 Planets, Planets + Nodes, Planets + Fortune, and Full Electional modes.
+- Page modes now separate `Wheel`, `Wheel + Aspectarian`, `Classical Point Data`, `Medieval Data`, and `Transit Search` workflows in the View Page strip.
+- Transit Search now has its own detail page with search profile, search-start vs selected-window timing, and ranked-window summaries.
+- A new Decision Brief page translates the selected window into recommendation, fit, timing, and watchout language for faster choosing.
+- A new Compare page summarizes the leading candidate windows side by side with fit, timing offset, strengths, and risks.
+- Search filters now support minimum fit and an `avoid major stress` mode in addition to score and result limits.
+- Search filters now also support `require applying support`, `avoid angular malefics`, and `keep Moon non-void`.
+- Compare tools can now export a saved decision sheet with the selected brief plus top-window comparison.
+- Decision guidance is now more objective-aware for launch/publish, negotiation, travel, and money/business work.
+- Objective-specific backend ranking weights now make those workflows score differently, not just read differently.
+- Classical Point Data now gives planets, angles, cusps, lots, nodes, and fixed-star contacts their own dense reference-style workspace.
+- Medieval Data now summarizes verdict, balance of testimony, score reasons, election flags, and classical judgment sections in one working page.
 - Clean/Full wheel presets make it faster to switch between a readable working chart and a dense inspection chart.
 - Fit and zoom controls improve wheel framing, while applying aspects draw solid and separating aspects draw dashed.
 - Timing and location context is now shown above the wheel with compact search/selected-window cards.
 - Focus Wheel mode hides the side panels for chart inspection and can be toggled with `F11`.
-- A reference-style View Page strip below the chart opens Interpretation, Aspects, Aspectarian, Conditions, Chart Data, and wheel export.
+- A reference-style View Page strip below the chart opens Interpretation, Aspects, Aspectarian, Point Data, Medieval, Conditions, Chart Data, and wheel export.
 - Timing controls now support fine adjustments with `-15m`, `-5m`, `+5m`, and `+15m` buttons.
 - A Timing detail tab summarizes next exact contact, next support, and next stress from the backend timing profile.
 - A Log detail tab records calculations, selected windows, saved reports/wheels, location changes, and focused chart points.
 - The desktop app remembers the last working session and saved reports include ranked candidate windows.
 - Scoreboard cards, report copy/view/save actions, and double-click window selection support a faster working session.
+- The scoreboard now surfaces objective fit alongside score, support, stress, angularity, stars, and rules.
 - Chart planets are selectable and update the point-interpretation panel with dignity, angle, and aspect context.
 - The wheel center now masks aspect lines and clearly distinguishes search start time from selected ranked-window time.
 - The desktop layout now uses cleaner workflow sections, a calmer blue/ivory palette, and card-based candidate windows instead of a plain listbox.

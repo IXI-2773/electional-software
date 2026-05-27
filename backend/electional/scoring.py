@@ -46,7 +46,67 @@ SCORE_CATEGORIES = {
     "electional-rules": "Electional rules",
     "aspect-timing": "Aspect timing",
     "retrograde-pressure": "Risk pressure",
+    "objective-weighting": "Objective fit",
 }
+
+OBJECTIVE_PROFILES = {
+    "Launch or publish": {
+        "support": 1.1,
+        "stress": 1.05,
+        "applying_support": 1.3,
+        "applying_stress": 1.05,
+        "preferred": 1.2,
+        "angularity": 1.2,
+        "dignity": 0.95,
+        "retrograde": 1.0,
+        "timing": 1.15,
+        "rules": 1.05,
+    },
+    "Meeting or negotiation": {
+        "support": 1.15,
+        "stress": 1.25,
+        "applying_support": 1.25,
+        "applying_stress": 1.2,
+        "preferred": 1.1,
+        "angularity": 0.9,
+        "dignity": 1.0,
+        "retrograde": 1.0,
+        "timing": 1.1,
+        "rules": 1.1,
+    },
+    "Travel departure": {
+        "support": 1.0,
+        "stress": 1.2,
+        "applying_support": 1.2,
+        "applying_stress": 1.2,
+        "preferred": 1.1,
+        "angularity": 0.85,
+        "dignity": 0.95,
+        "retrograde": 1.35,
+        "timing": 1.25,
+        "rules": 1.15,
+    },
+    "Money or business": {
+        "support": 1.05,
+        "stress": 1.15,
+        "applying_support": 1.15,
+        "applying_stress": 1.1,
+        "preferred": 1.2,
+        "angularity": 1.0,
+        "dignity": 1.25,
+        "retrograde": 1.15,
+        "timing": 1.05,
+        "rules": 1.05,
+    },
+}
+
+
+def objective_profile(objective: str | None) -> Mapping[str, float]:
+    return OBJECTIVE_PROFILES.get(str(objective or ""), {})
+
+
+def weighted_value(value: float, profile: Mapping[str, float], key: str) -> float:
+    return value * float(profile.get(key, 1.0))
 
 
 def tone_counts(detected_aspects: Sequence[Mapping[str, object]]) -> dict[str, int]:
@@ -206,8 +266,9 @@ def score_window(
     preset: ElectionalPreset,
     fixed_star_contacts: Sequence[Mapping[str, object]] = (),
     rule_evaluations: Mapping[str, object] | None = None,
+    objective: str | None = None,
 ) -> int:
-    return int(score_breakdown(detected_aspects, positions, preset, fixed_star_contacts, rule_evaluations)["score"])
+    return int(score_breakdown(detected_aspects, positions, preset, fixed_star_contacts, rule_evaluations, objective)["score"])
 
 
 def score_breakdown(
@@ -216,8 +277,9 @@ def score_breakdown(
     preset: ElectionalPreset,
     fixed_star_contacts: Sequence[Mapping[str, object]] = (),
     rule_evaluations: Mapping[str, object] | None = None,
+    objective: str | None = None,
 ) -> dict[str, object]:
-    return score_breakdown_model(detected_aspects, positions, preset, fixed_star_contacts, rule_evaluations).to_json()
+    return score_breakdown_model(detected_aspects, positions, preset, fixed_star_contacts, rule_evaluations, objective).to_json()
 
 
 def score_breakdown_model(
@@ -226,29 +288,53 @@ def score_breakdown_model(
     preset: ElectionalPreset,
     fixed_star_contacts: Sequence[Mapping[str, object]] = (),
     rule_evaluations: Mapping[str, object] | None = None,
+    objective: str | None = None,
 ) -> ScoreBreakdown:
     counts = tone_counts(detected_aspects)
     applying_counts = applying_tone_counts(detected_aspects)
     scoring = preset.scoring
+    profile = objective_profile(objective)
     objective_matches = sum(1 for aspect in detected_aspects if aspect.get("aspectId") in preset.preferred_aspects)
     close_contacts = sum(1 for aspect in detected_aspects if float(aspect.get("orb", 99)) <= scoring.close_contact_orb)
     preset_positions = filter_positions_for_preset(positions, preset)
     angularity = angularity_score(preset_positions)
     dignity = dignity_score(positions, preset)
     retrograde = retrograde_pressure(preset_positions)
-    support_points = counts["support"] * scoring.support_weight
+    support_points = weighted_value(counts["support"] * scoring.support_weight, profile, "support")
     mixed_points = counts["mixed"] * scoring.mixed_weight
-    stress_points = -(counts["stress"] * scoring.stress_penalty)
-    applying_support_points = applying_counts["support"] * 2
-    applying_stress_points = -(applying_counts["stress"] * 2)
-    preferred_points = objective_matches * scoring.preferred_weight
+    stress_points = weighted_value(-(counts["stress"] * scoring.stress_penalty), profile, "stress")
+    applying_support_points = weighted_value(applying_counts["support"] * 2, profile, "applying_support")
+    applying_stress_points = weighted_value(-(applying_counts["stress"] * 2), profile, "applying_stress")
+    preferred_points = weighted_value(objective_matches * scoring.preferred_weight, profile, "preferred")
     close_contact_points = close_contacts * scoring.close_contact_weight
-    angularity_points = angularity * scoring.angular_multiplier
-    dignity_points = dignity * scoring.dignity_weight
-    retrograde_points = -retrograde
+    angularity_points = weighted_value(angularity * scoring.angular_multiplier, profile, "angularity")
+    dignity_points = weighted_value(dignity * scoring.dignity_weight, profile, "dignity")
+    retrograde_points = weighted_value(-retrograde, profile, "retrograde")
     fixed_star_points = fixed_star_score(fixed_star_contacts)
-    rule_points = rule_score(rule_evaluations)
-    timing_points = aspect_timing_score(detected_aspects)
+    rule_points = weighted_value(rule_score(rule_evaluations), profile, "rules")
+    timing_points = weighted_value(aspect_timing_score(detected_aspects), profile, "timing")
+    objective_weighting_points = (
+        support_points
+        + stress_points
+        + applying_support_points
+        + applying_stress_points
+        + preferred_points
+        + angularity_points
+        + dignity_points
+        + retrograde_points
+        + rule_points
+        + timing_points
+        - (counts["support"] * scoring.support_weight)
+        - (-(counts["stress"] * scoring.stress_penalty))
+        - (applying_counts["support"] * 2)
+        - (-(applying_counts["stress"] * 2))
+        - (objective_matches * scoring.preferred_weight)
+        - (angularity * scoring.angular_multiplier)
+        - (dignity * scoring.dignity_weight)
+        - (-retrograde)
+        - rule_score(rule_evaluations)
+        - aspect_timing_score(detected_aspects)
+    )
 
     raw_score = (
         58
@@ -281,6 +367,7 @@ def score_breakdown_model(
         ScoreReason("electional-rules", "Electional rules", rule_points),
         ScoreReason("aspect-timing", "Aspect perfection timing", timing_points),
         ScoreReason("retrograde-pressure", "Retrograde pressure", retrograde_points, raw=retrograde),
+        ScoreReason("objective-weighting", f"{objective or 'General'} weighting", objective_weighting_points),
     )
     final_score = round(max(10, min(99, raw_score)))
     accounting = score_accounting(reasons, raw_score, final_score)

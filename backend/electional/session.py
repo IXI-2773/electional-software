@@ -6,9 +6,10 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from .locations import default_location_for_timezone
+from .locations import home_location_for_app
+from .point_sets import DEFAULT_POINT_SET_ID, get_point_set
 from .presets import ELECTIONAL_PRESETS
-from .search import DEFAULT_MAX_RESULTS, DEFAULT_MINIMUM_SCORE, DEFAULT_SCAN_HOURS, DEFAULT_STEP_MINUTES
+from .search import DEFAULT_MAX_RESULTS, DEFAULT_MINIMUM_FIT, DEFAULT_MINIMUM_SCORE, DEFAULT_SCAN_HOURS, DEFAULT_STEP_MINUTES
 from .storage import load_json_dict, save_json
 from .systems import DEFAULT_HOUSE_SYSTEM_ID, DEFAULT_ZODIAC_SYSTEM_ID, get_house_system, get_zodiac_system
 from .time_utils import normalize_time_text
@@ -31,7 +32,27 @@ DEFAULT_DISPLAY_OPTIONS = {
     "show_fixed_stars": False,
     "compact_wheel": True,
     "wheel_zoom": 0.88,
+    "point_set": DEFAULT_POINT_SET_ID,
+    "page_mode": "wheel",
 }
+
+
+def infer_point_set_id(display_options: dict[str, Any]) -> str:
+    explicit_point_set = display_options.get("point_set")
+    if explicit_point_set:
+        return get_point_set(explicit_point_set).id
+    if display_options.get("show_fixed_stars") or display_options.get("show_lots"):
+        return "full-electional"
+    if display_options.get("show_nodes"):
+        return "planets-nodes"
+    return DEFAULT_POINT_SET_ID
+
+
+def infer_page_mode_id(display_options: dict[str, Any]) -> str:
+    page_mode = str(display_options.get("page_mode") or "").strip().lower()
+    if page_mode in {"wheel", "wheel-aspectarian", "classical-point-data", "medieval-data", "transit-search"}:
+        return page_mode
+    return "wheel"
 
 
 def load_session_state(path: Path = SESSION_PATH) -> dict[str, Any]:
@@ -43,7 +64,7 @@ def save_session_state(state: dict[str, Any], path: Path = SESSION_PATH) -> None
 
 
 def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
-    default_location = default_location_for_timezone()
+    default_location = home_location_for_app()
     date_text = str(state.get("date") or date.today().isoformat())
     time_text = str(state.get("time") or "09:00")
     location_name = str(state.get("location_name") or default_location.name)
@@ -86,7 +107,12 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
         "scan_hours": str(state.get("scan_hours") or DEFAULT_SCAN_HOURS),
         "step_minutes": str(state.get("step_minutes") or DEFAULT_STEP_MINUTES),
         "minimum_score": str(state.get("minimum_score") or DEFAULT_MINIMUM_SCORE),
+        "minimum_fit": str(state.get("minimum_fit") or DEFAULT_MINIMUM_FIT),
         "max_results": str(state.get("max_results") or DEFAULT_MAX_RESULTS),
+        "avoid_major_stress": bool(state.get("avoid_major_stress", False)),
+        "require_applying_support": bool(state.get("require_applying_support", False)),
+        "avoid_angular_malefics": bool(state.get("avoid_angular_malefics", False)),
+        "require_moon_non_void": bool(state.get("require_moon_non_void", False)),
         "display_options": {
             **{
                 key: bool(display_options.get(key, default_value))
@@ -94,5 +120,7 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(default_value, bool)
             },
             "wheel_zoom": max(0.76, min(1.04, wheel_zoom)),
+            "point_set": infer_point_set_id(display_options),
+            "page_mode": infer_page_mode_id(display_options),
         },
     }

@@ -6,11 +6,12 @@ from datetime import date
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .storage import load_json_list, save_json
+from .storage import load_json_dict, load_json_list, save_json
 from .validation import validate_election_inputs
 
 DEFAULT_TIMEZONE = "America/Los_Angeles"
 USER_LOCATIONS_PATH = Path.cwd() / ".electional-locations.json"
+LOCATION_SETTINGS_PATH = Path.cwd() / ".electional-location-settings.json"
 
 
 @dataclass(frozen=True)
@@ -88,8 +89,59 @@ def combined_location_names(user_locations: list[LocationPreset]) -> list[str]:
     return names
 
 
+def resolve_location_by_name(name: str | None, user_locations: list[LocationPreset]) -> LocationPreset | None:
+    candidate = (name or "").strip().lower()
+    if not candidate:
+        return None
+    for location in (*LOCATION_PRESETS, *user_locations):
+        if location.name.lower() == candidate:
+            return location
+    return None
+
+
 def default_location_for_timezone(timezone_name: str = DEFAULT_TIMEZONE) -> LocationPreset:
     for location in LOCATION_PRESETS:
         if location.timezone == timezone_name:
             return location
     return LOCATION_PRESETS[0]
+
+
+def load_location_settings(path: Path = LOCATION_SETTINGS_PATH) -> dict[str, object]:
+    settings = load_json_dict(path)
+    if not isinstance(settings, dict):
+        return {}
+    return settings
+
+
+def save_location_settings(settings: dict[str, object], path: Path = LOCATION_SETTINGS_PATH) -> None:
+    save_json(path, settings)
+
+
+def load_home_location_name(path: Path = LOCATION_SETTINGS_PATH) -> str | None:
+    settings = load_location_settings(path)
+    value = settings.get("home_location_name")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def save_home_location_name(name: str | None, path: Path = LOCATION_SETTINGS_PATH) -> None:
+    settings = load_location_settings(path)
+    if name and name.strip():
+        settings["home_location_name"] = name.strip()
+    else:
+        settings.pop("home_location_name", None)
+    save_location_settings(settings, path)
+
+
+def home_location_for_app(
+    timezone_name: str = DEFAULT_TIMEZONE,
+    user_locations: list[LocationPreset] | None = None,
+    settings_path: Path = LOCATION_SETTINGS_PATH,
+) -> LocationPreset:
+    available_user_locations = user_locations if user_locations is not None else load_user_locations()
+    home_name = load_home_location_name(settings_path)
+    preferred = resolve_location_by_name(home_name, available_user_locations)
+    if preferred:
+        return preferred
+    return default_location_for_timezone(timezone_name)

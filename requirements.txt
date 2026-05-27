@@ -1,2 +1,3 @@
 astronomy-engine==2.1.19
+tzdata==2025.2
 

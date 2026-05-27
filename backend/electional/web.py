@@ -10,6 +10,7 @@ from typing import Mapping
 from .chart import build_snapshot, build_transit_windows, format_angle, format_position
 from .locations import LOCATION_PRESETS, get_location
 from .presets import ELECTIONAL_PRESETS, get_preset, summarize_orb
+from .reporting import format_aspect_summary, format_lunar_phase
 
 
 OBJECTIVES = {
@@ -194,7 +195,7 @@ def render_app(params: Mapping[str, list[str]] | None = None) -> str:
         f"""
         <article class="detected-card{' stress' if aspect['tone'] == 'stress' else ''}">
           <strong>{escape(str(aspect['label']))}</strong>
-          <span>{escape(str(aspect['orbText']))} orb / limit {float(aspect['orbLimit']):g} deg</span>
+          <span>{escape(format_aspect_summary(aspect))} / limit {float(aspect['orbLimit']):g} deg</span>
         </article>
         """
         for aspect in snapshot["detectedAspects"]
@@ -301,6 +302,7 @@ def render_app(params: Mapping[str, list[str]] | None = None) -> str:
               <article><span>Angular</span><strong>{angular_count}</strong></article>
               <article><span>Preset</span><strong>{escape(preset.short_name)}</strong></article>
               <article><span>Orb mode</span><strong>{escape(summarize_orb(preset))}</strong></article>
+              <article><span>Moon</span><strong>{escape(format_lunar_phase(snapshot))}</strong></article>
               <article><span>Timezone</span><strong>{escape(location.timezone)}</strong></article>
               <article><span>Backend</span><strong>Python</strong></article>
             </section>

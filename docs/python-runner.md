@@ -31,7 +31,7 @@ Run Desktop App.bat
 Or run from PowerShell:
 
 ```powershell
-& "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" desktop_app.py
+& ".\.venv\Scripts\python.exe" desktop_app.py
 ```
 
 ## Spyder Later

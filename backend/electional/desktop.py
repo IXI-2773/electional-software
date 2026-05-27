@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-import json
 import math
 from pathlib import Path
 import tkinter as tk
@@ -11,12 +10,46 @@ from tkinter import messagebox, ttk
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
-from .aspects import ASPECT_BY_ID, angular_distance, format_orb
-from .chart import build_election_report, build_snapshot_for_moment, format_angle, format_position
-from .locations import LOCATION_PRESETS, LocationPreset, get_location
-from .presets import DETRIMENTS, EXALTATIONS, FALLS, RULERS, ELECTIONAL_PRESETS
+from .chart import build_election_report, format_angle, format_position
+from .locations import (
+    DEFAULT_TIMEZONE,
+    LOCATION_PRESETS,
+    LocationPreset,
+    build_custom_location,
+    combined_location_names,
+    default_location_for_timezone,
+    get_location,
+    load_user_locations,
+    save_user_locations,
+    upsert_user_location,
+)
+from .presets import ELECTIONAL_PRESETS
+from .references import dignity_table_lines, lot_reference_lines, system_reference_lines
+from .reporting import (
+    build_report_text,
+    condition_lines,
+    format_dignity_summary,
+    format_aspect_summary,
+    format_lunar_phase,
+    format_motion_summary,
+    format_planet_focus,
+    format_score_breakdown,
+    format_window_label,
+    score_reason_lines,
+)
+from .screening import moon_void_course_summary, solar_elongation_summary
+from .search import (
+    DEFAULT_MAX_RESULTS,
+    DEFAULT_MINIMUM_SCORE,
+    DEFAULT_SCAN_HOURS,
+    DEFAULT_STEP_MINUTES,
+    build_search_config_from_text,
+    format_search_summary,
+)
+from .session import OBJECTIVES, clean_session_state, load_session_state, save_session_state
 from .systems import DEFAULT_HOUSE_SYSTEM_ID, DEFAULT_ZODIAC_SYSTEM_ID, HOUSE_SYSTEMS, ZODIAC_SYSTEMS, get_house_system, get_zodiac_system
 from .time_utils import normalize_time_text
+from .validation import validate_election_inputs, validate_search_inputs
 
 PLANET_LABELS = {
     "Sun": "Su",
@@ -32,10 +65,6 @@ PLANET_LABELS = {
 }
 
 SIGN_LABELS = ("Ar", "Ta", "Ge", "Ca", "Le", "Vi", "Li", "Sc", "Sg", "Cp", "Aq", "Pi")
-OBJECTIVES = ("Launch or publish", "Meeting or negotiation", "Creative work", "Relationship timing", "Travel departure")
-DEFAULT_TIMEZONE = "America/Los_Angeles"
-SESSION_PATH = Path.cwd() / ".electional-session.json"
-USER_LOCATIONS_PATH = Path.cwd() / ".electional-locations.json"
 ZODIAC_SYSTEM_NAMES = tuple(system.name for system in ZODIAC_SYSTEMS)
 HOUSE_SYSTEM_NAMES = tuple(system.name for system in HOUSE_SYSTEMS)
 
@@ -91,7 +120,15 @@ def planet_abbreviation(name: str) -> str:
 
 
 def lot_abbreviation(name: str) -> str:
-    return {"Part of Fortune": "Fo", "Part of Spirit": "Sp"}.get(name, name[:2].title())
+    return {
+        "Part of Fortune": "Fo",
+        "Part of Spirit": "Sp",
+        "Part of Eros": "Er",
+        "Part of Necessity": "Ne",
+        "Part of Courage": "Co",
+        "Part of Victory": "Vi",
+        "Part of Nemesis": "Nm",
+    }.get(name, name[:2].title())
 
 
 def wheel_degrees(longitude: float, ascendant_longitude: float) -> float:
@@ -109,110 +146,11 @@ def _polar(center_x: float, center_y: float, radius: float, degrees: float) -> t
     return center_x + math.cos(radians) * radius, center_y - math.sin(radians) * radius
 
 
-def validate_election_inputs(date_text: str, time_text: str, latitude_text: str, longitude_text: str, timezone_text: str) -> list[str]:
-    errors = []
-    try:
-        datetime.strptime(date_text.strip(), "%Y-%m-%d")
-    except ValueError:
-        errors.append("Date must use YYYY-MM-DD.")
-
-    try:
-        normalize_time_text(time_text)
-    except ValueError as exc:
-        errors.append(str(exc))
-
-    try:
-        latitude = float(latitude_text)
-        if not -90 <= latitude <= 90:
-            errors.append("Latitude must be between -90 and 90.")
-    except ValueError:
-        errors.append("Latitude must be a number.")
-
-    try:
-        longitude = float(longitude_text)
-        if not -180 <= longitude <= 180:
-            errors.append("Longitude must be between -180 and 180.")
-    except ValueError:
-        errors.append("Longitude must be a number.")
-
-    try:
-        ZoneInfo(timezone_text.strip() or "UTC")
-    except Exception:
-        errors.append("Time zone must be a valid IANA name like America/Los_Angeles.")
-
-    return errors
-
-
-def build_custom_location(name: str, latitude_text: str, longitude_text: str, timezone_text: str) -> LocationPreset:
-    label = name.strip() or "Custom Location"
-    return LocationPreset(location_id_from_name(label), label, float(latitude_text), float(longitude_text), timezone_text.strip() or "UTC")
-
-
-def location_id_from_name(name: str) -> str:
-    safe = "".join(character.lower() if character.isalnum() else "-" for character in name.strip())
-    return "user-" + "-".join(part for part in safe.split("-") if part)[:60]
-
-
-def load_user_locations(path: Path = USER_LOCATIONS_PATH) -> list[LocationPreset]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    if not isinstance(payload, list):
-        return []
-
-    locations = []
-    for item in payload:
-        if not isinstance(item, dict):
-            continue
-        try:
-            name = str(item["name"]).strip()
-            latitude = float(item["latitude"])
-            longitude = float(item["longitude"])
-            timezone = str(item["timezone"]).strip()
-            if validate_election_inputs(date.today().isoformat(), "09:00", str(latitude), str(longitude), timezone):
-                continue
-            locations.append(LocationPreset(str(item.get("id") or location_id_from_name(name)), name, latitude, longitude, timezone))
-        except (KeyError, TypeError, ValueError):
-            continue
-    return locations
-
-
-def save_user_locations(locations: list[LocationPreset], path: Path = USER_LOCATIONS_PATH) -> None:
-    path.write_text(json.dumps([location.to_json() for location in locations], indent=2, sort_keys=True), encoding="utf-8")
-
-
-def upsert_user_location(locations: list[LocationPreset], location: LocationPreset) -> list[LocationPreset]:
-    remaining = [saved for saved in locations if saved.name.lower() != location.name.lower()]
-    return sorted([*remaining, location], key=lambda saved: saved.name.lower())
-
-
-def combined_location_names(user_locations: list[LocationPreset]) -> list[str]:
-    names = [location.name for location in LOCATION_PRESETS]
-    for location in user_locations:
-        if location.name not in names:
-            names.append(location.name)
-    return names
-
-
-def default_location_for_timezone(timezone_name: str = DEFAULT_TIMEZONE) -> LocationPreset:
-    for location in LOCATION_PRESETS:
-        if location.timezone == timezone_name:
-            return location
-    return LOCATION_PRESETS[0]
-
-
 def shift_local_datetime(date_text: str, time_text: str, timezone_name: str, hours: int) -> tuple[str, str]:
     local_time = datetime.strptime(f"{date_text} {normalize_time_text(time_text)}", "%Y-%m-%d %H:%M")
     zoned = local_time.replace(tzinfo=ZoneInfo(timezone_name or "UTC"))
     shifted = zoned + timedelta(hours=hours)
     return shifted.strftime("%Y-%m-%d"), shifted.strftime("%H:%M")
-
-
-def format_window_label(rank: int, window: dict[str, object]) -> str:
-    support = sum(1 for aspect in window["detectedAspects"] if aspect["tone"] == "support")
-    stress = sum(1 for aspect in window["detectedAspects"] if aspect["tone"] == "stress")
-    return f"{rank}. {window['time']}  Score {window['score']}  +{support}/!{stress}  {window['title']}"
 
 
 def window_score_color(score: int) -> str:
@@ -221,195 +159,6 @@ def window_score_color(score: int) -> str:
     if score >= 60:
         return "#fff6d8"
     return "#f9d9df"
-
-
-def format_planet_focus(planet: dict[str, object], aspects: list[dict[str, object]]) -> str:
-    name = str(planet["name"])
-    related = [aspect for aspect in aspects if name in aspect.get("bodies", [])]
-    dignity = planet.get("dignity", {}).get("label", "Unknown")
-    angle = planet.get("closestAngle", {})
-    lines = [
-        f"{name}: {format_position(planet)} in House {planet['house']}.",
-        f"Dignity: {dignity}. Closest angle: {angle.get('shortName', 'n/a')} at {angle.get('distance', 0):.1f} deg.",
-    ]
-    if planet.get("isAngular"):
-        lines.append(f"{name} is angular, so it is emphasized in this window.")
-    if related:
-        lines.append("Contacts: " + ", ".join(f"{aspect['label']} ({aspect['orbText']})" for aspect in related[:4]) + ".")
-    else:
-        lines.append("No selected major aspects are currently in orb for this body.")
-    return "\n".join(lines)
-
-
-def solar_elongation_summary(snapshot: dict[str, object]) -> list[str]:
-    positions = {str(planet["name"]): planet for planet in snapshot["positions"]}
-    sun = positions.get("Sun")
-    if not sun:
-        return ["Sun position is unavailable."]
-
-    lines = [f"Sun: {format_position(sun)}", "", "Body          Separation   Note"]
-    for name in ("Mercury", "Venus", "Mars", "Jupiter", "Saturn"):
-        planet = positions.get(name)
-        if not planet:
-            continue
-        separation = angular_distance(float(sun["longitude"]), float(planet["longitude"]))
-        if name in {"Mercury", "Venus"}:
-            note = "Under beams" if separation < 15 else "Clear of beams"
-        else:
-            note = "Near Sun" if separation < 15 else "Visible separation"
-        lines.append(f"{name:<13} {separation:>5.1f} deg     {note}")
-    return lines
-
-
-def dignity_table_lines() -> list[str]:
-    lines = ["Sign         Ruler      Exalted    Detriment  Fall"]
-    for sign, ruler in RULERS.items():
-        lines.append(
-            f"{sign:<12} {ruler:<10} {EXALTATIONS.get(sign, '-'):<10} {DETRIMENTS.get(sign, '-'):<10} {FALLS.get(sign, '-'):<10}"
-        )
-    return lines
-
-
-def system_reference_lines() -> list[str]:
-    lines = ["Zodiac Systems", ""]
-    for system in ZODIAC_SYSTEMS:
-        lines.append(f"{system.name}")
-        lines.append(f"  Mode: {system.mode}")
-        lines.append(f"  {system.description}")
-        lines.append("")
-    lines.extend(["House Systems", ""])
-    for system in HOUSE_SYSTEMS:
-        lines.append(f"{system.name}")
-        lines.append(f"  {system.description}")
-        lines.append("")
-    lines.extend(
-        [
-            "Current implementation notes:",
-            "- Sidereal Lahiri is the default electional mode.",
-            "- Topocentric is implemented as a Polich-Page cusp option using local latitude-derived pole divisions.",
-            "- Koch is implemented as a birthplace/time-division house option based on MC and IC arc trisections.",
-            "- Future Swiss Ephemeris integration can tighten ayanamsha and house cusp precision further.",
-        ]
-    )
-    return lines
-
-
-def moon_void_course_summary(
-    start_snapshot: dict[str, object],
-    location: LocationPreset,
-    selected_aspects: list[str],
-) -> list[str]:
-    preset = start_snapshot["preset"]
-    start = start_snapshot["date"]
-    current_moon = next(planet for planet in start_snapshot["positions"] if planet["name"] == "Moon")
-    current_sign = str(current_moon["zodiac"]["sign"])
-    best_contact: dict[str, object] | None = None
-
-    for minutes in range(10, 60 * 72 + 1, 10):
-        moment = start + timedelta(minutes=minutes)
-        snapshot = build_snapshot_for_moment(
-            moment,
-            location,
-            preset,
-            selected_aspects,
-            start_snapshot["zodiacSystem"].id,
-            start_snapshot["houseSystem"].id,
-        )
-        moon = next(planet for planet in snapshot["positions"] if planet["name"] == "Moon")
-        if moon["zodiac"]["sign"] != current_sign:
-            exit_text = snapshot["formattedTime"]
-            if not best_contact:
-                return [
-                    f"Moon is void of course in {current_sign}.",
-                    f"No selected major Moon aspect perfects before sign change at {exit_text}.",
-                ]
-            return [
-                f"Moon is not void of course in {current_sign}.",
-                (
-                    f"Next selected Moon contact: {best_contact['label']} near {best_contact['time']} "
-                    f"with {best_contact['orbText']} orb."
-                ),
-                f"Moon leaves {current_sign} at {exit_text}.",
-            ]
-
-        moon_longitude = float(moon["longitude"])
-        for planet in snapshot["positions"]:
-            if planet["name"] == "Moon":
-                continue
-            distance = angular_distance(moon_longitude, float(planet["longitude"]))
-            for aspect_id in selected_aspects:
-                aspect = ASPECT_BY_ID.get(aspect_id)
-                if not aspect:
-                    continue
-                orb = abs(distance - aspect.angle)
-                if orb <= 0.35:
-                    return [
-                        f"Moon is not void of course in {current_sign}.",
-                        (
-                            f"Next selected Moon contact: Moon {aspect.name.lower()} {planet['name']} "
-                            f"near {snapshot['formattedTime']} with {format_orb(orb)} orb."
-                        ),
-                    ]
-                if best_contact is None or orb < float(best_contact["orb"]):
-                    best_contact = {
-                        "label": f"Moon {aspect.name.lower()} {planet['name']}",
-                        "time": snapshot["formattedTime"],
-                        "orb": orb,
-                        "orbText": format_orb(orb),
-                    }
-
-    return [f"Moon stayed in {current_sign} through the scan range. Extend scan later if needed."]
-
-
-def load_session_state(path: Path = SESSION_PATH) -> dict[str, Any]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
-
-
-def save_session_state(state: dict[str, Any], path: Path = SESSION_PATH) -> None:
-    path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
-
-
-def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
-    default_location = default_location_for_timezone()
-    date_text = str(state.get("date") or date.today().isoformat())
-    time_text = str(state.get("time") or "09:00")
-    location_name = str(state.get("location_name") or default_location.name)
-    latitude = str(state.get("latitude") or f"{default_location.latitude:.4f}")
-    longitude = str(state.get("longitude") or f"{default_location.longitude:.4f}")
-    timezone = str(state.get("timezone") or default_location.timezone)
-    if validate_election_inputs(date_text, time_text, latitude, longitude, timezone):
-        date_text = date.today().isoformat()
-        time_text = "09:00"
-        location_name = default_location.name
-        latitude = f"{default_location.latitude:.4f}"
-        longitude = f"{default_location.longitude:.4f}"
-        timezone = default_location.timezone
-
-    preset_names = {preset.name for preset in ELECTIONAL_PRESETS}
-    objective = str(state.get("objective") or OBJECTIVES[0])
-    preset = str(state.get("preset") or ELECTIONAL_PRESETS[1].name)
-    zodiac_system = get_zodiac_system(str(state.get("zodiac_system") or DEFAULT_ZODIAC_SYSTEM_ID)).name
-    house_system = get_house_system(str(state.get("house_system") or DEFAULT_HOUSE_SYSTEM_ID)).name
-    aspects = state.get("aspects") if isinstance(state.get("aspects"), dict) else {}
-
-    return {
-        "date": date_text,
-        "time": normalize_time_text(time_text),
-        "location_preset": str(state.get("location_preset") or location_name),
-        "location_name": location_name,
-        "latitude": latitude,
-        "longitude": longitude,
-        "timezone": timezone,
-        "objective": objective if objective in OBJECTIVES else OBJECTIVES[0],
-        "preset": preset if preset in preset_names else ELECTIONAL_PRESETS[1].name,
-        "zodiac_system": zodiac_system,
-        "house_system": house_system,
-        "aspects": {str(key): bool(value) for key, value in aspects.items()},
-    }
 
 
 class ElectionalDesktopApp:
@@ -537,7 +286,7 @@ class ElectionalDesktopApp:
             ("Chart", ("New Chart", "Save", "Ask")),
             ("Calculate", ("Transits", "Electional Search")),
             ("Advanced", ("Chart Data", "Void Course")),
-            ("Utility", ("Systems", "Bounds", "Heliacal Search")),
+            ("Utility", ("Systems", "Bounds", "Lots", "Heliacal Search")),
         )
         for group_title, items in groups:
             group = ttk.LabelFrame(ribbon, text=group_title, style="Ribbon.TLabelframe", padding=(9, 7))
@@ -591,9 +340,10 @@ class ElectionalDesktopApp:
             "Void Course": self._show_void_course_dialog,
             "Systems": self._show_systems_dialog,
             "Bounds": self._show_bounds_dialog,
+            "Lots": self._show_lots_reference_dialog,
             "Heliacal Search": self._show_heliacal_dialog,
         }
-        actions.get(label, lambda: self._feature_pending(label))()
+        actions.get(label, lambda: self._show_unknown_action(label))()
 
     def _new_chart(self) -> None:
         try:
@@ -648,32 +398,7 @@ class ElectionalDesktopApp:
         messagebox.showinfo("Electional report", preview)
 
     def _current_report_text(self) -> str:
-        if not self.selected_window or not self.current_location:
-            return "No electional report calculated."
-        aspects = "\n".join(f"- {aspect['label']} ({aspect['orbText']})" for aspect in self.selected_window["detectedAspects"])
-        planets = "\n".join(
-            f"- {planet['name']}: {format_position(planet)} House {planet['house']}" for planet in self.selected_window["positions"]
-        )
-        lots = "\n".join(
-            f"- {lot['name']}: {format_position(lot)} House {lot['house']} ({lot['formula']}, {lot['sect']} chart)"
-            for lot in self.selected_window.get("lots", [])
-        )
-        windows = "\n".join(format_window_label(index, window) for index, window in enumerate(self.current_windows, start=1))
-        return (
-            "Electional Software Report\n"
-            f"Location: {self.current_location.name}\n"
-            f"Time: {self.selected_window['formattedTime']}\n"
-            f"Zodiac system: {self.selected_window['zodiacSystem'].name}\n"
-            f"House system: {self.selected_window['houseSystem'].name}\n"
-            f"Ayanamsha: {float(self.selected_window['ayanamsha']):.3f} deg\n"
-            f"Score: {self.selected_window['score']}\n"
-            f"Window: {self.selected_window.get('title', 'Electional window')}\n"
-            f"Note: {self.selected_window.get('note', '')}\n\n"
-            f"Ranked Windows:\n{windows}\n\n"
-            f"Aspects:\n{aspects or '- No selected major aspects in orb.'}\n\n"
-            f"Lots:\n{lots or '- No lots calculated.'}\n\n"
-            f"Planets:\n{planets}\n"
-        )
+        return build_report_text(self.selected_window, self.current_windows, self.current_location)
 
     def _show_quick_help(self) -> None:
         messagebox.showinfo(
@@ -682,9 +407,9 @@ class ElectionalDesktopApp:
             "Select a candidate window on the right to redraw the wheel for that exact time.",
         )
 
-    def _feature_pending(self, feature_name: str) -> None:
-        self.status_var.set(f"{feature_name} is queued for a later build.")
-        messagebox.showinfo(feature_name, f"{feature_name} is not wired to the engine yet, but the button is now active.")
+    def _show_unknown_action(self, feature_name: str) -> None:
+        self.status_var.set(f"No ribbon action is registered for {feature_name}.")
+        messagebox.showinfo(feature_name, f"No ribbon action is registered for {feature_name}.")
 
     def _selected_aspect_ids(self) -> list[str]:
         return [aspect for aspect, var in self.aspect_vars.items() if var.get()]
@@ -730,6 +455,10 @@ class ElectionalDesktopApp:
         self._show_text_dialog("Astrology Systems", "\n".join(system_reference_lines()))
         self.status_var.set("Opened astrology system reference.")
 
+    def _show_lots_reference_dialog(self) -> None:
+        self._show_text_dialog("Arabic Lots / Parts", "\n".join(lot_reference_lines()))
+        self.status_var.set("Opened Lots reference.")
+
     def _show_heliacal_dialog(self) -> None:
         if not self.selected_window:
             messagebox.showinfo("Heliacal Search", "Calculate a chart before checking solar elongation.")
@@ -770,6 +499,8 @@ class ElectionalDesktopApp:
             (
                 f"{planet['name']:<8} {format_position(planet):<16} "
                 f"H{planet['house']:<2} {planet['dignity']['label']:<10} "
+                f"Bound {str(planet['dignity'].get('boundLord', '-')):<8} "
+                f"{format_motion_summary(planet):<24} "
                 f"Angle {planet['closestAngle']['shortName']} {planet['closestAngle']['distance']:.1f} deg"
             )
             for planet in self.selected_window["positions"]
@@ -779,10 +510,10 @@ class ElectionalDesktopApp:
             f"House {cusp['house']:<2} {format_position(cusp)}" for cusp in self.selected_window.get("houseCusps", [])
         )
         lots = "\n".join(
-            f"{lot['name']:<16} {format_position(lot):<16} H{lot['house']:<2} {lot['formula']} ({lot['sect']})"
+            f"{lot['name']:<18} {format_position(lot):<16} H{lot['house']:<2} {lot['formula']} ({lot['sect']})"
             for lot in self.selected_window.get("lots", [])
         )
-        aspects = "\n".join(f"{aspect['label']} ({aspect['orbText']}) {aspect['tone']}" for aspect in self.selected_window["detectedAspects"])
+        aspects = "\n".join(f"{format_aspect_summary(aspect)} {aspect['tone']}" for aspect in self.selected_window["detectedAspects"])
         body = (
             "Calculated Chart Data\n"
             f"Location: {self.current_location.name}\n"
@@ -792,7 +523,9 @@ class ElectionalDesktopApp:
             f"House system: {self.selected_window['houseSystem'].name}\n"
             f"Ayanamsha: {float(self.selected_window['ayanamsha']):.3f} deg\n"
             f"Preset: {self.selected_window['preset'].name}\n"
-            f"Score: {self.selected_window['score']}\n\n"
+            f"Score: {self.selected_window['score']}\n"
+            f"Lunar phase: {format_lunar_phase(self.selected_window)}\n"
+            f"Score explanation: {format_score_breakdown(self.selected_window)}\n\n"
             "Angles\n"
             f"{angles}\n\n"
             "House Cusps\n"
@@ -828,6 +561,11 @@ class ElectionalDesktopApp:
         self.preset_var = tk.StringVar(value=str(state.get("preset") or ELECTIONAL_PRESETS[1].name))
         self.zodiac_system_var = tk.StringVar(value=str(state.get("zodiac_system") or get_zodiac_system(DEFAULT_ZODIAC_SYSTEM_ID).name))
         self.house_system_var = tk.StringVar(value=str(state.get("house_system") or get_house_system(DEFAULT_HOUSE_SYSTEM_ID).name))
+        self.scan_hours_var = tk.StringVar(value=str(state.get("scan_hours") or DEFAULT_SCAN_HOURS))
+        self.step_minutes_var = tk.StringVar(value=str(state.get("step_minutes") or DEFAULT_STEP_MINUTES))
+        self.minimum_score_var = tk.StringVar(value=str(state.get("minimum_score") or DEFAULT_MINIMUM_SCORE))
+        self.max_results_var = tk.StringVar(value=str(state.get("max_results") or DEFAULT_MAX_RESULTS))
+        self.search_summary_var = tk.StringVar(value="")
         self.validation_var = tk.StringVar(value="Validation: waiting for first calculation")
 
         timing_box = ttk.LabelFrame(self.left_panel, text="Timing", style="Panel.TLabelframe", padding=10)
@@ -867,6 +605,40 @@ class ElectionalDesktopApp:
         self._labeled_combo(model_box, "House system", self.house_system_var, list(HOUSE_SYSTEM_NAMES))
         self.preset_combo = self._labeled_combo(model_box, "Electional model", self.preset_var, [preset.name for preset in ELECTIONAL_PRESETS])
         self.preset_combo.bind("<<ComboboxSelected>>", self._sync_aspects_to_preset)
+
+        search_box = ttk.LabelFrame(model_box, text="Search range", style="Panel.TLabelframe", padding=8)
+        search_box.pack(fill=tk.X, pady=(10, 0))
+        search_row = ttk.Frame(search_box, style="Panel.TFrame")
+        search_row.pack(fill=tk.X)
+        search_row.columnconfigure(0, weight=1)
+        search_row.columnconfigure(1, weight=1)
+        self._labeled_entry(search_row, "Scan hours", self.scan_hours_var, compact=True, column=0)
+        self._labeled_entry(search_row, "Step minutes", self.step_minutes_var, compact=True, column=1)
+        result_row = ttk.Frame(search_box, style="Panel.TFrame")
+        result_row.pack(fill=tk.X)
+        result_row.columnconfigure(0, weight=1)
+        result_row.columnconfigure(1, weight=1)
+        self._labeled_entry(result_row, "Minimum score", self.minimum_score_var, compact=True, column=0)
+        self._labeled_entry(result_row, "Max results", self.max_results_var, compact=True, column=1)
+        presets = ttk.Frame(search_box, style="Panel.TFrame")
+        presets.pack(fill=tk.X, pady=(8, 0))
+        for label, hours, step in (("6h", "6", "60"), ("12h", "12", "60"), ("24h", "24", "120")):
+            ttk.Button(presets, text=label, command=lambda scan=hours, minutes=step: self._set_search_preset(scan, minutes)).pack(
+                side=tk.LEFT,
+                expand=True,
+                fill=tk.X,
+                padx=(0, 4),
+            )
+        tk.Label(
+            search_box,
+            textvariable=self.search_summary_var,
+            bg=PALETTE["panel"],
+            fg=PALETTE["muted"],
+            justify=tk.LEFT,
+            wraplength=250,
+            font=("Segoe UI", 8),
+        ).pack(anchor="w", fill=tk.X, pady=(7, 0))
+        self._update_search_summary()
 
         aspect_box = ttk.LabelFrame(model_box, text="Aspect focus", style="Panel.TLabelframe", padding=8)
         aspect_box.pack(fill=tk.X, pady=(10, 12))
@@ -972,6 +744,24 @@ class ElectionalDesktopApp:
             var.set(aspect_id in preset.aspect_ids)
         self.status_var.set(f"Aspect focus updated for {preset.name}.")
 
+    def _set_search_preset(self, scan_hours: str, step_minutes: str) -> None:
+        self.scan_hours_var.set(scan_hours)
+        self.step_minutes_var.set(step_minutes)
+        self._update_search_summary()
+
+    def _update_search_summary(self) -> None:
+        try:
+            config = build_search_config_from_text(
+                self.scan_hours_var.get(),
+                self.step_minutes_var.get(),
+                self.minimum_score_var.get(),
+                self.max_results_var.get(),
+            )
+        except ValueError:
+            self.search_summary_var.set("Search settings need attention.")
+            return
+        self.search_summary_var.set(format_search_summary(config))
+
     def _shift_time(self, hours: int) -> None:
         errors = validate_election_inputs(
             self.date_var.get(),
@@ -1062,6 +852,8 @@ class ElectionalDesktopApp:
         self.detail_notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 9))
         self.summary_text = self._text_tab("Summary")
         self.window_detail_text = self._text_tab("Window")
+        self.score_detail_text = self._text_tab("Score")
+        self.conditions_text = self._text_tab("Conditions")
         self.cusps_text = self._text_tab("Cusps")
         self.lots_text = self._text_tab("Lots")
         self.planets_text = self._text_tab("Planets")
@@ -1173,6 +965,14 @@ class ElectionalDesktopApp:
             self.longitude_var.get(),
             self.timezone_var.get(),
         )
+        errors.extend(
+            validate_search_inputs(
+                self.scan_hours_var.get(),
+                self.step_minutes_var.get(),
+                self.minimum_score_var.get(),
+                self.max_results_var.get(),
+            )
+        )
         if errors:
             message = "Validation failed:\n" + "\n".join(f"- {error}" for error in errors)
             self.validation_var.set(message)
@@ -1188,6 +988,13 @@ class ElectionalDesktopApp:
         )
         normalized_time = normalize_time_text(self.time_var.get())
         self.time_var.set(normalized_time)
+        search_config = build_search_config_from_text(
+            self.scan_hours_var.get(),
+            self.step_minutes_var.get(),
+            self.minimum_score_var.get(),
+            self.max_results_var.get(),
+        )
+        self._update_search_summary()
 
         try:
             report = build_election_report(
@@ -1198,6 +1005,7 @@ class ElectionalDesktopApp:
                 selected_aspects,
                 zodiac_system.id,
                 house_system.id,
+                search_config,
             )
         except Exception as exc:  # pragma: no cover - exercised manually through the desktop UI.
             messagebox.showerror("Electional calculation failed", str(exc))
@@ -1223,8 +1031,15 @@ class ElectionalDesktopApp:
         )
         self.score_var.set(str(selected_window["score"]))
         self.validation_var.set("Validation: Pass")
+        result_note = f"{len(windows)} matching window{'s' if len(windows) != 1 else ''}"
+        if not windows:
+            result_note = "No matching windows; showing the input chart"
         self.status_var.set(
-            f"Location: {location.name}    Chart time: {selected_window['formattedTime']}    System: {zodiac_system.name} / {house_system.name}    Validation: Pass"
+            (
+                f"Location: {location.name}    Chart time: {selected_window['formattedTime']}    "
+                f"Search: {search_config.end_offset_minutes // 60}h/{search_config.step_minutes}m    "
+                f"Results: {result_note}    System: {zodiac_system.name} / {house_system.name}    Validation: Pass"
+            )
         )
         self._set_timing_context(snapshot, selected_window)
         self._populate_window_list(windows)
@@ -1236,6 +1051,27 @@ class ElectionalDesktopApp:
         for card in self.window_cards:
             card.destroy()
         self.window_cards = []
+        if not windows:
+            empty_card = tk.Frame(
+                self.window_cards_frame,
+                bg=PALETTE["panel_alt"],
+                highlightbackground=PALETTE["panel_line"],
+                highlightthickness=1,
+                padx=9,
+                pady=10,
+            )
+            empty_card.pack(fill=tk.X, padx=4, pady=(4, 6))
+            tk.Label(
+                empty_card,
+                text="No candidate windows matched the current filters.",
+                bg=PALETTE["panel_alt"],
+                fg=PALETTE["muted"],
+                font=("Segoe UI", 9, "bold"),
+                wraplength=320,
+                justify=tk.LEFT,
+            ).pack(fill=tk.X)
+            self.selected_window_index = 0
+            return
         for index, window in enumerate(windows, start=1):
             self._create_window_card(index - 1, window)
         self.selected_window_index = 0
@@ -1526,7 +1362,7 @@ class ElectionalDesktopApp:
     def _draw_lots(self, snapshot: dict[str, object], cx: float, cy: float, asc_lon: float, outer: float) -> None:
         for index, lot in enumerate(snapshot.get("lots", [])):
             degrees = wheel_degrees(float(lot["longitude"]), asc_lon)
-            radius = outer * 0.55 - index * 20
+            radius = outer * (0.48 + (index % 4) * 0.055)
             x, y = _polar(cx, cy, radius, degrees)
             lot_tag = f"lot:{lot['id']}"
             self.canvas.create_rectangle(
@@ -1572,6 +1408,8 @@ class ElectionalDesktopApp:
             self.summary_text,
             (
                 f"Score: {snapshot['score']}\n"
+                f"Score explanation: {format_score_breakdown(snapshot)}\n"
+                f"Lunar phase: {format_lunar_phase(snapshot)}\n"
                 f"Timezone: {location.timezone}\n"
                 f"Zodiac: {snapshot['zodiacSystem'].name}\n"
                 f"House system: {snapshot['houseSystem'].name}\n"
@@ -1586,13 +1424,16 @@ class ElectionalDesktopApp:
         self.metric_vars["angular"].set(str(angular))
 
         selected_rank = next((index for index, window in enumerate(windows, start=1) if window["date"] == snapshot["date"]), 1)
-        aspect_labels = ", ".join(aspect["label"] for aspect in snapshot["detectedAspects"][:3]) or "No selected major aspects"
+        aspect_labels = ", ".join(format_aspect_summary(aspect) for aspect in snapshot["detectedAspects"][:3]) or "No selected major aspects"
         self._set_text(
             self.window_detail_text,
             (
                 f"Rank: {selected_rank} of {len(windows)}\n"
                 f"Time: {snapshot['formattedTime']}\n"
                 f"Score: {snapshot['score']} - {snapshot.get('title', 'Election')}\n"
+                f"Lunar phase: {format_lunar_phase(snapshot)}\n"
+                f"Score explanation: {format_score_breakdown(snapshot)}\n"
+                f"{chr(10).join(score_reason_lines(snapshot)[:4])}\n"
                 f"{snapshot.get('note', '')}\n"
                 f"{aspect_labels}"
             ),
@@ -1602,15 +1443,30 @@ class ElectionalDesktopApp:
             self._selected_window_interpretation(snapshot, selected_rank, len(windows)),
         )
         body_names = [str(planet["name"]) for planet in snapshot["positions"]]
+        body_names.extend(str(lot["name"]) for lot in snapshot.get("lots", []))
         self.focus_body_combo.configure(values=body_names)
         if self.focus_body_var.get() not in body_names and body_names:
             self.focus_body_var.set(body_names[0])
 
+        self._set_text(
+            self.score_detail_text,
+            (
+                f"Score: {snapshot['score']}\n"
+                f"{format_score_breakdown(snapshot)}\n\n"
+                "Reason Lines\n"
+                + "\n".join(score_reason_lines(snapshot))
+            ),
+        )
+        self._set_text(self.conditions_text, "\n".join(condition_lines(snapshot)))
+
         planet_lines = []
         for planet in snapshot["positions"]:
             angular = " angular" if planet.get("isAngular") else ""
-            dignity = planet.get("dignity", {}).get("label", "Unknown")
-            planet_lines.append(f"{planet['name']:<8} {format_position(planet):<15} H{planet['house']:<2} {dignity}{angular}")
+            dignity = format_dignity_summary(planet)
+            planet_lines.append(
+                f"{planet['name']:<8} {format_position(planet):<15} H{planet['house']:<2} "
+                f"{dignity}; {format_motion_summary(planet)}{angular}"
+            )
         angle_lines = ["", "Angles:"]
         angle_lines.extend(format_angle(angle) for angle in snapshot["angles"])
         self._set_text(self.planets_text, "\n".join(planet_lines + angle_lines))
@@ -1632,7 +1488,8 @@ class ElectionalDesktopApp:
         lot_lines = [
             (
                 f"{lot['name']:<16} {format_position(lot):<16} H{lot['house']:<2} "
-                f"{lot['formula']} ({lot['sect']})"
+                f"{lot['formula']} ({lot['sect']})\n"
+                f"{'':<16} Topic: {lot.get('topic', 'n/a')}"
             )
             for lot in snapshot.get("lots", [])
         ]
@@ -1648,7 +1505,7 @@ class ElectionalDesktopApp:
 
         aspect_lines = []
         for aspect in snapshot["detectedAspects"]:
-            aspect_lines.append(f"{aspect['label']} ({aspect['orbText']}) - {aspect['tone']}")
+            aspect_lines.append(f"{format_aspect_summary(aspect)} - {aspect['tone']}")
         self._set_text(self.aspects_text, "\n".join(aspect_lines) or "No selected major aspects in orb.")
 
     def _selected_window_interpretation(self, snapshot: dict[str, object], rank: int, count: int) -> str:
@@ -1662,6 +1519,7 @@ class ElectionalDesktopApp:
         lines = [
             f"Selected window ranks {rank} of {count} with score {snapshot['score']}.",
             str(snapshot.get("note", "No interpretation note available.")),
+            "Moon phase: " + format_lunar_phase(snapshot) + ".",
         ]
         if support:
             lines.append("Support: " + ", ".join(support[:3]) + ".")
@@ -1674,7 +1532,9 @@ class ElectionalDesktopApp:
     def _focus_selected_body(self) -> None:
         if not self.selected_window:
             return
-        self._select_planet_by_name(self.focus_body_var.get())
+        name = self.focus_body_var.get()
+        self._select_planet_by_name(name)
+        self._select_lot_by_name(name)
 
     def _select_planet_by_id(self, planet_id: str) -> None:
         if not self.selected_window:
@@ -1695,13 +1555,25 @@ class ElectionalDesktopApp:
             return
         lot = next((item for item in self.selected_window.get("lots", []) if str(item["id"]) == lot_id), None)
         if lot:
-            text = (
-                f"{lot['name']}: {format_position(lot)} in House {lot['house']}.\n"
-                f"Formula: {lot['formula']} ({lot['sect']} chart).\n"
-                f"Closest angle: {lot['closestAngle']['shortName']} at {lot['closestAngle']['distance']:.1f} deg."
-            )
-            self._set_text(self.interpretation_text, text)
-            self.status_var.set(f"Focused {lot['name']} at {format_position(lot)}.")
+            self._show_lot_focus(lot)
+
+    def _select_lot_by_name(self, lot_name: str) -> None:
+        if not self.selected_window:
+            return
+        lot = next((item for item in self.selected_window.get("lots", []) if str(item["name"]) == lot_name), None)
+        if lot:
+            self._show_lot_focus(lot)
+
+    def _show_lot_focus(self, lot: dict[str, object]) -> None:
+        self.focus_body_var.set(str(lot["name"]))
+        text = (
+            f"{lot['name']}: {format_position(lot)} in House {lot['house']}.\n"
+            f"Formula: {lot['formula']} ({lot['sect']} chart).\n"
+            f"Topic: {lot.get('topic', 'n/a')}.\n"
+            f"Closest angle: {lot['closestAngle']['shortName']} at {lot['closestAngle']['distance']:.1f} deg."
+        )
+        self._set_text(self.interpretation_text, text)
+        self.status_var.set(f"Focused {lot['name']} at {format_position(lot)}.")
 
     def _show_planet_focus(self, planet: dict[str, object]) -> None:
         self.focus_body_var.set(str(planet["name"]))
@@ -1722,6 +1594,10 @@ class ElectionalDesktopApp:
             "zodiac_system": self.zodiac_system_var.get(),
             "house_system": self.house_system_var.get(),
             "aspects": {aspect_id: var.get() for aspect_id, var in self.aspect_vars.items()},
+            "scan_hours": self.scan_hours_var.get(),
+            "step_minutes": self.step_minutes_var.get(),
+            "minimum_score": self.minimum_score_var.get(),
+            "max_results": self.max_results_var.get(),
         }
 
     def _save_session(self) -> None:

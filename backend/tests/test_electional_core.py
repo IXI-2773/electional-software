@@ -7,21 +7,34 @@ from backend.electional.lots import calculate_lots, lot_longitude
 from backend.electional.presets import (
     apply_dignities,
     filter_positions_for_preset,
+    get_bound_lord,
     get_essential_dignity,
     get_preset,
     summarize_orb,
 )
-from backend.electional.scoring import score_window
+from backend.electional.scoring import score_breakdown, score_breakdown_model, score_window
 
 
-def position(name: str, longitude: float, sign: str, is_angular: bool = False, distance: float = 8) -> dict:
-    return {
+def position(
+    name: str,
+    longitude: float,
+    sign: str,
+    is_angular: bool = False,
+    distance: float = 8,
+    is_retrograde: bool = False,
+    daily_change: float | None = None,
+) -> dict:
+    payload = {
         "name": name,
         "longitude": longitude,
         "zodiac": {"sign": sign, "degree": int(longitude % 30), "minute": 0},
         "isAngular": is_angular,
+        "isRetrograde": is_retrograde,
         "closestAngle": {"shortName": "ASC", "distance": distance},
     }
+    if daily_change is not None:
+        payload["motion"] = {"dailyLongitudeChange": daily_change}
+    return payload
 
 
 class ElectionalCoreTest(unittest.TestCase):
@@ -40,6 +53,30 @@ class ElectionalCoreTest(unittest.TestCase):
         self.assertNotIn("Sun conjunction Mars", labels)
         self.assertEqual(summarize_orb(preset), "1 deg")
 
+    def test_aspect_detection_marks_applying_and_separating_contacts(self) -> None:
+        preset = get_preset("medieval-electional")
+        applying = detect_aspects(
+            [
+                position("Venus", 0, "Aries", daily_change=0),
+                position("Jupiter", 118, "Cancer", daily_change=3),
+            ],
+            ["trine"],
+            preset.aspect_orbs,
+        )
+        separating = detect_aspects(
+            [
+                position("Venus", 0, "Aries", daily_change=0),
+                position("Jupiter", 118, "Cancer", daily_change=-3),
+            ],
+            ["trine"],
+            preset.aspect_orbs,
+        )
+
+        self.assertEqual(applying[0]["phase"], "applying")
+        self.assertTrue(applying[0]["isApplying"])
+        self.assertEqual(separating[0]["phase"], "separating")
+        self.assertFalse(separating[0]["isApplying"])
+
     def test_traditional_lilly_filters_outer_planets(self) -> None:
         preset = get_preset("traditional-lilly")
         positions = [
@@ -56,6 +93,16 @@ class ElectionalCoreTest(unittest.TestCase):
         self.assertEqual(get_essential_dignity(position("Sun", 120, "Leo"))["label"], "Domicile")
         self.assertEqual(get_essential_dignity(position("Mars", 270, "Capricorn"))["label"], "Exalted")
         self.assertEqual(get_essential_dignity(position("Venus", 150, "Virgo"))["label"], "Fall")
+
+    def test_egyptian_bounds_add_minor_dignity(self) -> None:
+        self.assertEqual(get_bound_lord(position("Jupiter", 5, "Aries")), "Jupiter")
+        self.assertEqual(get_bound_lord(position("Saturn", 27, "Aries")), "Saturn")
+
+        dignity = get_essential_dignity(position("Mercury", 15, "Aries"))
+
+        self.assertEqual(dignity["label"], "Bound")
+        self.assertEqual(dignity["score"], 1)
+        self.assertEqual(dignity["boundLord"], "Mercury")
 
     def test_score_window_returns_integer_in_bounds(self) -> None:
         preset = get_preset("medieval-electional")
@@ -81,14 +128,74 @@ class ElectionalCoreTest(unittest.TestCase):
         self.assertGreaterEqual(score, 10)
         self.assertLessEqual(score, 99)
 
+    def test_score_breakdown_exposes_formula_inputs(self) -> None:
+        preset = get_preset("traditional-lilly")
+        positions = apply_dignities(
+            [
+                position("Venus", 45, "Taurus", is_angular=True, distance=2),
+                position("Mars", 215, "Scorpio"),
+            ],
+            preset,
+        )
+        detected = [{"aspectId": "trine", "tone": "support", "orb": 0.25}]
+
+        breakdown = score_breakdown(detected, positions, preset)
+
+        self.assertEqual(breakdown["base"], 58)
+        self.assertEqual(breakdown["support"], 1)
+        self.assertEqual(breakdown["objectiveMatches"], 1)
+        self.assertEqual(breakdown["closeContacts"], 1)
+        self.assertEqual(breakdown["applyingSupport"], 0)
+        self.assertEqual(breakdown["score"], score_window(detected, positions, preset))
+        self.assertTrue(any(reason["code"] == "support-aspects" for reason in breakdown["reasons"]))
+
+    def test_score_breakdown_counts_applying_aspect_pressure(self) -> None:
+        preset = get_preset("traditional-lilly")
+        positions = apply_dignities([position("Venus", 45, "Taurus"), position("Moon", 165, "Virgo")], preset)
+        detected = [{"aspectId": "trine", "tone": "support", "orb": 0.5, "isApplying": True}]
+
+        breakdown = score_breakdown(detected, positions, preset)
+
+        self.assertEqual(breakdown["applyingSupport"], 1)
+        self.assertTrue(any(reason["code"] == "applying-support" for reason in breakdown["reasons"]))
+
+    def test_score_breakdown_penalizes_retrograde_pressure(self) -> None:
+        preset = get_preset("traditional-lilly")
+        direct_positions = apply_dignities([position("Mercury", 45, "Taurus")], preset)
+        retrograde_positions = apply_dignities([position("Mercury", 45, "Taurus", is_retrograde=True)], preset)
+
+        direct = score_breakdown([], direct_positions, preset)
+        retrograde = score_breakdown([], retrograde_positions, preset)
+
+        self.assertEqual(retrograde["retrogradePressure"], 4)
+        self.assertLess(retrograde["score"], direct["score"])
+        self.assertTrue(any(reason["code"] == "retrograde-pressure" for reason in retrograde["reasons"]))
+
+    def test_score_breakdown_model_projects_to_legacy_json_shape(self) -> None:
+        preset = get_preset("traditional-lilly")
+        positions = apply_dignities([position("Venus", 45, "Taurus")], preset)
+
+        model = score_breakdown_model([], positions, preset)
+        payload = model.to_json()
+
+        self.assertEqual(payload["objectiveMatches"], model.objective_matches)
+        self.assertEqual(payload["rawScore"], model.raw_score)
+        self.assertIsInstance(payload["reasons"][0], dict)
+
+
     def test_lot_longitude_wraps_around_zodiac(self) -> None:
         self.assertEqual(lot_longitude(350, 20, 40), 330)
         self.assertEqual(lot_longitude(10, 350, 20), 340)
 
-    def test_calculate_lots_returns_fortune_and_spirit(self) -> None:
+    def test_calculate_lots_returns_seven_hermetic_lots(self) -> None:
         positions = [
             {**position("Sun", 120, "Leo"), "house": 10},
             {**position("Moon", 90, "Cancer"), "house": 9},
+            {**position("Mercury", 100, "Cancer"), "house": 9},
+            {**position("Venus", 150, "Virgo"), "house": 11},
+            {**position("Mars", 180, "Libra"), "house": 12},
+            {**position("Jupiter", 210, "Scorpio"), "house": 1},
+            {**position("Saturn", 240, "Sagittarius"), "house": 2},
         ]
         angles = [
             {"id": "asc", "name": "Ascendant", "shortName": "ASC", "longitude": 30},
@@ -100,9 +207,22 @@ class ElectionalCoreTest(unittest.TestCase):
 
         lots = calculate_lots(positions, angles, house_cusps, "equal-house")
 
-        self.assertEqual([lot["name"] for lot in lots], ["Part of Fortune", "Part of Spirit"])
+        self.assertEqual(
+            [lot["name"] for lot in lots],
+            [
+                "Part of Fortune",
+                "Part of Spirit",
+                "Part of Eros",
+                "Part of Necessity",
+                "Part of Courage",
+                "Part of Victory",
+                "Part of Nemesis",
+            ],
+        )
         self.assertEqual(lots[0]["longitude"], 0)
         self.assertEqual(lots[0]["formula"], "ASC + Moon - Sun")
+        self.assertEqual(lots[2]["formula"], "ASC + Venus - Spirit")
+        self.assertIn("topic", lots[6])
 
 
 if __name__ == "__main__":

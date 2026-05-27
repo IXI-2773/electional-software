@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, time
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 def parse_local_time(time_text: str | None) -> time:
@@ -20,6 +20,14 @@ def parse_local_time(time_text: str | None) -> time:
 def normalize_time_text(time_text: str | None) -> str:
     parsed = parse_local_time(time_text)
     return f"{parsed.hour:02d}:{parsed.minute:02d}"
+
+
+def is_valid_timezone(timezone_name: str | None) -> bool:
+    try:
+        ZoneInfo(timezone_name or "UTC")
+    except ZoneInfoNotFoundError:
+        return False
+    return True
 
 
 def zoned_time_to_utc(date_text: str, time_text: str, timezone_name: str) -> datetime:

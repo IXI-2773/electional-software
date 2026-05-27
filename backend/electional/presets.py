@@ -174,6 +174,21 @@ FALLS = {
     "Pisces": "Mercury",
 }
 
+EGYPTIAN_BOUNDS = {
+    "Aries": ((6, "Jupiter"), (14, "Venus"), (21, "Mercury"), (26, "Mars"), (30, "Saturn")),
+    "Taurus": ((8, "Venus"), (15, "Mercury"), (22, "Jupiter"), (27, "Saturn"), (30, "Mars")),
+    "Gemini": ((7, "Mercury"), (14, "Jupiter"), (21, "Venus"), (25, "Mars"), (30, "Saturn")),
+    "Cancer": ((6, "Mars"), (13, "Venus"), (19, "Mercury"), (26, "Jupiter"), (30, "Saturn")),
+    "Leo": ((6, "Jupiter"), (11, "Venus"), (18, "Saturn"), (24, "Mercury"), (30, "Mars")),
+    "Virgo": ((7, "Mercury"), (13, "Venus"), (17, "Jupiter"), (21, "Mars"), (30, "Saturn")),
+    "Libra": ((6, "Saturn"), (14, "Mercury"), (21, "Jupiter"), (28, "Venus"), (30, "Mars")),
+    "Scorpio": ((7, "Mars"), (11, "Venus"), (19, "Mercury"), (24, "Jupiter"), (30, "Saturn")),
+    "Sagittarius": ((12, "Jupiter"), (17, "Venus"), (21, "Mercury"), (26, "Saturn"), (30, "Mars")),
+    "Capricorn": ((7, "Mercury"), (14, "Jupiter"), (22, "Venus"), (26, "Saturn"), (30, "Mars")),
+    "Aquarius": ((7, "Mercury"), (13, "Venus"), (20, "Jupiter"), (25, "Mars"), (30, "Saturn")),
+    "Pisces": ((12, "Venus"), (16, "Jupiter"), (19, "Mercury"), (28, "Mars"), (30, "Saturn")),
+}
+
 
 def get_preset(preset_id: str | None) -> ElectionalPreset:
     if preset_id and preset_id in PRESET_BY_ID:
@@ -192,21 +207,46 @@ def filter_positions_for_preset(
     return [position for position in positions if uses_point(preset, str(position["name"]))]
 
 
+def get_bound_lord(planet: Mapping[str, object]) -> str | None:
+    zodiac = planet.get("zodiac")
+    if not isinstance(zodiac, Mapping):
+        return None
+
+    sign = str(zodiac.get("sign") or "")
+    bounds = EGYPTIAN_BOUNDS.get(sign)
+    if not bounds:
+        return None
+
+    try:
+        degree = float(zodiac.get("degree", 0)) + float(zodiac.get("minute", 0)) / 60
+    except (TypeError, ValueError):
+        return None
+
+    for end_degree, lord in bounds:
+        if degree < end_degree:
+            return lord
+    return bounds[-1][1]
+
+
 def get_essential_dignity(planet: Mapping[str, object]) -> dict[str, object]:
     sign = str(planet["zodiac"]["sign"]) if isinstance(planet.get("zodiac"), Mapping) else str(planet.get("sign"))
     name = str(planet["name"])
+    bound_lord = get_bound_lord(planet)
+    is_own_bound = bound_lord == name and name in CLASSICAL_PLANETS
 
     if RULERS.get(sign) == name:
-        return {"label": "Domicile", "score": 5}
+        return {"label": "Domicile", "score": 5 + int(is_own_bound), "boundLord": bound_lord, "isOwnBound": is_own_bound}
     if EXALTATIONS.get(sign) == name:
-        return {"label": "Exalted", "score": 4}
+        return {"label": "Exalted", "score": 4 + int(is_own_bound), "boundLord": bound_lord, "isOwnBound": is_own_bound}
     if DETRIMENTS.get(sign) == name:
-        return {"label": "Detriment", "score": -5}
+        return {"label": "Detriment", "score": -5 + int(is_own_bound), "boundLord": bound_lord, "isOwnBound": is_own_bound}
     if FALLS.get(sign) == name:
-        return {"label": "Fall", "score": -4}
+        return {"label": "Fall", "score": -4 + int(is_own_bound), "boundLord": bound_lord, "isOwnBound": is_own_bound}
     if name not in CLASSICAL_PLANETS:
-        return {"label": "Outer", "score": 0}
-    return {"label": "Peregrine", "score": 0}
+        return {"label": "Outer", "score": 0, "boundLord": bound_lord, "isOwnBound": False}
+    if is_own_bound:
+        return {"label": "Bound", "score": 1, "boundLord": bound_lord, "isOwnBound": True}
+    return {"label": "Peregrine", "score": 0, "boundLord": bound_lord, "isOwnBound": False}
 
 
 def apply_dignities(

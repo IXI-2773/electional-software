@@ -11,6 +11,10 @@ The current Python slice includes:
 - IANA timezone conversion.
 - Astronomy Engine Python ephemeris.
 - ASC, MC, DSC, IC, Whole Sign houses, and angularity.
+- Seven Hermetic Lots / Parts.
+- Moon phase, daily planetary motion, and retrograde scoring pressure.
+- Applying/separating aspect phase for reports, APIs, and scoring explanations.
+- Election condition flags for tightening aspect and angular planet context.
 - A small standard-library JSON API.
 - A native Python desktop interface.
 - A server-rendered diagnostic interface at `/`.
@@ -20,19 +24,19 @@ The legacy browser UI has been retired to `legacy/static-js-ui` for reference on
 ## Run Tests
 
 ```powershell
-& "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m unittest discover backend\tests
+& ".\.venv\Scripts\python.exe" -m unittest discover backend\tests
 ```
 
 ## Run Desktop App
 
 ```powershell
-& "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" desktop_app.py
+& ".\.venv\Scripts\python.exe" desktop_app.py
 ```
 
 ## Run Diagnostic API
 
 ```powershell
-& "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m backend.electional.server
+& ".\.venv\Scripts\python.exe" -m backend.electional.server
 ```
 
 Endpoints:
@@ -41,5 +45,12 @@ Endpoints:
 - `GET /api/health`
 - `GET /api/presets`
 - `POST /api/score`
+- `POST /api/chart`
+- `POST /api/search`
+- `POST /api/report`
 
 `POST /api/score` still accepts already-calculated positions for bridge compatibility. The Python-rendered app route now calculates timezone conversion, ephemeris, house angles, aspects, dignity, scoring, and candidate windows server-side.
+
+`POST /api/chart`, `/api/search`, and `/api/report` accept chart inputs such as `date`, `time`, `locationId`, `presetId`, `aspects`, `zodiacSystemId`, and `houseSystemId`. Search/report calls also accept `startOffsetMinutes`, `endOffsetMinutes`, `stepMinutes`, `maxResults`, and `minimumScore`.
+
+The desktop app exposes the same search controls through the Election Model panel.

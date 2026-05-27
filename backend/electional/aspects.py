@@ -61,6 +61,7 @@ ASPECTS: tuple[Aspect, ...] = (
 )
 
 ASPECT_BY_ID = {aspect.id: aspect for aspect in ASPECTS}
+ASPECT_PHASE_EPSILON = 0.02
 
 
 def angular_distance(first_longitude: float, second_longitude: float) -> float:
@@ -72,6 +73,54 @@ def format_orb(orb: float) -> str:
     degrees = floor(orb)
     minutes = round((orb - degrees) * 60)
     return f"{degrees} deg {minutes:02d} min"
+
+
+def daily_longitude_change(position: Mapping[str, object]) -> float | None:
+    motion = position.get("motion")
+    if not isinstance(motion, Mapping):
+        return None
+    try:
+        return float(motion["dailyLongitudeChange"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def aspect_phase(first: Mapping[str, object], second: Mapping[str, object], aspect: Aspect, orb: float) -> dict[str, object]:
+    first_motion = daily_longitude_change(first)
+    second_motion = daily_longitude_change(second)
+    if first_motion is None or second_motion is None:
+        return {
+            "phase": "unknown",
+            "phaseLabel": "Unknown",
+            "isApplying": None,
+            "orbChangePerDay": 0.0,
+        }
+
+    future_distance = angular_distance(
+        float(first["longitude"]) + first_motion,
+        float(second["longitude"]) + second_motion,
+    )
+    future_orb = abs(future_distance - aspect.angle)
+    orb_change = future_orb - orb
+    if abs(orb_change) <= ASPECT_PHASE_EPSILON:
+        phase = "exact"
+        label = "Near exact"
+        is_applying = None
+    elif orb_change < 0:
+        phase = "applying"
+        label = "Applying"
+        is_applying = True
+    else:
+        phase = "separating"
+        label = "Separating"
+        is_applying = False
+
+    return {
+        "phase": phase,
+        "phaseLabel": label,
+        "isApplying": is_applying,
+        "orbChangePerDay": orb_change,
+    }
 
 
 def detect_aspects(
@@ -94,6 +143,7 @@ def detect_aspects(
                 if orb <= orb_limit:
                     first_name = str(first["name"])
                     second_name = str(second["name"])
+                    phase = aspect_phase(first, second, aspect, orb)
                     detected.append(
                         {
                             "aspectId": aspect.id,
@@ -103,6 +153,7 @@ def detect_aspects(
                             "orb": orb,
                             "orbLimit": orb_limit,
                             "orbText": format_orb(orb),
+                            **phase,
                             "bodies": [first_name, second_name],
                             "label": f"{first_name} {aspect.name.lower()} {second_name}",
                         }

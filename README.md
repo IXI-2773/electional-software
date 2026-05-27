@@ -10,7 +10,7 @@ A private work-in-progress application for electional astrology: transits, aspec
 - The desktop UI supports preset cities, custom latitude/longitude/timezone entries, and built-in validation.
 - Custom locations can be saved, reused from the Location preset dropdown, and forgotten later.
 - Ranked candidate windows are selectable in the desktop UI and can be applied back to the input time.
-- Ribbon buttons now perform useful actions: reset chart, calculate, save reports, or clearly mark queued features.
+- Ribbon buttons now perform useful actions: reset chart, calculate, save reports, inspect chart data, review systems, and run screening tools.
 - The chart workspace includes degree ticks and a bottom interpretation panel for the selected window.
 - Quick time controls and support/stress counts make candidate-window scanning faster.
 - The desktop app remembers the last working session and saved reports include ranked candidate windows.
@@ -22,23 +22,30 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Ribbon utilities now open real calculated tools for chart data, void-of-course Moon scanning, essential dignity reference, and solar elongation screening.
 - Sidereal is now first-class: the desktop defaults to Sidereal Lahiri, stores ayanamsha in chart snapshots, and supports Whole Sign, Equal House, Topocentric, or Koch selection.
 - House cusps have their own detail tab and drive the wheel divisions for quadrant-style systems.
-- Arabic Lots now calculate Fortune and Spirit for each chart, with a Lots tab and wheel markers.
+- Arabic Lots now calculate the seven Hermetic Lots for each chart, with a Lots tab, wheel markers, focus support, and an in-app reference.
+- Moon phase, planetary motion, retrograde state, and electional condition notes now appear in snapshots, reports, and desktop detail tabs.
+- Aspect contacts now show applying/separating phase and feed the score explanation when supportive or stressful contacts are tightening.
+- Conditions now include election flags for tightening support/stress, angular benefics/malefics, and lunar phase context.
 - System references are available from the ribbon so zodiac/house modes can be reviewed inside the app.
-- Python calculates timezone conversion, ephemeris, ASC/MC/DSC/IC, Whole Sign houses, aspects, dignity, scoring, and ranked windows server-side.
+- Score breakdowns and reason lines explain the final window score.
+- Desktop search controls can scan custom hour ranges, step sizes, score thresholds, and result limits.
+- The backend exposes chart, configurable search, and report API endpoints.
+- Python calculates timezone conversion, ephemeris, ASC/MC/DSC/IC, houses, aspects, lunar phase, planetary motion, dignity, scoring, and ranked windows server-side.
 - The previous static JavaScript UI has been retired into `legacy/static-js-ui` for reference only.
 
 ## Run Locally
 
-Install dependencies:
+Create a local virtual environment and install dependencies:
 
 ```powershell
-& "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m pip install -r requirements.txt
+& "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe" -m venv .venv
+& ".\.venv\Scripts\python.exe" -m pip install -r requirements.txt
 ```
 
 Run the native desktop application:
 
 ```powershell
-& "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" desktop_app.py
+& ".\.venv\Scripts\python.exe" desktop_app.py
 ```
 
 Or double-click:
@@ -54,13 +61,13 @@ Runner notes are in `docs/python-runner.md`.
 Optional diagnostic server:
 
 ```powershell
-& "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m backend.electional.server
+& ".\.venv\Scripts\python.exe" -m backend.electional.server
 ```
 
 ## Tests
 
 ```powershell
-& "C:\Users\Drago\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m unittest discover backend\tests
+& ".\.venv\Scripts\python.exe" -m unittest discover backend\tests
 ```
 
 ## Accuracy Fixtures

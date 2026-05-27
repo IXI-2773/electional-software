@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict, is_dataclass
+from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -10,12 +12,84 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .aspects import detect_aspects
+from .chart import build_election_report, build_snapshot, build_transit_windows
+from .locations import LocationPreset, get_location
 from .presets import apply_dignities, filter_positions_for_preset, get_preset, summarize_orb
-from .scoring import score_window
+from .reporting import build_report_text
+from .scoring import score_breakdown, score_window
+from .search import SearchConfig
 from .web import render_app
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def json_default(value: object) -> object:
+    if hasattr(value, "to_json"):
+        return value.to_json()  # type: ignore[no-any-return]
+    if is_dataclass(value):
+        return asdict(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def location_from_payload(payload: dict[str, Any]) -> LocationPreset:
+    custom = payload.get("location")
+    if isinstance(custom, dict):
+        return LocationPreset(
+            str(custom.get("id") or "custom"),
+            str(custom.get("name") or "Custom Location"),
+            float(custom.get("latitude", 0)),
+            float(custom.get("longitude", 0)),
+            str(custom.get("timezone") or "UTC"),
+        )
+    return get_location(str(payload.get("locationId") or payload.get("location") or "los-angeles"))
+
+
+def optional_int(payload: dict[str, Any], key: str, fallback: int | None = None) -> int | None:
+    if key not in payload or payload[key] in (None, ""):
+        return fallback
+    try:
+        return int(payload[key])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{key} must be a whole number.") from exc
+
+
+def search_config_from_payload(payload: dict[str, Any]) -> SearchConfig:
+    def minutes_from(key: str, fallback: int) -> int:
+        if key in payload:
+            value = optional_int(payload, key)
+            return fallback if value is None else value
+        hour_key = key.replace("Minutes", "Hours")
+        if hour_key in payload:
+            try:
+                return int(float(payload[hour_key]) * 60)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{hour_key} must be a number.") from exc
+        return fallback
+
+    step_minutes = optional_int(payload, "stepMinutes", 120)
+    config = SearchConfig(
+        start_offset_minutes=minutes_from("startOffsetMinutes", 0),
+        end_offset_minutes=minutes_from("endOffsetMinutes", 600),
+        step_minutes=120 if step_minutes is None else step_minutes,
+        max_results=optional_int(payload, "maxResults"),
+        minimum_score=optional_int(payload, "minimumScore"),
+    )
+    config.offsets()
+    if config.minimum_score is not None and not 10 <= config.minimum_score <= 99:
+        raise ValueError("minimumScore must be between 10 and 99.")
+    if config.max_results is not None and config.max_results < 1:
+        raise ValueError("maxResults must be at least 1.")
+    return config
+
+
+def decode_json_object(raw_body: bytes) -> dict[str, Any]:
+    payload = json.loads(raw_body or b"{}")
+    if not isinstance(payload, dict):
+        raise ValueError("JSON body must be an object.")
+    return payload
 
 
 def build_score_response(payload: dict[str, Any]) -> dict[str, Any]:
@@ -31,6 +105,61 @@ def build_score_response(payload: dict[str, Any]) -> dict[str, Any]:
         "positions": positions,
         "detectedAspects": detected,
         "score": score_window(detected, positions, preset),
+        "scoreBreakdown": score_breakdown(detected, positions, preset),
+    }
+
+
+def build_chart_response(payload: dict[str, Any]) -> dict[str, Any]:
+    location = location_from_payload(payload)
+    snapshot = build_snapshot(
+        str(payload.get("date") or "2026-05-26"),
+        str(payload.get("time") or "09:00"),
+        location,
+        str(payload.get("presetId") or "traditional-lilly"),
+        payload.get("aspects"),
+        str(payload.get("zodiacSystemId") or payload.get("zodiacSystem") or "sidereal-lahiri"),
+        str(payload.get("houseSystemId") or payload.get("houseSystem") or "whole-sign"),
+    )
+    return {"location": location.to_json(), "snapshot": snapshot}
+
+
+def build_search_response(payload: dict[str, Any]) -> dict[str, Any]:
+    location = location_from_payload(payload)
+    config = search_config_from_payload(payload)
+    windows = build_transit_windows(
+        str(payload.get("date") or "2026-05-26"),
+        str(payload.get("time") or "09:00"),
+        location,
+        str(payload.get("presetId") or "traditional-lilly"),
+        payload.get("aspects"),
+        str(payload.get("zodiacSystemId") or payload.get("zodiacSystem") or "sidereal-lahiri"),
+        str(payload.get("houseSystemId") or payload.get("houseSystem") or "whole-sign"),
+        config,
+    )
+    return {"location": location.to_json(), "search": asdict(config), "resultCount": len(windows), "windows": windows}
+
+
+def build_report_response(payload: dict[str, Any]) -> dict[str, Any]:
+    location = location_from_payload(payload)
+    config = search_config_from_payload(payload)
+    report = build_election_report(
+        str(payload.get("date") or "2026-05-26"),
+        str(payload.get("time") or "09:00"),
+        location,
+        str(payload.get("presetId") or "traditional-lilly"),
+        payload.get("aspects"),
+        str(payload.get("zodiacSystemId") or payload.get("zodiacSystem") or "sidereal-lahiri"),
+        str(payload.get("houseSystemId") or payload.get("houseSystem") or "whole-sign"),
+        config,
+    )
+    windows = report["windows"]
+    selected_window = windows[0] if windows else report["snapshot"]
+    return {
+        **report,
+        "location": location.to_json(),
+        "search": asdict(config),
+        "resultCount": len(windows),
+        "reportText": build_report_text(selected_window, windows, location),
     }
 
 
@@ -68,14 +197,20 @@ class ElectionalRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
-        if path != "/api/score":
+        routes = {
+            "/api/score": build_score_response,
+            "/api/chart": build_chart_response,
+            "/api/search": build_search_response,
+            "/api/report": build_report_response,
+        }
+        if path not in routes:
             self.send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
             return
 
         try:
             length = int(self.headers.get("content-length", "0"))
-            payload = json.loads(self.rfile.read(length) or b"{}")
-            response = build_score_response(payload)
+            payload = decode_json_object(self.rfile.read(length))
+            response = routes[path](payload)
         except Exception as exc:  # pragma: no cover - returned to caller for local debugging.
             self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
@@ -111,7 +246,7 @@ class ElectionalRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
-        body = json.dumps(payload).encode("utf-8")
+        body = json.dumps(payload, default=json_default).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))

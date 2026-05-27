@@ -228,8 +228,9 @@ def calculate_house_cusps(
     longitude: float,
     zodiac_system_id: str = "tropical",
     house_system_id: str = "whole-sign",
+    angles: list[dict[str, object]] | None = None,
 ) -> list[dict[str, object]]:
-    angles = calculate_angles(moment, latitude, longitude, zodiac_system_id)
+    angles = angles or calculate_angles(moment, latitude, longitude, zodiac_system_id)
     ascendant = next(angle for angle in angles if angle["id"] == "asc")
     midheaven = next(angle for angle in angles if angle["id"] == "mc")
     asc = float(ascendant["longitude"])

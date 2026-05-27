@@ -6,17 +6,15 @@ from datetime import datetime, timedelta
 from typing import Iterable
 
 from .aspects import detect_aspects
-from .ephemeris import ENGINE_NAME, format_zodiac_position, get_planet_positions
+from .ephemeris import ENGINE_NAME, format_zodiac_position, get_planet_positions, lunar_phase_from_positions
 from .houses import calculate_angles, calculate_house_cusps, enrich_positions_with_houses
 from .locations import LocationPreset
 from .lots import calculate_lots
 from .presets import apply_dignities, filter_positions_for_preset, get_preset
-from .scoring import score_window
+from .scoring import score_breakdown
+from .search import DEFAULT_SEARCH_CONFIG, SearchConfig, rank_search_windows
 from .systems import ayanamsha_for_system, get_house_system, get_zodiac_system
 from .time_utils import format_in_timezone, zoned_time_to_utc
-
-WINDOW_OFFSETS = (0, 2, 4, 6, 8, 10)
-
 
 def describe_window(detected_aspects: list[dict[str, object]], positions: list[dict[str, object]], preset: object) -> str:
     scoring_positions = filter_positions_for_preset(positions, preset)
@@ -33,7 +31,8 @@ def describe_window(detected_aspects: list[dict[str, object]], positions: list[d
         return "Quiet window with no selected major aspects in orb."
 
     strongest = detected_aspects[0]
-    return f"Strongest contact: {strongest['label']} with {strongest['orbText']} orb."
+    phase = str(strongest.get("phaseLabel") or "phase unknown").lower()
+    return f"Strongest contact: {strongest['label']} with {strongest['orbText']} orb, {phase}."
 
 
 def build_snapshot_for_moment(
@@ -47,11 +46,13 @@ def build_snapshot_for_moment(
     zodiac_system = get_zodiac_system(zodiac_system_id)
     house_system = get_house_system(house_system_id)
     angles = calculate_angles(moment, location.latitude, location.longitude, zodiac_system.id)
-    house_cusps = calculate_house_cusps(moment, location.latitude, location.longitude, zodiac_system.id, house_system.id)
+    house_cusps = calculate_house_cusps(moment, location.latitude, location.longitude, zodiac_system.id, house_system.id, angles)
     base_positions = enrich_positions_with_houses(get_planet_positions(moment, zodiac_system.id), angles, house_system.id, house_cusps)
     positions = apply_dignities(base_positions, preset)
+    lunar_phase = lunar_phase_from_positions(positions)
     lots = calculate_lots(positions, angles, house_cusps, house_system.id)
     detected = detect_aspects(filter_positions_for_preset(positions, preset), aspects, preset.aspect_orbs)
+    breakdown = score_breakdown(detected, positions, preset)
 
     return {
         "date": moment,
@@ -65,8 +66,10 @@ def build_snapshot_for_moment(
         "preset": preset,
         "angles": angles,
         "positions": positions,
+        "lunarPhase": lunar_phase,
         "detectedAspects": detected,
-        "score": score_window(detected, positions, preset),
+        "score": breakdown["score"],
+        "scoreBreakdown": breakdown,
     }
 
 
@@ -109,18 +112,19 @@ def build_transit_windows(
     selected_aspects: Iterable[str] | None = None,
     zodiac_system_id: str = "tropical",
     house_system_id: str = "whole-sign",
+    search_config: SearchConfig = DEFAULT_SEARCH_CONFIG,
 ) -> list[dict[str, object]]:
     base_moment = zoned_time_to_utc(date_text, time_text, location.timezone)
     preset = get_preset(preset_id)
     aspects = tuple(selected_aspects or preset.aspect_ids)
     windows = []
 
-    for offset in WINDOW_OFFSETS:
-        moment = base_moment + timedelta(hours=offset)
+    for offset_minutes in search_config.offsets():
+        moment = base_moment + timedelta(minutes=offset_minutes)
         snapshot = build_snapshot_for_moment(moment, location, preset, aspects, zodiac_system_id, house_system_id)
         windows.append(snapshot_to_window(snapshot, location))
 
-    return sorted(windows, key=lambda item: int(item["score"]), reverse=True)
+    return rank_search_windows(windows, search_config)
 
 
 def build_election_report(
@@ -131,6 +135,7 @@ def build_election_report(
     selected_aspects: Iterable[str] | None = None,
     zodiac_system_id: str = "tropical",
     house_system_id: str = "whole-sign",
+    search_config: SearchConfig = DEFAULT_SEARCH_CONFIG,
 ) -> dict[str, object]:
     """Build the input chart and ranked windows without recalculating the base moment twice."""
 
@@ -138,13 +143,13 @@ def build_election_report(
     preset = get_preset(preset_id)
     aspects = tuple(selected_aspects or preset.aspect_ids)
     snapshot = build_snapshot_for_moment(base_moment, location, preset, aspects, zodiac_system_id, house_system_id)
-    windows = [snapshot_to_window(snapshot, location)]
-
-    for offset in WINDOW_OFFSETS:
-        if offset == 0:
+    windows = []
+    for offset_minutes in search_config.offsets():
+        if offset_minutes == 0:
+            windows.append(snapshot_to_window(snapshot, location))
             continue
         window_snapshot = build_snapshot_for_moment(
-            base_moment + timedelta(hours=offset),
+            base_moment + timedelta(minutes=offset_minutes),
             location,
             preset,
             aspects,
@@ -155,7 +160,7 @@ def build_election_report(
 
     return {
         "snapshot": snapshot,
-        "windows": sorted(windows, key=lambda item: int(item["score"]), reverse=True),
+        "windows": rank_search_windows(windows, search_config),
     }
 
 

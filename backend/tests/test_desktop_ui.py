@@ -40,6 +40,7 @@ from backend.electional.reporting import (
     build_classical_point_data_page,
     build_comparison_export_text,
     build_decision_brief_page,
+    build_diagnostics_page,
     build_medieval_data_page,
     build_transit_search_page,
     build_window_comparison_page,
@@ -59,20 +60,42 @@ from backend.electional.reporting import (
     judgment_context_lines,
     rule_lines,
     score_accounting_lines,
+    score_diagnostic_lines,
     score_evaluation_lines,
 )
 from backend.electional.scoring import score_breakdown
 from backend.electional.search import (
+    SEARCH_PRESET_NAMES,
     build_search_config_from_text,
+    fails_objective_antipattern,
     format_search_summary,
+    has_angular_benefic,
     has_angular_malefic,
     has_applying_support,
     has_major_stress,
     moon_is_non_void,
+    rejection_reasons,
+    rejection_summary,
     rank_search_windows,
+    search_preset_values,
+    split_ranked_windows,
 )
 from backend.electional.screening import solar_elongation_summary
 from backend.electional.session import clean_session_state, load_session_state, save_session_state
+from backend.electional.shortlist import (
+    SHORTLIST_TAG_CHOICES,
+    add_shortlist_entry,
+    add_shortlist_tag,
+    build_shortlist_compare_text,
+    build_shortlist_entry,
+    format_shortlist_batch_diagnostics,
+    format_shortlist_entries,
+    normalize_shortlist_tags,
+    remove_shortlist_tag,
+    shortlist_batch_diagnostics,
+    shortlist_entry_by_id,
+    update_shortlist_tags,
+)
 from backend.electional.validation import validate_election_inputs, validate_search_inputs
 
 
@@ -152,6 +175,40 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertTrue(config.avoid_major_stress)
         self.assertEqual(format_search_summary(config), "Scan 12h from start, every 30m; score >= 60, fit >= 2, no major stress, top 8.")
 
+    def test_search_config_parses_diagnostic_filters(self) -> None:
+        config = build_search_config_from_text(
+            "12",
+            "30",
+            "60",
+            "8",
+            "2",
+            require_applying_support=True,
+            require_angular_benefic=True,
+            minimum_confidence_text="70",
+            minimum_cleanliness_text="68",
+            maximum_volatility_text="35",
+        )
+
+        self.assertEqual(config.minimum_confidence, 70)
+        self.assertEqual(config.minimum_cleanliness, 68)
+        self.assertEqual(config.maximum_volatility, 35)
+        self.assertTrue(config.require_applying_support)
+        self.assertTrue(config.require_angular_benefic)
+        self.assertIn("confidence >= 70", format_search_summary(config))
+        self.assertIn("cleanliness >= 68", format_search_summary(config))
+        self.assertIn("volatility <= 35", format_search_summary(config))
+        self.assertIn("needs angular benefic", format_search_summary(config))
+
+    def test_objective_search_presets_expose_expected_names_and_filters(self) -> None:
+        self.assertIn("Strict Launch", SEARCH_PRESET_NAMES)
+        launch = search_preset_values("Strict Launch")
+        travel = search_preset_values("Safe Travel")
+
+        self.assertTrue(launch["require_angular_benefic"])
+        self.assertTrue(launch["avoid_objective_antipatterns"])
+        self.assertTrue(travel["require_moon_non_void"])
+        self.assertEqual(search_preset_values("Custom"), {})
+
     def test_search_validation_rejects_impossible_values(self) -> None:
         errors = validate_search_inputs("1", "90", "100", "0", "9")
 
@@ -159,6 +216,13 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("Minimum score must be 99 or lower.", errors)
         self.assertIn("Max results must be at least 1.", errors)
         self.assertIn("Minimum fit must be 5 or lower.", errors)
+
+    def test_search_validation_rejects_out_of_range_diagnostic_filters(self) -> None:
+        errors = validate_search_inputs("12", "60", "50", "5", "2", "100", "101", "120")
+
+        self.assertIn("Minimum confidence must be 99 or lower.", errors)
+        self.assertIn("Minimum cleanliness must be 99 or lower.", errors)
+        self.assertIn("Maximum volatility must be 99 or lower.", errors)
 
     def test_rank_search_windows_can_filter_for_fit_and_major_stress(self) -> None:
         clean_high_fit = {
@@ -219,10 +283,142 @@ class DesktopUiHelpersTest(unittest.TestCase):
 
         ranked = rank_search_windows(
             [void_moon, angular_malefic, no_support, clean],
-            build_search_config_from_text("12", "30", "60", "", "2", False, True, True, True),
+            build_search_config_from_text(
+                "12",
+                "30",
+                "60",
+                "",
+                "2",
+                require_applying_support=True,
+                avoid_angular_malefics=True,
+                require_moon_non_void=True,
+            ),
         )
 
         self.assertEqual(ranked, [clean])
+
+    def test_rank_search_windows_can_avoid_objective_antipatterns(self) -> None:
+        clean = {
+            "score": 87,
+            "objective": "Meeting or negotiation",
+            "scoreBreakdown": {"objectiveMatches": 2},
+            "detectedAspects": [{"tone": "support", "orb": 1.0, "isApplying": True}],
+            "positions": [{"name": "Jupiter", "isAngular": False, "isRetrograde": False}],
+            "moonCondition": {"voidOfCourse": {"isVoid": False}},
+        }
+        bad_negotiation = {
+            "score": 93,
+            "objective": "Meeting or negotiation",
+            "scoreBreakdown": {"objectiveMatches": 2},
+            "detectedAspects": [{"tone": "stress", "orb": 0.8, "isApplying": True}],
+            "positions": [{"name": "Mercury", "isAngular": False, "isRetrograde": True}],
+            "moonCondition": {"voidOfCourse": {"isVoid": False}},
+        }
+
+        ranked = rank_search_windows(
+            [bad_negotiation, clean],
+            build_search_config_from_text(
+                "12",
+                "30",
+                "60",
+                "",
+                "1",
+                avoid_objective_antipatterns=True,
+            ),
+        )
+
+        self.assertTrue(fails_objective_antipattern(bad_negotiation, "Meeting or negotiation"))
+        self.assertEqual(ranked, [clean])
+
+    def test_rank_search_windows_can_filter_by_diagnostics_and_angular_benefic(self) -> None:
+        strongest = {
+            "score": 90,
+            "scoreBreakdown": {
+                "objectiveMatches": 2,
+                "diagnostics": {
+                    "confidence": {"score": 84},
+                    "cleanliness": {"score": 79},
+                    "volatility": {"score": 28},
+                    "readiness": {"score": 81},
+                },
+            },
+            "detectedAspects": [{"tone": "support", "orb": 1.0, "isApplying": True}],
+            "positions": [{"name": "Venus", "isAngular": True, "closestAngle": {"distance": 2.0}}],
+        }
+        noisy = {
+            "score": 95,
+            "scoreBreakdown": {
+                "objectiveMatches": 3,
+                "diagnostics": {
+                    "confidence": {"score": 59},
+                    "cleanliness": {"score": 52},
+                    "volatility": {"score": 64},
+                    "readiness": {"score": 75},
+                },
+            },
+            "detectedAspects": [{"tone": "support", "orb": 1.0, "isApplying": True}],
+            "positions": [{"name": "Jupiter", "isAngular": False, "closestAngle": {"distance": 12.0}}],
+        }
+
+        ranked = rank_search_windows(
+            [noisy, strongest],
+            build_search_config_from_text(
+                "12",
+                "30",
+                "60",
+                "",
+                "1",
+                require_applying_support=True,
+                require_angular_benefic=True,
+                minimum_confidence_text="70",
+                minimum_cleanliness_text="70",
+                maximum_volatility_text="35",
+            ),
+        )
+
+        self.assertTrue(has_angular_benefic(strongest))
+        self.assertEqual(ranked, [strongest])
+
+    def test_rejection_reasons_and_summary_explain_why_windows_failed(self) -> None:
+        window = {
+            "formattedTime": "Tue, May 26, 2026, 1:00 PM PDT",
+            "score": 63,
+            "objective": "Safe Travel",
+            "scoreBreakdown": {
+                "objectiveMatches": 0,
+                "diagnostics": {
+                    "confidence": {"score": 58},
+                    "cleanliness": {"score": 60},
+                    "volatility": {"score": 52},
+                },
+            },
+            "detectedAspects": [{"tone": "stress", "orb": 0.8, "isApplying": True}],
+            "positions": [{"name": "Mars", "isAngular": True, "closestAngle": {"distance": 2.0}}],
+            "moonCondition": {"voidOfCourse": {"isVoid": True}},
+        }
+        config = build_search_config_from_text(
+            "12",
+            "30",
+            "70",
+            "",
+            "1",
+            avoid_major_stress=True,
+            avoid_angular_malefics=True,
+            require_moon_non_void=True,
+            minimum_confidence_text="70",
+            maximum_volatility_text="35",
+        )
+
+        reasons = rejection_reasons(window, config)
+        kept, rejected = split_ranked_windows([window], config)
+        summary = rejection_summary(rejected)
+
+        self.assertEqual(kept, [])
+        self.assertIn("score 63 below minimum 70", reasons)
+        self.assertIn("confidence 58 below minimum 70", reasons)
+        self.assertIn("major stress present", reasons)
+        self.assertEqual(summary["count"], 1)
+        self.assertTrue(any("major stress present" == reason for reason, _count in summary["topReasons"]))
 
     def test_has_major_stress_detects_tight_stress_or_angular_malefic(self) -> None:
         self.assertTrue(
@@ -423,6 +619,37 @@ class DesktopUiHelpersTest(unittest.TestCase):
         reasons = travel["reasons"]
         self.assertTrue(any(reason.get("code") == "objective-weighting" for reason in reasons))
 
+    def test_score_breakdown_includes_backend_diagnostics(self) -> None:
+        preset = get_preset("traditional-lilly")
+        positions = [
+            {
+                "name": "Mercury",
+                "isAngular": False,
+                "isRetrograde": False,
+                "dignity": {"score": 0},
+            },
+            {
+                "name": "Jupiter",
+                "isAngular": True,
+                "isRetrograde": False,
+                "closestAngle": {"distance": 2.0},
+                "dignity": {"score": 3},
+            },
+        ]
+        aspects = [
+            {"aspectId": "trine", "tone": "support", "orb": 1.0, "isApplying": True, "timingQuality": "soon"},
+        ]
+
+        breakdown = score_breakdown(aspects, positions, preset, objective="Launch or publish")
+        diagnostics = breakdown.get("diagnostics", {})
+
+        self.assertIn("readiness", diagnostics)
+        self.assertIn("volatility", diagnostics)
+        self.assertIn("cleanliness", diagnostics)
+        self.assertIn("confidence", diagnostics)
+        self.assertIn("signals", diagnostics)
+        self.assertIsInstance(diagnostics["confidence"]["score"], int)
+
     def test_score_accounting_and_evaluation_lines_are_human_readable(self) -> None:
         snapshot = {
             "scoreBreakdown": {
@@ -449,6 +676,37 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("positive +18.5", "\n".join(score_accounting_lines(snapshot)))
         self.assertIn("Aspect quality", "\n".join(score_accounting_lines(snapshot)))
         self.assertIn("Grade C", "\n".join(score_evaluation_lines(snapshot)))
+
+    def test_score_diagnostic_lines_and_page_are_human_readable(self) -> None:
+        snapshot = {
+            "score": 78,
+            "scoreBreakdown": {
+                "evaluation": {"band": "Strong", "grade": "B"},
+                "diagnostics": {
+                    "readiness": {"score": 82, "band": "Strong", "summary": "Ready to act."},
+                    "volatility": {"score": 36, "band": "Moderate", "summary": "Some motion remains."},
+                    "cleanliness": {"score": 76, "band": "Usable", "summary": "Mostly coherent chart."},
+                    "confidence": {"score": 71, "band": "Solid", "summary": "Signals agree well enough."},
+                    "signals": {
+                        "applyingSupport": True,
+                        "angularBenefic": True,
+                        "majorStress": False,
+                        "angularMalefic": False,
+                        "moonNonVoid": True,
+                        "objectiveAntiPatterns": [],
+                    },
+                },
+            },
+        }
+
+        diagnostic_text = "\n".join(score_diagnostic_lines(snapshot))
+        page = build_diagnostics_page(snapshot)
+
+        self.assertIn("Readiness: 82", diagnostic_text)
+        self.assertIn("Signal: applying support is present.", diagnostic_text)
+        self.assertIn("Signal: angular benefic emphasis is present.", diagnostic_text)
+        self.assertIn("Window Diagnostics", page)
+        self.assertIn("Confidence: 71", page)
 
     def test_constellation_lines_explain_rising_size_and_speed(self) -> None:
         snapshot = {
@@ -700,7 +958,12 @@ class DesktopUiHelpersTest(unittest.TestCase):
                 "scan_hours": "24",
                 "step_minutes": "30",
                 "minimum_score": "70",
+                "minimum_confidence": "72",
+                "minimum_cleanliness": "69",
+                "maximum_volatility": "34",
                 "max_results": "12",
+                "require_angular_benefic": True,
+                "avoid_objective_antipatterns": True,
                 "display_options": {"show_aspects": False, "compact_wheel": True, "wheel_zoom": 0.94},
             }
 
@@ -713,7 +976,12 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(loaded["scan_hours"], "24")
         self.assertEqual(loaded["step_minutes"], "30")
         self.assertEqual(loaded["minimum_score"], "70")
+        self.assertEqual(loaded["minimum_confidence"], "72")
+        self.assertEqual(loaded["minimum_cleanliness"], "69")
+        self.assertEqual(loaded["maximum_volatility"], "34")
         self.assertEqual(loaded["max_results"], "12")
+        self.assertTrue(loaded["require_angular_benefic"])
+        self.assertTrue(loaded["avoid_objective_antipatterns"])
         self.assertFalse(loaded["display_options"]["show_aspects"])
         self.assertTrue(loaded["display_options"]["compact_wheel"])
         self.assertFalse(loaded["display_options"]["show_fixed_stars"])
@@ -867,6 +1135,32 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("Los Angeles, CA", text)
         self.assertIn("Sun trine Jupiter", text)
 
+    def test_transit_search_page_can_include_rejection_reasons(self) -> None:
+        input_snapshot = {"date": datetime(2026, 5, 26, 9, 0), "formattedTime": "Tue, May 26, 2026, 9:00 AM PDT"}
+        selected_window = {
+            "date": datetime(2026, 5, 26, 11, 0),
+            "formattedTime": "Tue, May 26, 2026, 11:00 AM PDT",
+            "title": "Launch or publish",
+            "score": 94,
+            "note": "Strong angular benefic support.",
+            "detectedAspects": [{"label": "Sun trine Jupiter"}],
+            "timingProfile": {"summary": "Next support perfects within the hour."},
+            "preset": type("Preset", (), {"name": "Traditional Lilly"})(),
+            "scoreBreakdown": {"diagnostics": {"readiness": {"score": 80, "band": "Strong", "summary": "Ready."}}},
+        }
+        location = LocationPreset("los-angeles", "Los Angeles, CA", 34.0522, -118.2437, "America/Los_Angeles")
+        summary = {
+            "count": 2,
+            "topReasons": [("major stress present", 2)],
+            "samples": [{"formattedTime": "Tue, May 26, 2026, 1:00 PM PDT", "score": 71, "reasons": ["major stress present"]}],
+        }
+
+        text = build_transit_search_page(input_snapshot, selected_window, [selected_window], location, "Scan 12h from start.", summary)
+
+        self.assertIn("Rejected Windows", text)
+        self.assertIn("major stress present: 2", text)
+        self.assertIn("Rejected Samples", text)
+
     def test_decision_brief_page_translates_score_into_guidance(self) -> None:
         input_snapshot = {"date": datetime(2026, 5, 26, 9, 0)}
         selected_window = {
@@ -973,6 +1267,167 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("Electional Decision Sheet", text)
         self.assertIn("Decision Brief", text)
         self.assertIn("Candidate Comparison", text)
+
+    def test_shortlist_entries_rank_by_quality_not_just_insertion_order(self) -> None:
+        location = LocationPreset("los-angeles", "Los Angeles, CA", 34.0522, -118.2437, "America/Los_Angeles")
+        stronger = build_shortlist_entry(
+            {
+                "date": datetime(2026, 5, 26, 11, 0),
+                "formattedTime": "Tue, May 26, 2026, 11:00 AM PDT",
+                "score": 90,
+                "title": "High-priority election",
+                "note": "Strong angular benefic support.",
+                "lunarPhase": {"name": "Waxing Gibbous", "illumination": 0.7, "ageDays": 10.0, "isWaxing": True},
+                "detectedAspects": [],
+                "scoreBreakdown": {
+                    "diagnostics": {
+                        "confidence": {"score": 84},
+                        "cleanliness": {"score": 79},
+                        "volatility": {"score": 24},
+                        "readiness": {"score": 83},
+                    }
+                },
+            },
+            location,
+            "Launch or publish",
+        )
+        weaker = build_shortlist_entry(
+            {
+                "date": datetime(2026, 5, 26, 12, 0),
+                "formattedTime": "Tue, May 26, 2026, 12:00 PM PDT",
+                "score": 90,
+                "title": "High-priority election",
+                "note": "More mixed support.",
+                "lunarPhase": {"name": "Waxing Gibbous", "illumination": 0.7, "ageDays": 10.0, "isWaxing": True},
+                "detectedAspects": [],
+                "scoreBreakdown": {
+                    "diagnostics": {
+                        "confidence": {"score": 68},
+                        "cleanliness": {"score": 61},
+                        "volatility": {"score": 44},
+                        "readiness": {"score": 72},
+                    }
+                },
+            },
+            location,
+            "Launch or publish",
+        )
+
+        ranked = add_shortlist_entry([weaker], stronger)
+        text = format_shortlist_entries(ranked)
+
+        self.assertEqual(ranked[0]["formattedTime"], "Tue, May 26, 2026, 11:00 AM PDT")
+        self.assertIn("Shortlist Diagnostics", text)
+        self.assertIn("Best Overall", text)
+        self.assertIn("Diagnostics: Conf 84  Clean 79  Read 83  Vol 24", text)
+
+    def test_shortlist_batch_diagnostics_highlight_cleanest_confident_and_steadiest_windows(self) -> None:
+        entries = [
+            {
+                "formattedTime": "Tue, May 26, 2026, 11:00 AM PDT",
+                "objective": "Launch or publish",
+                "score": 90,
+                "confidence": 82,
+                "cleanliness": 74,
+                "readiness": 79,
+                "volatility": 28,
+            },
+            {
+                "formattedTime": "Tue, May 26, 2026, 1:00 PM PDT",
+                "objective": "Meeting or negotiation",
+                "score": 88,
+                "confidence": 91,
+                "cleanliness": 86,
+                "readiness": 84,
+                "volatility": 18,
+            },
+            {
+                "formattedTime": "Tue, May 26, 2026, 3:00 PM PDT",
+                "objective": "Travel departure",
+                "score": 87,
+                "confidence": 73,
+                "cleanliness": 80,
+                "readiness": 76,
+                "volatility": 12,
+            },
+        ]
+
+        diagnostics = shortlist_batch_diagnostics(entries)
+        text = format_shortlist_batch_diagnostics(entries)
+
+        self.assertEqual(diagnostics["count"], 3)
+        self.assertEqual(diagnostics["topCleanest"][0]["formattedTime"], "Tue, May 26, 2026, 1:00 PM PDT")
+        self.assertEqual(diagnostics["topConfident"][0]["formattedTime"], "Tue, May 26, 2026, 1:00 PM PDT")
+        self.assertEqual(diagnostics["topSteady"][0]["formattedTime"], "Tue, May 26, 2026, 3:00 PM PDT")
+        self.assertIn("Cleanest Saved Windows", text)
+        self.assertIn("Highest-Confidence Windows", text)
+        self.assertIn("Steadiest Windows", text)
+        self.assertIn("Objective mix:", text)
+
+    def test_shortlist_tags_can_be_added_removed_and_normalized(self) -> None:
+        entries = [
+            {
+                "id": "abc123",
+                "formattedTime": "Tue, May 26, 2026, 11:00 AM PDT",
+                "score": 90,
+                "confidence": 82,
+                "cleanliness": 74,
+                "readiness": 79,
+                "volatility": 28,
+                "tags": ["Backup"],
+            }
+        ]
+
+        tagged = add_shortlist_tag(entries, "abc123", "Client-safe")
+        tagged = add_shortlist_tag(tagged, "abc123", "backup")
+        normalized = normalize_shortlist_tags([" Backup ", "backup", "", "Client-safe"])
+        cleaned = shortlist_entry_by_id(tagged, "abc123")
+        removed = remove_shortlist_tag(tagged, "abc123", "Backup")
+        retagged = update_shortlist_tags(removed, "abc123", ["Best for launch"])
+
+        self.assertIn("Client-safe", SHORTLIST_TAG_CHOICES)
+        self.assertEqual(normalized, ["Backup", "Client-safe"])
+        self.assertEqual(cleaned["tags"], ["Backup", "Client-safe"])
+        self.assertEqual(shortlist_entry_by_id(removed, "abc123")["tags"], ["Client-safe"])
+        self.assertEqual(shortlist_entry_by_id(retagged, "abc123")["tags"], ["Best for launch"])
+
+    def test_shortlist_compare_text_summarizes_two_saved_windows(self) -> None:
+        entries = [
+            {
+                "id": "a1",
+                "formattedTime": "Tue, May 26, 2026, 11:00 AM PDT",
+                "objective": "Launch or publish",
+                "score": 90,
+                "confidence": 82,
+                "cleanliness": 74,
+                "readiness": 79,
+                "volatility": 28,
+                "note": "Faster launch momentum.",
+                "tags": ["Best for launch"],
+            },
+            {
+                "id": "b2",
+                "formattedTime": "Tue, May 26, 2026, 1:00 PM PDT",
+                "objective": "Meeting or negotiation",
+                "score": 88,
+                "confidence": 91,
+                "cleanliness": 86,
+                "readiness": 84,
+                "volatility": 18,
+                "note": "Cleaner client-facing option.",
+                "tags": ["Client-safe"],
+            },
+        ]
+
+        text = build_shortlist_compare_text(entries, "a1", "b2")
+
+        self.assertIn("Shortlist Compare", text)
+        self.assertIn("A: Tue, May 26, 2026, 11:00 AM PDT", text)
+        self.assertIn("B: Tue, May 26, 2026, 1:00 PM PDT", text)
+        self.assertIn("Metric Edge", text)
+        self.assertIn("Volatility: B", text)
+        self.assertIn("Tags: Best for launch", text)
+        self.assertIn("Tags: Client-safe", text)
 
     def test_combined_location_names_include_custom_saved_places(self) -> None:
         names = combined_location_names([LocationPreset("user-temple", "Temple Office", 35.0, -120.0, "America/Los_Angeles")])

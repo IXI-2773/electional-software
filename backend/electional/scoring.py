@@ -8,6 +8,14 @@ from .fixed_stars import fixed_star_score
 from .models import ScoreBreakdown, ScoreReason
 from .presets import ElectionalPreset, dignity_score, filter_positions_for_preset
 from .rules import rule_score
+from .search import (
+    has_angular_benefic,
+    has_angular_malefic,
+    has_applying_support,
+    has_major_stress,
+    moon_is_non_void,
+    objective_antipattern_notes,
+)
 
 BENEFIC_BODIES = {"Venus", "Jupiter"}
 CHALLENGING_BODIES = {"Mars", "Saturn"}
@@ -107,6 +115,158 @@ def objective_profile(objective: str | None) -> Mapping[str, float]:
 
 def weighted_value(value: float, profile: Mapping[str, float], key: str) -> float:
     return value * float(profile.get(key, 1.0))
+
+
+def clamp_metric(value: float) -> int:
+    return max(0, min(99, round(value)))
+
+
+def metric_band(score: int, *, kind: str) -> str:
+    if kind == "volatility":
+        if score >= 75:
+            return "High"
+        if score >= 55:
+            return "Active"
+        if score >= 35:
+            return "Moderate"
+        return "Low"
+    if kind == "confidence":
+        if score >= 80:
+            return "High"
+        if score >= 65:
+            return "Solid"
+        if score >= 50:
+            return "Cautious"
+        return "Low"
+    if score >= 80:
+        return "Strong"
+    if score >= 65:
+        return "Usable"
+    if score >= 50:
+        return "Conditional"
+    return "Weak"
+
+
+def build_window_diagnostics(
+    detected_aspects: Sequence[Mapping[str, object]],
+    positions: Sequence[Mapping[str, object]],
+    rule_evaluations: Mapping[str, object] | None,
+    *,
+    objective: str | None,
+    objective_matches: int,
+    angularity: float,
+    dignity: float,
+    retrograde: float,
+    support_count: int,
+    stress_count: int,
+    mixed_count: int,
+    applying_support_count: int,
+    applying_stress_count: int,
+) -> dict[str, object]:
+    judgment_contexts = (
+        rule_evaluations.get("judgmentContexts", {})
+        if isinstance(rule_evaluations, Mapping)
+        else {}
+    )
+    moon_condition = judgment_contexts.get("moonCondition", {}) if isinstance(judgment_contexts, Mapping) else {}
+    window = {
+        "objective": objective,
+        "detectedAspects": list(detected_aspects),
+        "positions": list(positions),
+        "moonCondition": moon_condition if isinstance(moon_condition, Mapping) else {},
+    }
+    major_stress = has_major_stress(window)
+    applying_support = has_applying_support(window)
+    angular_benefic = has_angular_benefic(window)
+    angular_malefic = has_angular_malefic(window)
+    moon_non_void = moon_is_non_void(window)
+    anti_patterns = objective_antipattern_notes(window, objective)
+    rules = rule_evaluations.get("rules", []) if isinstance(rule_evaluations, Mapping) else []
+    rule_count = len(rules) if isinstance(rules, list) else 0
+
+    readiness = clamp_metric(
+        52
+        + objective_matches * 8
+        + support_count * 5
+        + applying_support_count * 7
+        + max(0.0, angularity) * 0.9
+        + max(0.0, dignity) * 1.4
+        + (8 if angular_benefic else 0)
+        - stress_count * 4
+        - applying_stress_count * 6
+        - min(retrograde, 10.0)
+        - (10 if angular_malefic else 0)
+        - (8 if not moon_non_void else 0)
+        - (8 if anti_patterns else 0)
+    )
+    volatility = clamp_metric(
+        18
+        + stress_count * 8
+        + applying_stress_count * 10
+        + mixed_count * 4
+        + min(retrograde, 12.0)
+        + (12 if major_stress else 0)
+        + (8 if angular_malefic else 0)
+        - support_count * 2
+        - applying_support_count * 3
+    )
+    cleanliness = clamp_metric(
+        84
+        - stress_count * 8
+        - mixed_count * 5
+        - min(retrograde, 10.0)
+        - (14 if major_stress else 0)
+        - (12 if angular_malefic else 0)
+        - (10 if not moon_non_void else 0)
+        - (10 if anti_patterns else 0)
+        + applying_support_count * 2
+    )
+    confidence = clamp_metric(
+        56
+        + objective_matches * 7
+        + applying_support_count * 5
+        + rule_count * 2
+        + (6 if moon_non_void else -8)
+        + (6 if not major_stress else -12)
+        + (5 if angular_benefic else 0)
+        + (4 if not angular_malefic else -8)
+        - mixed_count * 3
+        - stress_count * 2
+        - applying_stress_count * 5
+        - min(retrograde, 10.0)
+        - (6 if anti_patterns else 0)
+    )
+
+    return {
+        "readiness": {
+            "score": readiness,
+            "band": metric_band(readiness, kind="readiness"),
+            "summary": "How ready the window looks for decisive action.",
+        },
+        "volatility": {
+            "score": volatility,
+            "band": metric_band(volatility, kind="volatility"),
+            "summary": "How turbulent or pressure-prone the window looks.",
+        },
+        "cleanliness": {
+            "score": cleanliness,
+            "band": metric_band(cleanliness, kind="cleanliness"),
+            "summary": "How free the chart is from conflicting or muddy signals.",
+        },
+        "confidence": {
+            "score": confidence,
+            "band": metric_band(confidence, kind="confidence"),
+            "summary": "How trustworthy the backend evaluation looks from the available signals.",
+        },
+        "signals": {
+            "majorStress": major_stress,
+            "applyingSupport": applying_support,
+            "angularBenefic": angular_benefic,
+            "angularMalefic": angular_malefic,
+            "moonNonVoid": moon_non_void,
+            "objectiveAntiPatterns": anti_patterns,
+        },
+    }
 
 
 def tone_counts(detected_aspects: Sequence[Mapping[str, object]]) -> dict[str, int]:
@@ -372,6 +532,21 @@ def score_breakdown_model(
     final_score = round(max(10, min(99, raw_score)))
     accounting = score_accounting(reasons, raw_score, final_score)
     evaluation = score_evaluation(final_score, accounting, reasons)
+    diagnostics = build_window_diagnostics(
+        detected_aspects,
+        positions,
+        rule_evaluations,
+        objective=objective,
+        objective_matches=objective_matches,
+        angularity=angularity,
+        dignity=dignity,
+        retrograde=retrograde,
+        support_count=counts["support"],
+        stress_count=counts["stress"],
+        mixed_count=counts["mixed"],
+        applying_support_count=applying_counts["support"],
+        applying_stress_count=applying_counts["stress"],
+    )
 
     return ScoreBreakdown(
         base=58,
@@ -390,6 +565,7 @@ def score_breakdown_model(
         aspect_timing=timing_points,
         accounting=accounting,
         evaluation=evaluation,
+        diagnostics=diagnostics,
         raw_score=raw_score,
         score=final_score,
         reasons=reasons,

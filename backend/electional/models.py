@@ -36,6 +36,7 @@ class ScoreBreakdown:
     aspect_timing: float
     accounting: dict[str, object]
     evaluation: dict[str, object]
+    diagnostics: dict[str, object]
     raw_score: float
     score: int
     reasons: tuple[ScoreReason, ...]
@@ -58,6 +59,7 @@ class ScoreBreakdown:
             "aspectTiming": self.aspect_timing,
             "accounting": self.accounting,
             "evaluation": self.evaluation,
+            "diagnostics": self.diagnostics,
             "rawScore": self.raw_score,
             "score": self.score,
             "reasons": [reason.to_json() for reason in self.reasons],

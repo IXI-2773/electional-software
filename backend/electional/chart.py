@@ -19,7 +19,7 @@ from .presets import apply_dignities, filter_positions_for_preset, get_preset
 from .professional import calculation_backend_status
 from .rules import evaluate_electional_rules
 from .scoring import score_breakdown
-from .search import DEFAULT_SEARCH_CONFIG, SearchConfig, rank_search_windows
+from .search import DEFAULT_SEARCH_CONFIG, SearchConfig, rank_search_windows, rejection_summary, split_ranked_windows
 from .systems import ayanamsha_for_system, get_house_system, get_zodiac_system
 from .time_utils import format_in_timezone, zoned_time_to_utc
 from .timing import timing_profile
@@ -219,10 +219,15 @@ def build_election_report(
             objective,
         )
         windows.append(snapshot_to_window(window_snapshot, location))
+    ranked, rejections = split_ranked_windows(windows, search_config)
 
     return {
         "snapshot": snapshot,
         "windows": rank_search_windows(windows, search_config),
+        "rejections": rejections,
+        "rejectionSummary": rejection_summary(rejections),
+        "searchedWindowCount": len(windows),
+        "matchedWindowCount": len(ranked),
     }
 
 

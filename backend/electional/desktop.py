@@ -35,6 +35,7 @@ from .reporting import (
     build_classical_point_data_page,
     build_comparison_export_text,
     build_decision_brief_page,
+    build_diagnostics_page,
     build_medieval_data_page,
     build_transit_search_page,
     build_window_comparison_page,
@@ -54,21 +55,37 @@ from .reporting import (
     judgment_context_lines,
     rule_lines,
     score_accounting_lines,
+    score_diagnostic_lines,
     score_evaluation_lines,
     score_reason_lines,
 )
 from .screening import moon_void_course_summary, solar_elongation_summary
 from .search import (
     DEFAULT_MAX_RESULTS,
+    DEFAULT_MAXIMUM_VOLATILITY,
+    DEFAULT_MINIMUM_CLEANLINESS,
+    DEFAULT_MINIMUM_CONFIDENCE,
     DEFAULT_MINIMUM_FIT,
     DEFAULT_MINIMUM_SCORE,
     DEFAULT_SCAN_HOURS,
     DEFAULT_STEP_MINUTES,
+    SEARCH_PRESET_NAMES,
     build_search_config_from_text,
     format_search_summary,
+    search_preset_values,
 )
 from .session import OBJECTIVES, clean_session_state, load_session_state, save_session_state
 from .shortlist import add_shortlist_entry, build_shortlist_entry, format_shortlist_entries, load_shortlist, save_shortlist
+from .shortlist import (
+    SHORTLIST_TAG_CHOICES,
+    add_shortlist_tag,
+    build_shortlist_compare_text,
+    normalize_shortlist_tags,
+    remove_shortlist_tag,
+    shortlist_batch_diagnostics,
+    shortlist_entry_by_id,
+    update_shortlist_tags,
+)
 from .systems import DEFAULT_HOUSE_SYSTEM_ID, DEFAULT_ZODIAC_SYSTEM_ID, HOUSE_SYSTEMS, ZODIAC_SYSTEMS, get_house_system, get_zodiac_system
 from .time_utils import normalize_time_text
 from .validation import validate_election_inputs, validate_search_inputs
@@ -344,6 +361,34 @@ def score_band_label(score: int) -> str:
     return "Caution"
 
 
+def shortlist_metric_band(metric: str, value: int) -> tuple[str, str]:
+    if metric == "volatility":
+        if value <= 18:
+            return "#e8f7ef", PALETTE["support"]
+        if value <= 30:
+            return "#eef7f5", PALETTE["accent"]
+        if value <= 45:
+            return "#fff5df", PALETTE["warning"]
+        return "#fae7eb", PALETTE["stress"]
+    if value >= 86:
+        return "#e8f7ef", PALETTE["support"]
+    if value >= 72:
+        return "#eef7f5", PALETTE["accent"]
+    if value >= 58:
+        return "#fff5df", PALETTE["warning"]
+    return "#fae7eb", PALETTE["stress"]
+
+
+def shortlist_score_band(score: int) -> tuple[str, str]:
+    if score >= 86:
+        return "#e8f7ef", PALETTE["support"]
+    if score >= 76:
+        return "#eef7f5", PALETTE["accent"]
+    if score >= 60:
+        return "#fff5df", PALETTE["warning"]
+    return "#fae7eb", PALETTE["stress"]
+
+
 def fixed_star_contact_count(snapshot: dict[str, object]) -> int:
     contacts = snapshot.get("fixedStarContacts", [])
     return len(contacts) if isinstance(contacts, list) else 0
@@ -414,15 +459,20 @@ class ElectionalDesktopApp:
         self.input_snapshot: dict[str, object] | None = None
         self.current_windows: list[dict[str, object]] = []
         self.current_search_summary = ""
+        self.current_rejection_summary: dict[str, object] = {}
+        self.current_searched_window_count = 0
         self.selected_window: dict[str, object] | None = None
         self.selected_window_index = 0
         self.window_cards: list[tk.Frame] = []
         self.shortlist = load_shortlist()
+        self.shortlist_compare_a_id: str | None = self.shortlist[0]["id"] if self.shortlist else None
+        self.shortlist_compare_b_id: str | None = self.shortlist[1]["id"] if len(self.shortlist) > 1 else None
         self._resize_job: str | None = None
         self.focus_mode = False
         self.event_log: list[str] = []
         self.session_state = clean_session_state(load_session_state())
         self.metric_vars: dict[str, tk.StringVar] = {}
+        self.shortlist_board_cards: list[tk.Frame] = []
         self.focused_body_name: str | None = None
         self.focused_body_kind: str | None = None
         display_options = self.session_state.get("display_options", {})
@@ -858,7 +908,7 @@ class ElectionalDesktopApp:
         self.shortlist = add_shortlist_entry(self.shortlist, entry)
         save_shortlist(self.shortlist)
         self._refresh_shortlist_text()
-        self._focus_detail_page("Shortlist")
+        self._focus_detail_page("Shortlist Board")
         self.status_var.set(f"Shortlisted {entry['formattedTime']} with score {entry['score']}.")
         self._log_event(f"Shortlisted window: {entry['formattedTime']} score {entry['score']}")
 
@@ -957,9 +1007,231 @@ class ElectionalDesktopApp:
         actions = (
             "Shortlist Actions\n"
             "- Select a candidate window and press Shortlist or Save Pick.\n"
+            "- Shortlisted windows rank by score, confidence, cleanliness, readiness, then lower volatility.\n"
+            "- The shortlist now opens with batch diagnostics so the cleanest and steadiest saved windows stand out first.\n"
             "- Use Pick Tools to copy/save shortlist text or export .ics calendar files.\n\n"
         )
         self._set_text(self.shortlist_text, actions + format_shortlist_entries(self.shortlist))
+        self._sync_shortlist_compare_defaults()
+        self._refresh_shortlist_compare_text()
+        self._refresh_shortlist_board()
+
+    def _sync_shortlist_compare_defaults(self) -> None:
+        valid_ids = [str(entry.get("id")) for entry in self.shortlist]
+        if self.shortlist_compare_a_id not in valid_ids:
+            self.shortlist_compare_a_id = valid_ids[0] if valid_ids else None
+        if self.shortlist_compare_b_id not in valid_ids or self.shortlist_compare_b_id == self.shortlist_compare_a_id:
+            alternatives = [entry_id for entry_id in valid_ids if entry_id != self.shortlist_compare_a_id]
+            self.shortlist_compare_b_id = alternatives[0] if alternatives else None
+
+    def _refresh_shortlist_compare_text(self) -> None:
+        if not hasattr(self, "shortlist_compare_text"):
+            return
+        self._set_text(
+            self.shortlist_compare_text,
+            build_shortlist_compare_text(
+                self.shortlist,
+                self.shortlist_compare_a_id,
+                self.shortlist_compare_b_id,
+            ),
+        )
+
+    def _set_shortlist_compare_slot(self, entry_id: str, slot: str) -> None:
+        if slot == "A":
+            self.shortlist_compare_a_id = entry_id
+            if self.shortlist_compare_b_id == entry_id:
+                alternatives = [str(entry.get("id")) for entry in self.shortlist if str(entry.get("id")) != entry_id]
+                self.shortlist_compare_b_id = alternatives[0] if alternatives else None
+        else:
+            self.shortlist_compare_b_id = entry_id
+            if self.shortlist_compare_a_id == entry_id:
+                alternatives = [str(entry.get("id")) for entry in self.shortlist if str(entry.get("id")) != entry_id]
+                self.shortlist_compare_a_id = alternatives[0] if alternatives else None
+        self._refresh_shortlist_compare_text()
+        self._refresh_shortlist_board()
+        self._focus_detail_page("Pick Compare")
+        self._log_event(f"Shortlist compare slot {slot} set to {entry_id}")
+
+    def _save_shortlist_tags(self, entry_id: str, tags: list[str]) -> None:
+        self.shortlist = update_shortlist_tags(self.shortlist, entry_id, tags)
+        save_shortlist(self.shortlist)
+        self._refresh_shortlist_text()
+
+    def _add_tag_to_shortlist_entry(self, entry_id: str, tag_value: str) -> None:
+        tag = str(tag_value).strip()
+        if not tag:
+            self.status_var.set("Enter or choose a shortlist tag first.")
+            return
+        self.shortlist = add_shortlist_tag(self.shortlist, entry_id, tag)
+        save_shortlist(self.shortlist)
+        self._refresh_shortlist_text()
+        self.status_var.set(f"Added shortlist tag '{tag}'.")
+        self._log_event(f"Shortlist tag added: {tag}")
+
+    def _remove_tag_from_shortlist_entry(self, entry_id: str, tag: str) -> None:
+        self.shortlist = remove_shortlist_tag(self.shortlist, entry_id, tag)
+        save_shortlist(self.shortlist)
+        self._refresh_shortlist_text()
+        self.status_var.set(f"Removed shortlist tag '{tag}'.")
+        self._log_event(f"Shortlist tag removed: {tag}")
+
+    def _refresh_shortlist_board(self) -> None:
+        if not hasattr(self, "shortlist_board_frame"):
+            return
+        for child in self.shortlist_board_frame.winfo_children():
+            child.destroy()
+        self.shortlist_board_cards = []
+
+        intro = tk.Frame(
+            self.shortlist_board_frame,
+            bg=PALETTE["panel_alt"],
+            highlightbackground=PALETTE["panel_line"],
+            highlightthickness=1,
+            padx=12,
+            pady=10,
+        )
+        intro.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(
+            intro,
+            text="Shortlist Board",
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["text"],
+            font=("Segoe UI Semibold", 13),
+        ).pack(anchor="w")
+        tk.Label(
+            intro,
+            text="Use the cards below to spot the cleanest saved elections, tag them, and send any two picks straight into compare.",
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["muted"],
+            font=("Segoe UI", 9),
+            wraplength=860,
+            justify="left",
+        ).pack(anchor="w", pady=(4, 0))
+
+        diagnostics = shortlist_batch_diagnostics(self.shortlist)
+        summary_wrap = tk.Frame(self.shortlist_board_frame, bg=PALETTE["app_bg"])
+        summary_wrap.pack(fill=tk.X, pady=(0, 8))
+        self._render_shortlist_summary_cards(summary_wrap, diagnostics)
+
+        if not self.shortlist:
+            empty = tk.Frame(
+                self.shortlist_board_frame,
+                bg=PALETTE["panel_alt"],
+                highlightbackground=PALETTE["panel_line"],
+                highlightthickness=1,
+                padx=12,
+                pady=14,
+            )
+            empty.pack(fill=tk.X)
+            tk.Label(empty, text="No shortlisted windows yet.", bg=PALETTE["panel_alt"], fg=PALETTE["muted"], font=("Segoe UI", 10)).pack(anchor="w")
+            return
+
+        for rank, entry in enumerate(self.shortlist, start=1):
+            self._render_shortlist_entry_card(self.shortlist_board_frame, entry, rank)
+
+        self.shortlist_board_canvas.update_idletasks()
+        self.shortlist_board_canvas.configure(scrollregion=self.shortlist_board_canvas.bbox("all"))
+
+    def _render_shortlist_summary_cards(self, parent: tk.Frame, diagnostics: dict[str, object]) -> None:
+        parent.columnconfigure((0, 1, 2, 3), weight=1)
+
+        def compact_name(entry: dict[str, object] | None) -> str:
+            if not entry:
+                return "n/a"
+            return f"{entry.get('formattedTime', 'time unavailable')} | {entry.get('objective', 'Objective')}"
+
+        summary_cards = [
+            ("Best Overall", compact_name((diagnostics.get("topOverall") or [None])[0]), shortlist_score_band(int((diagnostics.get("averages") or {}).get("score", 0)))),
+            ("Cleanest", compact_name((diagnostics.get("topCleanest") or [None])[0]), shortlist_metric_band("cleanliness", int((diagnostics.get("averages") or {}).get("cleanliness", 0)))),
+            ("Highest Confidence", compact_name((diagnostics.get("topConfident") or [None])[0]), shortlist_metric_band("confidence", int((diagnostics.get("averages") or {}).get("confidence", 0)))),
+            ("Steadiest", compact_name((diagnostics.get("topSteady") or [None])[0]), shortlist_metric_band("volatility", int((diagnostics.get("averages") or {}).get("volatility", 0)))),
+        ]
+        for index, (label, body, colors) in enumerate(summary_cards):
+            bg_color, accent_color = colors
+            card = tk.Frame(parent, bg=bg_color, highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=10, pady=9)
+            card.grid(row=0, column=index, sticky="nsew", padx=(0 if index == 0 else 4, 0), pady=0)
+            tk.Frame(card, bg=accent_color, height=4).pack(fill=tk.X, pady=(0, 7))
+            tk.Label(card, text=label, bg=bg_color, fg=accent_color, font=("Segoe UI Semibold", 9)).pack(anchor="w")
+            tk.Label(card, text=body, bg=bg_color, fg=PALETTE["text"], font=("Segoe UI", 9), justify="left", wraplength=180).pack(anchor="w", pady=(4, 0))
+
+    def _render_shortlist_entry_card(self, parent: tk.Frame, entry: dict[str, object], rank: int) -> None:
+        score_bg, score_accent = shortlist_score_band(int(entry.get("score", 0)))
+        card = tk.Frame(parent, bg=PALETTE["panel_alt"], highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=12, pady=10)
+        card.pack(fill=tk.X, pady=(0, 8))
+        self.shortlist_board_cards.append(card)
+        tk.Frame(card, bg=score_accent, height=4).pack(fill=tk.X, pady=(0, 8))
+
+        header = tk.Frame(card, bg=PALETTE["panel_alt"])
+        header.pack(fill=tk.X)
+        header.columnconfigure(1, weight=1)
+        tk.Label(header, text=f"#{rank}", bg=score_bg, fg=score_accent, font=("Segoe UI Semibold", 11), padx=8, pady=4).grid(row=0, column=0, sticky="w", padx=(0, 8))
+        title_block = tk.Frame(header, bg=PALETTE["panel_alt"])
+        title_block.grid(row=0, column=1, sticky="ew")
+        tk.Label(title_block, text=str(entry.get("formattedTime", "time unavailable")), bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI Semibold", 11)).pack(anchor="w")
+        tk.Label(title_block, text=f"{entry.get('title', 'Electional window')} | {entry.get('objective', 'Objective')}", bg=PALETTE["panel_alt"], fg=PALETTE["muted"], font=("Segoe UI", 9)).pack(anchor="w", pady=(2, 0))
+        compare_text = f"A {'selected' if self.shortlist_compare_a_id == entry.get('id') else 'set'} | B {'selected' if self.shortlist_compare_b_id == entry.get('id') else 'set'}"
+        tk.Label(header, text=compare_text, bg=PALETTE["panel_alt"], fg=PALETTE["accent_dark"], font=("Segoe UI Semibold", 8)).grid(row=0, column=2, sticky="e")
+
+        metrics = tk.Frame(card, bg=PALETTE["panel_alt"])
+        metrics.pack(fill=tk.X, pady=(8, 6))
+        metric_defs = (
+            ("Score", int(entry.get("score", 0)), shortlist_score_band(int(entry.get("score", 0)))),
+            ("Conf", int(entry.get("confidence", 0)), shortlist_metric_band("confidence", int(entry.get("confidence", 0)))),
+            ("Clean", int(entry.get("cleanliness", 0)), shortlist_metric_band("cleanliness", int(entry.get("cleanliness", 0)))),
+            ("Read", int(entry.get("readiness", 0)), shortlist_metric_band("readiness", int(entry.get("readiness", 0)))),
+            ("Vol", int(entry.get("volatility", 0)), shortlist_metric_band("volatility", int(entry.get("volatility", 0)))),
+        )
+        for index, (label, value, colors) in enumerate(metric_defs):
+            bg_color, accent_color = colors
+            metric = tk.Frame(metrics, bg=bg_color, highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=7, pady=5)
+            metric.grid(row=0, column=index, sticky="ew", padx=(0, 5 if index < len(metric_defs) - 1 else 0))
+            metrics.columnconfigure(index, weight=1)
+            tk.Label(metric, text=label, bg=bg_color, fg=PALETTE["muted"], font=("Segoe UI Semibold", 8)).pack(anchor="w")
+            tk.Label(metric, text=str(value), bg=bg_color, fg=accent_color, font=("Segoe UI Semibold", 12)).pack(anchor="w")
+
+        meta = tk.Frame(card, bg=PALETTE["panel_alt"])
+        meta.pack(fill=tk.X)
+        tk.Label(meta, text=f"{entry.get('location', 'n/a')} | {entry.get('timezone', 'n/a')}", bg=PALETTE["panel_alt"], fg=PALETTE["muted"], font=("Segoe UI", 9)).pack(anchor="w")
+        tk.Label(meta, text=f"Moon: {entry.get('lunarPhase', 'n/a')}", bg=PALETTE["panel_alt"], fg=PALETTE["muted"], font=("Segoe UI", 9)).pack(anchor="w", pady=(2, 0))
+
+        tags = normalize_shortlist_tags(entry.get("tags", []))
+        tag_wrap = tk.Frame(card, bg=PALETTE["panel_alt"])
+        tag_wrap.pack(fill=tk.X, pady=(7, 0))
+        tk.Label(tag_wrap, text="Tags", bg=PALETTE["panel_alt"], fg=PALETTE["accent"], font=("Segoe UI Semibold", 9)).pack(anchor="w")
+        tag_chip_row = tk.Frame(tag_wrap, bg=PALETTE["panel_alt"])
+        tag_chip_row.pack(fill=tk.X, pady=(4, 4))
+        if tags:
+            for tag in tags:
+                chip = tk.Frame(tag_chip_row, bg=PALETTE["chip"], highlightbackground=PALETTE["chip_line"], highlightthickness=1, padx=6, pady=3)
+                chip.pack(side=tk.LEFT, padx=(0, 6))
+                tk.Label(chip, text=tag, bg=PALETTE["chip"], fg=PALETTE["accent_dark"], font=("Segoe UI Semibold", 8)).pack(side=tk.LEFT)
+                tk.Button(
+                    chip,
+                    text="x",
+                    command=lambda entry_id=str(entry.get("id")), tag_name=tag: self._remove_tag_from_shortlist_entry(entry_id, tag_name),
+                    bg=PALETTE["chip"],
+                    fg=PALETTE["muted"],
+                    relief="flat",
+                    bd=0,
+                    padx=3,
+                    pady=0,
+                    font=("Segoe UI Semibold", 7),
+                ).pack(side=tk.LEFT)
+        else:
+            tk.Label(tag_chip_row, text="No tags yet.", bg=PALETTE["panel_alt"], fg=PALETTE["muted"], font=("Segoe UI", 8)).pack(anchor="w")
+
+        controls = tk.Frame(tag_wrap, bg=PALETTE["panel_alt"])
+        controls.pack(fill=tk.X)
+        tag_value = tk.StringVar(value=SHORTLIST_TAG_CHOICES[0])
+        tag_combo = ttk.Combobox(controls, values=SHORTLIST_TAG_CHOICES, textvariable=tag_value, state="normal", width=18)
+        tag_combo.pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(controls, text="Add Tag", command=lambda entry_id=str(entry.get("id")), var=tag_value: self._add_tag_to_shortlist_entry(entry_id, var.get())).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(controls, text="Set A", command=lambda entry_id=str(entry.get("id")): self._set_shortlist_compare_slot(entry_id, "A")).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(controls, text="Set B", command=lambda entry_id=str(entry.get("id")): self._set_shortlist_compare_slot(entry_id, "B")).pack(side=tk.LEFT)
+
+        note = str(entry.get("note", "")).strip()
+        if note:
+            tk.Label(card, text=note, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 9), wraplength=860, justify="left").pack(anchor="w", pady=(8, 0))
 
     def _current_report_text(self) -> str:
         report = build_report_text(self.selected_window, self.current_windows, self.current_location)
@@ -1038,11 +1310,16 @@ class ElectionalDesktopApp:
         step_var = tk.StringVar(value=self.step_minutes_var.get())
         minimum_var = tk.StringVar(value=self.minimum_score_var.get())
         minimum_fit_var = tk.StringVar(value=self.minimum_fit_var.get())
+        minimum_confidence_var = tk.StringVar(value=self.minimum_confidence_var.get())
+        minimum_cleanliness_var = tk.StringVar(value=self.minimum_cleanliness_var.get())
+        maximum_volatility_var = tk.StringVar(value=self.maximum_volatility_var.get())
         max_results_var = tk.StringVar(value=self.max_results_var.get())
         avoid_major_stress_var = tk.BooleanVar(value=self.avoid_major_stress_var.get())
         require_applying_support_var = tk.BooleanVar(value=self.require_applying_support_var.get())
+        require_angular_benefic_var = tk.BooleanVar(value=self.require_angular_benefic_var.get())
         avoid_angular_malefics_var = tk.BooleanVar(value=self.avoid_angular_malefics_var.get())
         require_moon_non_void_var = tk.BooleanVar(value=self.require_moon_non_void_var.get())
+        avoid_objective_antipatterns_var = tk.BooleanVar(value=self.avoid_objective_antipatterns_var.get())
 
         calculation = ttk.LabelFrame(body, text="Calculation Defaults", style="Panel.TLabelframe", padding=10)
         calculation.pack(fill=tk.X)
@@ -1065,11 +1342,16 @@ class ElectionalDesktopApp:
         self._dialog_entry_row(search, "Step minutes", step_var, 0, 1)
         self._dialog_entry_row(search, "Minimum score", minimum_var, 1, 0)
         self._dialog_entry_row(search, "Minimum fit", minimum_fit_var, 1, 1)
-        self._dialog_entry_row(search, "Max results", max_results_var, 2, 0)
-        ttk.Checkbutton(search, text="Avoid major stress", variable=avoid_major_stress_var).grid(row=2, column=1, sticky="w", padx=(6, 0), pady=(20, 8))
-        ttk.Checkbutton(search, text="Require applying support", variable=require_applying_support_var).grid(row=3, column=0, sticky="w", padx=(0, 6), pady=(0, 8))
-        ttk.Checkbutton(search, text="Avoid angular malefics", variable=avoid_angular_malefics_var).grid(row=3, column=1, sticky="w", padx=(6, 0), pady=(0, 8))
-        ttk.Checkbutton(search, text="Keep Moon non-void", variable=require_moon_non_void_var).grid(row=4, column=0, sticky="w", padx=(0, 6), pady=(0, 8))
+        self._dialog_entry_row(search, "Minimum confidence", minimum_confidence_var, 2, 0)
+        self._dialog_entry_row(search, "Minimum cleanliness", minimum_cleanliness_var, 2, 1)
+        self._dialog_entry_row(search, "Maximum volatility", maximum_volatility_var, 3, 0)
+        self._dialog_entry_row(search, "Max results", max_results_var, 3, 1)
+        ttk.Checkbutton(search, text="Avoid major stress", variable=avoid_major_stress_var).grid(row=4, column=0, sticky="w", padx=(0, 6), pady=(0, 8))
+        ttk.Checkbutton(search, text="Require applying support", variable=require_applying_support_var).grid(row=4, column=1, sticky="w", padx=(6, 0), pady=(0, 8))
+        ttk.Checkbutton(search, text="Require angular benefic", variable=require_angular_benefic_var).grid(row=5, column=0, sticky="w", padx=(0, 6), pady=(0, 8))
+        ttk.Checkbutton(search, text="Avoid angular malefics", variable=avoid_angular_malefics_var).grid(row=5, column=1, sticky="w", padx=(6, 0), pady=(0, 8))
+        ttk.Checkbutton(search, text="Keep Moon non-void", variable=require_moon_non_void_var).grid(row=6, column=0, sticky="w", padx=(0, 6), pady=(0, 8))
+        ttk.Checkbutton(search, text="Avoid objective anti-patterns", variable=avoid_objective_antipatterns_var).grid(row=6, column=1, sticky="w", padx=(6, 0), pady=(0, 8))
 
         actions = tk.Frame(dialog, bg=PALETTE["app_bg"], padx=12, pady=10)
         actions.pack(fill=tk.X)
@@ -1089,11 +1371,16 @@ class ElectionalDesktopApp:
                 step_var.get(),
                 minimum_var.get(),
                 minimum_fit_var.get(),
+                minimum_confidence_var.get(),
+                minimum_cleanliness_var.get(),
+                maximum_volatility_var.get(),
                 max_results_var.get(),
                 avoid_major_stress_var.get(),
                 require_applying_support_var.get(),
+                require_angular_benefic_var.get(),
                 avoid_angular_malefics_var.get(),
                 require_moon_non_void_var.get(),
+                avoid_objective_antipatterns_var.get(),
             ),
         ).pack(side=tk.LEFT)
         ttk.Button(
@@ -1112,11 +1399,16 @@ class ElectionalDesktopApp:
                 step_var.get(),
                 minimum_var.get(),
                 minimum_fit_var.get(),
+                minimum_confidence_var.get(),
+                minimum_cleanliness_var.get(),
+                maximum_volatility_var.get(),
                 max_results_var.get(),
                 avoid_major_stress_var.get(),
                 require_applying_support_var.get(),
+                require_angular_benefic_var.get(),
                 avoid_angular_malefics_var.get(),
                 require_moon_non_void_var.get(),
+                avoid_objective_antipatterns_var.get(),
             ),
         ).pack(side=tk.RIGHT, padx=(6, 0))
         ttk.Button(actions, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT)
@@ -1146,13 +1438,27 @@ class ElectionalDesktopApp:
         step_minutes: str,
         minimum_score: str,
         minimum_fit: str,
+        minimum_confidence: str,
+        minimum_cleanliness: str,
+        maximum_volatility: str,
         max_results: str,
         avoid_major_stress: bool,
         require_applying_support: bool,
+        require_angular_benefic: bool,
         avoid_angular_malefics: bool,
         require_moon_non_void: bool,
+        avoid_objective_antipatterns: bool,
     ) -> None:
-        errors = validate_search_inputs(scan_hours, step_minutes, minimum_score, max_results, minimum_fit)
+        errors = validate_search_inputs(
+            scan_hours,
+            step_minutes,
+            minimum_score,
+            max_results,
+            minimum_fit,
+            minimum_confidence,
+            minimum_cleanliness,
+            maximum_volatility,
+        )
         if errors:
             messagebox.showerror("Preference validation failed", "Fix these search defaults:\n" + "\n".join(f"- {error}" for error in errors))
             return
@@ -1173,11 +1479,16 @@ class ElectionalDesktopApp:
         self.step_minutes_var.set(step_minutes)
         self.minimum_score_var.set(minimum_score)
         self.minimum_fit_var.set(minimum_fit)
+        self.minimum_confidence_var.set(minimum_confidence)
+        self.minimum_cleanliness_var.set(minimum_cleanliness)
+        self.maximum_volatility_var.set(maximum_volatility)
         self.max_results_var.set(max_results)
         self.avoid_major_stress_var.set(avoid_major_stress)
         self.require_applying_support_var.set(require_applying_support)
+        self.require_angular_benefic_var.set(require_angular_benefic)
         self.avoid_angular_malefics_var.set(avoid_angular_malefics)
         self.require_moon_non_void_var.set(require_moon_non_void)
+        self.avoid_objective_antipatterns_var.set(avoid_objective_antipatterns)
         self._sync_aspects_to_preset()
         self._update_search_summary()
         self._refresh_location_status()
@@ -1434,12 +1745,18 @@ class ElectionalDesktopApp:
         self.step_minutes_var = tk.StringVar(value=str(state.get("step_minutes") or DEFAULT_STEP_MINUTES))
         self.minimum_score_var = tk.StringVar(value=str(state.get("minimum_score") or DEFAULT_MINIMUM_SCORE))
         self.minimum_fit_var = tk.StringVar(value=str(state.get("minimum_fit") or DEFAULT_MINIMUM_FIT))
+        self.minimum_confidence_var = tk.StringVar(value=str(state.get("minimum_confidence") or DEFAULT_MINIMUM_CONFIDENCE))
+        self.minimum_cleanliness_var = tk.StringVar(value=str(state.get("minimum_cleanliness") or DEFAULT_MINIMUM_CLEANLINESS))
+        self.maximum_volatility_var = tk.StringVar(value=str(state.get("maximum_volatility") or DEFAULT_MAXIMUM_VOLATILITY))
         self.max_results_var = tk.StringVar(value=str(state.get("max_results") or DEFAULT_MAX_RESULTS))
         self.avoid_major_stress_var = tk.BooleanVar(value=bool(state.get("avoid_major_stress", False)))
         self.require_applying_support_var = tk.BooleanVar(value=bool(state.get("require_applying_support", False)))
+        self.require_angular_benefic_var = tk.BooleanVar(value=bool(state.get("require_angular_benefic", False)))
         self.avoid_angular_malefics_var = tk.BooleanVar(value=bool(state.get("avoid_angular_malefics", False)))
         self.require_moon_non_void_var = tk.BooleanVar(value=bool(state.get("require_moon_non_void", False)))
+        self.avoid_objective_antipatterns_var = tk.BooleanVar(value=bool(state.get("avoid_objective_antipatterns", False)))
         self.search_summary_var = tk.StringVar(value="")
+        self.search_preset_var = tk.StringVar(value="Custom")
         self.validation_var = tk.StringVar(value="Validation: waiting for first calculation")
 
         timing_box = ttk.LabelFrame(parent, text="Timing", style="Panel.TLabelframe", padding=10)
@@ -1508,6 +1825,7 @@ class ElectionalDesktopApp:
 
         search_box = ttk.LabelFrame(model_box, text="Search range", style="Panel.TLabelframe", padding=8)
         search_box.pack(fill=tk.X, pady=(10, 0))
+        self._labeled_combo(search_box, "Search preset", self.search_preset_var, list(SEARCH_PRESET_NAMES)).bind("<<ComboboxSelected>>", self._apply_selected_search_preset)
         search_row = ttk.Frame(search_box, style="Panel.TFrame")
         search_row.pack(fill=tk.X)
         search_row.columnconfigure(0, weight=1)
@@ -1524,7 +1842,7 @@ class ElectionalDesktopApp:
         limit_row.pack(fill=tk.X)
         limit_row.columnconfigure(0, weight=1)
         limit_row.columnconfigure(1, weight=1)
-        self._labeled_entry(limit_row, "Max results", self.max_results_var, compact=True, column=0)
+        self._labeled_entry(limit_row, "Min confidence", self.minimum_confidence_var, compact=True, column=0)
         tk.Checkbutton(
             limit_row,
             text="Avoid major stress",
@@ -1536,12 +1854,34 @@ class ElectionalDesktopApp:
             font=("Segoe UI", 8, "bold"),
             command=self._update_search_summary,
         ).grid(row=0, column=1, sticky="w", padx=(6, 0), pady=(28, 0))
+        diagnostics_row = ttk.Frame(search_box, style="Panel.TFrame")
+        diagnostics_row.pack(fill=tk.X)
+        diagnostics_row.columnconfigure(0, weight=1)
+        diagnostics_row.columnconfigure(1, weight=1)
+        self._labeled_entry(diagnostics_row, "Min cleanliness", self.minimum_cleanliness_var, compact=True, column=0)
+        self._labeled_entry(diagnostics_row, "Max volatility", self.maximum_volatility_var, compact=True, column=1)
+        max_row = ttk.Frame(search_box, style="Panel.TFrame")
+        max_row.pack(fill=tk.X)
+        max_row.columnconfigure(0, weight=1)
+        max_row.columnconfigure(1, weight=1)
+        self._labeled_entry(max_row, "Max results", self.max_results_var, compact=True, column=0)
         filter_row = ttk.Frame(search_box, style="Panel.TFrame")
         filter_row.pack(fill=tk.X, pady=(6, 0))
         tk.Checkbutton(
             filter_row,
             text="Require applying support",
             variable=self.require_applying_support_var,
+            bg=PALETTE["panel"],
+            fg=PALETTE["text"],
+            activebackground=PALETTE["panel"],
+            selectcolor=PALETTE["panel_alt"],
+            font=("Segoe UI", 8, "bold"),
+            command=self._update_search_summary,
+        ).pack(anchor="w")
+        tk.Checkbutton(
+            filter_row,
+            text="Require angular benefic",
+            variable=self.require_angular_benefic_var,
             bg=PALETTE["panel"],
             fg=PALETTE["text"],
             activebackground=PALETTE["panel"],
@@ -1571,6 +1911,17 @@ class ElectionalDesktopApp:
             font=("Segoe UI", 8, "bold"),
             command=self._update_search_summary,
         ).pack(anchor="w")
+        tk.Checkbutton(
+            filter_row,
+            text="Avoid objective anti-patterns",
+            variable=self.avoid_objective_antipatterns_var,
+            bg=PALETTE["panel"],
+            fg=PALETTE["text"],
+            activebackground=PALETTE["panel"],
+            selectcolor=PALETTE["panel_alt"],
+            font=("Segoe UI", 8, "bold"),
+            command=self._update_search_summary,
+        ).pack(anchor="w")
         presets = ttk.Frame(search_box, style="Panel.TFrame")
         presets.pack(fill=tk.X, pady=(8, 0))
         for label, hours, step in (("6h", "6", "60"), ("12h", "12", "60"), ("24h", "24", "120")):
@@ -1580,6 +1931,14 @@ class ElectionalDesktopApp:
                 fill=tk.X,
                 padx=(0, 4),
             )
+        preset_filters = ttk.Frame(search_box, style="Panel.TFrame")
+        preset_filters.pack(fill=tk.X, pady=(6, 0))
+        for label in ("Strict Launch", "Clean Negotiation", "Safe Travel", "Conservative Money"):
+            ttk.Button(
+                preset_filters,
+                text=label,
+                command=lambda name=label: self._apply_search_filter_preset(name),
+            ).pack(fill=tk.X, pady=(0, 4))
         tk.Label(
             search_box,
             textvariable=self.search_summary_var,
@@ -1768,7 +2127,43 @@ class ElectionalDesktopApp:
     def _set_search_preset(self, scan_hours: str, step_minutes: str) -> None:
         self.scan_hours_var.set(scan_hours)
         self.step_minutes_var.set(step_minutes)
+        self.search_preset_var.set("Custom")
         self._update_search_summary()
+
+    def _apply_selected_search_preset(self, _event: object | None = None) -> None:
+        self._apply_search_filter_preset(self.search_preset_var.get())
+
+    def _apply_search_filter_preset(self, preset_name: str) -> None:
+        overrides = search_preset_values(preset_name)
+        if not overrides:
+            self.search_preset_var.set("Custom")
+            self._update_search_summary()
+            return
+        self.search_preset_var.set(preset_name)
+        for key, value in overrides.items():
+            match key:
+                case "minimum_fit":
+                    self.minimum_fit_var.set(str(value))
+                case "minimum_confidence":
+                    self.minimum_confidence_var.set(str(value))
+                case "minimum_cleanliness":
+                    self.minimum_cleanliness_var.set(str(value))
+                case "maximum_volatility":
+                    self.maximum_volatility_var.set(str(value))
+                case "require_applying_support":
+                    self.require_applying_support_var.set(bool(value))
+                case "require_angular_benefic":
+                    self.require_angular_benefic_var.set(bool(value))
+                case "avoid_major_stress":
+                    self.avoid_major_stress_var.set(bool(value))
+                case "avoid_angular_malefics":
+                    self.avoid_angular_malefics_var.set(bool(value))
+                case "require_moon_non_void":
+                    self.require_moon_non_void_var.set(bool(value))
+                case "avoid_objective_antipatterns":
+                    self.avoid_objective_antipatterns_var.set(bool(value))
+        self._update_search_summary()
+        self.status_var.set(f"Applied {preset_name} search preset.")
 
     def _update_search_summary(self) -> None:
         try:
@@ -1778,10 +2173,15 @@ class ElectionalDesktopApp:
                 self.minimum_score_var.get(),
                 self.max_results_var.get(),
                 self.minimum_fit_var.get(),
-                self.avoid_major_stress_var.get(),
-                self.require_applying_support_var.get(),
-                self.avoid_angular_malefics_var.get(),
-                self.require_moon_non_void_var.get(),
+                avoid_major_stress=self.avoid_major_stress_var.get(),
+                require_applying_support=self.require_applying_support_var.get(),
+                require_angular_benefic=self.require_angular_benefic_var.get(),
+                avoid_angular_malefics=self.avoid_angular_malefics_var.get(),
+                require_moon_non_void=self.require_moon_non_void_var.get(),
+                avoid_objective_antipatterns=self.avoid_objective_antipatterns_var.get(),
+                minimum_confidence_text=self.minimum_confidence_var.get(),
+                minimum_cleanliness_text=self.minimum_cleanliness_var.get(),
+                maximum_volatility_text=self.maximum_volatility_var.get(),
             )
         except ValueError:
             self.search_summary_var.set("Search settings need attention.")
@@ -2168,6 +2568,7 @@ class ElectionalDesktopApp:
         self.window_detail_text = self._text_tab("Window")
         self.decision_text = self._text_tab("Decision")
         self.compare_text = self._text_tab("Compare")
+        self.diagnostics_text = self._text_tab("Diagnostics")
         self.search_text = self._text_tab("Search")
         self.interpretation_text = self._text_tab("Focus")
         self.score_detail_text = self._text_tab("Score")
@@ -2192,7 +2593,31 @@ class ElectionalDesktopApp:
         self.aspects_text = self._text_tab("Aspects")
         self.aspectarian_text = self._text_tab("Aspectarian")
         self.fixed_stars_text = self._text_tab("Fixed Stars")
+        shortlist_board = ttk.Frame(self.detail_notebook, style="Panel.TFrame", padding=7)
+        self.detail_notebook.add(shortlist_board, text="Shortlist Board")
+        shortlist_board.columnconfigure(0, weight=1)
+        shortlist_board.rowconfigure(0, weight=1)
+        shortlist_viewport = ttk.Frame(shortlist_board, style="Panel.TFrame")
+        shortlist_viewport.grid(row=0, column=0, sticky="nsew")
+        shortlist_viewport.columnconfigure(0, weight=1)
+        shortlist_viewport.rowconfigure(0, weight=1)
+        self.shortlist_board_canvas = tk.Canvas(
+            shortlist_viewport,
+            bg=PALETTE["panel_alt"],
+            highlightthickness=1,
+            highlightbackground=PALETTE["panel_line"],
+            bd=0,
+        )
+        shortlist_scrollbar = ttk.Scrollbar(shortlist_viewport, orient=tk.VERTICAL, command=self.shortlist_board_canvas.yview)
+        self.shortlist_board_frame = ttk.Frame(self.shortlist_board_canvas, style="Panel.TFrame")
+        self.shortlist_board_window = self.shortlist_board_canvas.create_window((0, 0), window=self.shortlist_board_frame, anchor="nw")
+        self.shortlist_board_canvas.configure(yscrollcommand=shortlist_scrollbar.set)
+        self.shortlist_board_canvas.grid(row=0, column=0, sticky="nsew")
+        shortlist_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.shortlist_board_frame.bind("<Configure>", lambda _event: self.shortlist_board_canvas.configure(scrollregion=self.shortlist_board_canvas.bbox("all")))
+        self.shortlist_board_canvas.bind("<Configure>", lambda event: self.shortlist_board_canvas.itemconfigure(self.shortlist_board_window, width=event.width))
         self.shortlist_text = self._text_tab("Shortlist")
+        self.shortlist_compare_text = self._text_tab("Pick Compare")
         shortlist_actions = ttk.Frame(self.detail_notebook, style="Panel.TFrame", padding=7)
         self.detail_notebook.add(shortlist_actions, text="Pick Tools")
         ttk.Button(shortlist_actions, text="Save Selected .ics", command=self._save_selected_calendar_event).pack(fill=tk.X, pady=(0, 7))
@@ -2211,6 +2636,7 @@ class ElectionalDesktopApp:
         frame.pack(fill=tk.X, pady=(0, 9))
         metrics = (
             ("score", "Score", PALETTE["panel_alt"], PALETTE["score"]),
+            ("confidence", "Confidence", PALETTE["panel_alt"], PALETTE["accent_dark"]),
             ("fit", "Fit", PALETTE["panel_alt"], PALETTE["accent"]),
             ("support", "Support", PALETTE["panel_alt"], PALETTE["support"]),
             ("stress", "Stress", PALETTE["panel_alt"], PALETTE["stress"]),
@@ -2331,6 +2757,9 @@ class ElectionalDesktopApp:
                 self.minimum_score_var.get(),
                 self.max_results_var.get(),
                 self.minimum_fit_var.get(),
+                self.minimum_confidence_var.get(),
+                self.minimum_cleanliness_var.get(),
+                self.maximum_volatility_var.get(),
             )
         )
         if errors:
@@ -2354,10 +2783,15 @@ class ElectionalDesktopApp:
             self.minimum_score_var.get(),
             self.max_results_var.get(),
             self.minimum_fit_var.get(),
-            self.avoid_major_stress_var.get(),
-            self.require_applying_support_var.get(),
-            self.avoid_angular_malefics_var.get(),
-            self.require_moon_non_void_var.get(),
+            avoid_major_stress=self.avoid_major_stress_var.get(),
+            require_applying_support=self.require_applying_support_var.get(),
+            require_angular_benefic=self.require_angular_benefic_var.get(),
+            avoid_angular_malefics=self.avoid_angular_malefics_var.get(),
+            require_moon_non_void=self.require_moon_non_void_var.get(),
+            avoid_objective_antipatterns=self.avoid_objective_antipatterns_var.get(),
+            minimum_confidence_text=self.minimum_confidence_var.get(),
+            minimum_cleanliness_text=self.minimum_cleanliness_var.get(),
+            maximum_volatility_text=self.maximum_volatility_var.get(),
         )
         self._update_search_summary()
 
@@ -2384,6 +2818,8 @@ class ElectionalDesktopApp:
         self.input_snapshot = snapshot
         self.current_windows = list(windows)
         self.current_search_summary = format_search_summary(search_config)
+        self.current_rejection_summary = dict(report.get("rejectionSummary") or {})
+        self.current_searched_window_count = int(report.get("searchedWindowCount") or len(windows))
         self.selected_window = selected_window
 
         self.title_var.set(f"{self.objective_var.get()} near {location.name}")
@@ -2406,7 +2842,8 @@ class ElectionalDesktopApp:
             (
                 f"Location: {location.name}    Chart time: {selected_window['formattedTime']}    "
                 f"Search: {search_config.end_offset_minutes // 60}h/{search_config.step_minutes}m    "
-                f"Results: {result_note}    System: {zodiac_system.name} / {house_system.name}    Validation: Pass"
+                f"Results: {result_note} of {self.current_searched_window_count} scanned    "
+                f"System: {zodiac_system.name} / {house_system.name}    Validation: Pass"
             )
         )
         self._log_event(
@@ -2513,11 +2950,18 @@ class ElectionalDesktopApp:
         stress = sum(1 for aspect in window["detectedAspects"] if aspect["tone"] == "stress")
         fixed_stars = fixed_star_contact_count(window)
         breakdown = window.get("scoreBreakdown", {})
+        diagnostics = breakdown.get("diagnostics", {}) if isinstance(breakdown, dict) else {}
+        confidence = diagnostics.get("confidence", {}) if isinstance(diagnostics, dict) else {}
+        cleanliness = diagnostics.get("cleanliness", {}) if isinstance(diagnostics, dict) else {}
+        volatility = diagnostics.get("volatility", {}) if isinstance(diagnostics, dict) else {}
         fit_matches = int(breakdown.get("objectiveMatches", 0)) if isinstance(breakdown, dict) else 0
         offset_text = selection_offset_label(self.input_snapshot or window, window)
         tag_row = tk.Frame(card, bg=card["bg"])
         tag_row.pack(fill=tk.X, pady=(6, 0))
         for text, fg, bg in (
+            (f"Conf {confidence.get('score', '--')}", PALETTE["score"], "#eaf4f8"),
+            (f"Clean {cleanliness.get('score', '--')}", PALETTE["accent_dark"], "#edf7f6"),
+            (f"Vol {volatility.get('score', '--')}", PALETTE["warning"], "#fbf2e5"),
             (f"{fit_matches} fit", PALETTE["accent_dark"], "#e6f4f4"),
             (f"+{support} support", PALETTE["support"], "#e7f6ef"),
             (f"!{stress} stress", PALETTE["stress"], "#fae9ed"),
@@ -3102,7 +3546,10 @@ class ElectionalDesktopApp:
         )
         self.metric_vars["score"].set(str(snapshot["score"]))
         breakdown = snapshot.get("scoreBreakdown", {})
+        diagnostics = breakdown.get("diagnostics", {}) if isinstance(breakdown, dict) else {}
         objective_fit = int(breakdown.get("objectiveMatches", 0)) if isinstance(breakdown, dict) else 0
+        confidence = diagnostics.get("confidence", {}) if isinstance(diagnostics, dict) else {}
+        self.metric_vars["confidence"].set(str(confidence.get("score", "--")))
         self.metric_vars["fit"].set(str(objective_fit))
         self.metric_vars["support"].set(str(support))
         self.metric_vars["stress"].set(str(stress))
@@ -3137,6 +3584,7 @@ class ElectionalDesktopApp:
                 location,
             ),
         )
+        self._set_text(self.diagnostics_text, build_diagnostics_page(snapshot))
         self._set_text(
             self.compare_text,
             build_window_comparison_page(
@@ -3153,6 +3601,7 @@ class ElectionalDesktopApp:
                 windows,
                 location,
                 self.current_search_summary or "Search profile unavailable.",
+                self.current_rejection_summary,
             ),
         )
         self._set_text(
@@ -3529,11 +3978,16 @@ class ElectionalDesktopApp:
             "step_minutes": self.step_minutes_var.get(),
             "minimum_score": self.minimum_score_var.get(),
             "minimum_fit": self.minimum_fit_var.get(),
+            "minimum_confidence": self.minimum_confidence_var.get(),
+            "minimum_cleanliness": self.minimum_cleanliness_var.get(),
+            "maximum_volatility": self.maximum_volatility_var.get(),
             "max_results": self.max_results_var.get(),
             "avoid_major_stress": self.avoid_major_stress_var.get(),
             "require_applying_support": self.require_applying_support_var.get(),
+            "require_angular_benefic": self.require_angular_benefic_var.get(),
             "avoid_angular_malefics": self.avoid_angular_malefics_var.get(),
             "require_moon_non_void": self.require_moon_non_void_var.get(),
+            "avoid_objective_antipatterns": self.avoid_objective_antipatterns_var.get(),
             "display_options": {
                 "show_aspects": self.show_aspects_var.get(),
                 "show_lots": self.show_lots_var.get(),

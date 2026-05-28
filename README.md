@@ -25,9 +25,19 @@ A private work-in-progress application for electional astrology: transits, aspec
 - A new Compare page summarizes the leading candidate windows side by side with fit, timing offset, strengths, and risks.
 - Search filters now support minimum fit and an `avoid major stress` mode in addition to score and result limits.
 - Search filters now also support `require applying support`, `avoid angular malefics`, and `keep Moon non-void`.
+- Search filters now also support `avoid objective anti-patterns`, so launch, negotiation, travel, and money scans can reject windows that are specifically wrong for that goal.
+- Search filters now also support `minimum confidence`, `minimum cleanliness`, `maximum volatility`, and `require angular benefic` for stronger quality control during scans.
+- Search presets now include `Strict Launch`, `Clean Negotiation`, `Safe Travel`, and `Conservative Money` to fill those filters quickly.
 - Compare tools can now export a saved decision sheet with the selected brief plus top-window comparison.
 - Decision guidance is now more objective-aware for launch/publish, negotiation, travel, and money/business work.
 - Objective-specific backend ranking weights now make those workflows score differently, not just read differently.
+- Backend scoring now includes readiness, volatility, cleanliness, and confidence diagnostics for each ranked window.
+- The desktop scoreboard now includes confidence, and a Diagnostics page summarizes backend trust signals and anti-pattern warnings.
+- Search ranking now breaks ties with diagnostics too, preferring stronger confidence, cleanliness, and readiness over noisier windows with the same headline score.
+- Transit Search now reports why windows were rejected, including top rejection reasons and rejected sample windows.
+- Shortlists now store and display confidence, cleanliness, readiness, and volatility, and rank saved picks by quality instead of insertion order.
+- Shortlists now open with batch diagnostics so the cleanest, highest-confidence, and steadiest saved candidates stand out at a glance.
+- The desktop shortlist board now uses color-banded diagnostics cards, direct two-pick compare controls, and persistent custom tags like `Best for launch`, `Backup`, or `Client-safe`.
 - Classical Point Data now gives planets, angles, cusps, lots, nodes, and fixed-star contacts their own dense reference-style workspace.
 - Medieval Data now summarizes verdict, balance of testimony, score reasons, election flags, and classical judgment sections in one working page.
 - Clean/Full wheel presets make it faster to switch between a readable working chart and a dense inspection chart.

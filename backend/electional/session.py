@@ -9,7 +9,16 @@ from typing import Any
 from .locations import home_location_for_app
 from .point_sets import DEFAULT_POINT_SET_ID, get_point_set
 from .presets import ELECTIONAL_PRESETS
-from .search import DEFAULT_MAX_RESULTS, DEFAULT_MINIMUM_FIT, DEFAULT_MINIMUM_SCORE, DEFAULT_SCAN_HOURS, DEFAULT_STEP_MINUTES
+from .search import (
+    DEFAULT_MAX_RESULTS,
+    DEFAULT_MAXIMUM_VOLATILITY,
+    DEFAULT_MINIMUM_CLEANLINESS,
+    DEFAULT_MINIMUM_CONFIDENCE,
+    DEFAULT_MINIMUM_FIT,
+    DEFAULT_MINIMUM_SCORE,
+    DEFAULT_SCAN_HOURS,
+    DEFAULT_STEP_MINUTES,
+)
 from .storage import load_json_dict, save_json
 from .systems import DEFAULT_HOUSE_SYSTEM_ID, DEFAULT_ZODIAC_SYSTEM_ID, get_house_system, get_zodiac_system
 from .time_utils import normalize_time_text
@@ -108,11 +117,16 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
         "step_minutes": str(state.get("step_minutes") or DEFAULT_STEP_MINUTES),
         "minimum_score": str(state.get("minimum_score") or DEFAULT_MINIMUM_SCORE),
         "minimum_fit": str(state.get("minimum_fit") or DEFAULT_MINIMUM_FIT),
+        "minimum_confidence": str(state.get("minimum_confidence") or DEFAULT_MINIMUM_CONFIDENCE),
+        "minimum_cleanliness": str(state.get("minimum_cleanliness") or DEFAULT_MINIMUM_CLEANLINESS),
+        "maximum_volatility": str(state.get("maximum_volatility") or DEFAULT_MAXIMUM_VOLATILITY),
         "max_results": str(state.get("max_results") or DEFAULT_MAX_RESULTS),
         "avoid_major_stress": bool(state.get("avoid_major_stress", False)),
         "require_applying_support": bool(state.get("require_applying_support", False)),
+        "require_angular_benefic": bool(state.get("require_angular_benefic", False)),
         "avoid_angular_malefics": bool(state.get("avoid_angular_malefics", False)),
         "require_moon_non_void": bool(state.get("require_moon_non_void", False)),
+        "avoid_objective_antipatterns": bool(state.get("avoid_objective_antipatterns", False)),
         "display_options": {
             **{
                 key: bool(display_options.get(key, default_value))

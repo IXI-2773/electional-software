@@ -10,6 +10,64 @@ from .locations import LocationPreset
 from .search import has_major_stress
 
 
+def score_diagnostic_lines(snapshot: dict[str, object]) -> list[str]:
+    breakdown = snapshot.get("scoreBreakdown")
+    if not isinstance(breakdown, dict):
+        return ["- Diagnostics unavailable."]
+    diagnostics = breakdown.get("diagnostics")
+    if not isinstance(diagnostics, dict):
+        return ["- Diagnostics unavailable."]
+
+    lines: list[str] = []
+    for key, label in (
+        ("readiness", "Readiness"),
+        ("volatility", "Volatility"),
+        ("cleanliness", "Cleanliness"),
+        ("confidence", "Confidence"),
+    ):
+        metric = diagnostics.get(key)
+        if not isinstance(metric, dict):
+            continue
+        lines.append(
+            f"- {label}: {metric.get('score', 'n/a')} ({metric.get('band', 'n/a')})"
+            + (f" - {metric.get('summary')}" if metric.get("summary") else "")
+        )
+
+    signals = diagnostics.get("signals")
+    if isinstance(signals, dict):
+        if signals.get("applyingSupport"):
+            lines.append("- Signal: applying support is present.")
+        if signals.get("angularBenefic"):
+            lines.append("- Signal: angular benefic emphasis is present.")
+        if signals.get("majorStress"):
+            lines.append("- Signal: major stress is present.")
+        if signals.get("angularMalefic"):
+            lines.append("- Signal: angular malefic pressure is present.")
+        if signals.get("moonNonVoid") is False:
+            lines.append("- Signal: Moon is void or uncertain.")
+        anti_patterns = signals.get("objectiveAntiPatterns")
+        if isinstance(anti_patterns, list) and anti_patterns:
+            for note in anti_patterns[:3]:
+                lines.append(f"- Anti-pattern: {note}")
+
+    return lines or ["- Diagnostics unavailable."]
+
+
+def build_diagnostics_page(snapshot: dict[str, object]) -> str:
+    breakdown = snapshot.get("scoreBreakdown", {})
+    evaluation = breakdown.get("evaluation", {}) if isinstance(breakdown, dict) else {}
+    return (
+        "Window Diagnostics\n"
+        f"Score: {snapshot.get('score', 'n/a')}  "
+        f"Band: {evaluation.get('band', 'n/a')}  "
+        f"Grade: {evaluation.get('grade', 'n/a')}\n\n"
+        "Backend Metrics\n"
+        + "\n".join(score_diagnostic_lines(snapshot))
+        + "\n\nScore Evaluation\n"
+        + "\n".join(score_evaluation_lines(snapshot))
+    )
+
+
 def format_dignity_summary(planet: dict[str, object]) -> str:
     dignity = planet.get("dignity", {})
     if not isinstance(dignity, dict):
@@ -271,6 +329,7 @@ def build_transit_search_page(
     windows: list[dict[str, object]],
     location: LocationPreset,
     search_summary: str,
+    rejection_summary: dict[str, object] | None = None,
 ) -> str:
     try:
         delta_minutes = round((selected_window["date"] - input_snapshot["date"]).total_seconds() / 60)
@@ -297,6 +356,30 @@ def build_transit_search_page(
             + (f"  [{aspect_labels}]" if aspect_labels else "")
         )
 
+    rejection_lines = []
+    if isinstance(rejection_summary, dict) and rejection_summary.get("count"):
+        top_reasons = rejection_summary.get("topReasons", [])
+        samples = rejection_summary.get("samples", [])
+        rejection_lines.extend(
+            [
+                "Rejected Windows",
+                f"- Rejected during filtering: {rejection_summary.get('count', 0)}",
+            ]
+        )
+        if isinstance(top_reasons, list) and top_reasons:
+            for reason, count in top_reasons[:4]:
+                rejection_lines.append(f"- {reason}: {count}")
+        if isinstance(samples, list) and samples:
+            rejection_lines.append("")
+            rejection_lines.append("Rejected Samples")
+            for sample in samples[:3]:
+                if not isinstance(sample, dict):
+                    continue
+                rejection_lines.append(
+                    f"- {sample.get('formattedTime', 'time unavailable')} score {sample.get('score', '?')}: "
+                    + "; ".join(str(reason) for reason in sample.get("reasons", [])[:2])
+                )
+
     return (
         "Transit Search Page\n"
         f"Objective: {selected_window.get('title', 'Electional window')}\n"
@@ -309,8 +392,12 @@ def build_transit_search_page(
         f"- Difference: {delta_label}\n"
         f"- Selected score: {selected_window.get('score', '?')}\n"
         f"- Timing summary: {selected_window.get('timingProfile', {}).get('summary', 'Timing profile unavailable.')}\n\n"
+        "Selected Diagnostics\n"
+        + "\n".join(score_diagnostic_lines(selected_window))
+        + "\n\n"
         "Ranked Windows\n"
         + ("\n".join(ranked_lines) if ranked_lines else "- No ranked windows matched the current filters.")
+        + ("\n\n" + "\n".join(rejection_lines) if rejection_lines else "")
     )
 
 
@@ -356,6 +443,9 @@ def build_decision_brief_page(
         f"Window quality: {evaluation.get('band', 'n/a')} / Grade {evaluation.get('grade', 'n/a')}\n"
         f"Objective fit: {fit_label} ({fit_matches} preferred aspect match{'es' if fit_matches != 1 else ''})\n"
         f"Timing offset from search start: {delta_label}\n\n"
+        "Backend Read\n"
+        + "\n".join(score_diagnostic_lines(selected_window)[:6])
+        + "\n\n"
         "Recommendation\n"
         f"- {selected_window.get('note', 'No recommendation note available.')}\n"
         + "\n".join(action_lines)
@@ -466,6 +556,7 @@ def build_window_comparison_page(
             [
                 f"#{index}  {window.get('formattedTime', 'n/a')}  Score {window.get('score', '?')}  {evaluation.get('band', 'n/a')}",
                 f"  Fit {fit_matches}  +{support}/!{stress}  Angular {angular}  Offset {delta_label}",
+                f"  Diagnostics: {'; '.join(item[2:] for item in score_diagnostic_lines(window)[:4])}",
                 f"  Best use: {window.get('title', 'Electional window')}",
                 f"  Strength: {strengths[0] if strengths else 'n/a'}",
                 f"  Risk: {risks[0] if risks else 'n/a'}",
@@ -926,6 +1017,7 @@ def build_report_text(
         f"Score explanation: {format_score_breakdown(selected_window)}\n"
         f"Score accounting:\n{chr(10).join(score_accounting_lines(selected_window))}\n"
         f"Score evaluation:\n{chr(10).join(score_evaluation_lines(selected_window))}\n"
+        f"Score diagnostics:\n{chr(10).join(score_diagnostic_lines(selected_window))}\n"
         f"Score reasons:\n{chr(10).join(score_reason_lines(selected_window))}\n"
         f"Planetary hour:\n{chr(10).join(planetary_hour_lines) or '- Planetary hour unavailable.'}\n"
         f"Significators:\n{chr(10).join(judgment_context_lines(selected_window, 'significatorContext'))}\n"

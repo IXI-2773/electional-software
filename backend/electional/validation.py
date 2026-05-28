@@ -59,6 +59,9 @@ def validate_search_inputs(
     minimum_score_text: str,
     max_results_text: str,
     minimum_fit_text: str = "",
+    minimum_confidence_text: str = "",
+    minimum_cleanliness_text: str = "",
+    maximum_volatility_text: str = "",
 ) -> list[str]:
     errors: list[str] = []
     scan_hours = parse_optional_int(scan_hours_text, "Scan hours", errors, minimum=0)
@@ -66,10 +69,19 @@ def validate_search_inputs(
     minimum_score = parse_optional_int(minimum_score_text, "Minimum score", errors, minimum=10)
     parse_optional_int(max_results_text, "Max results", errors, minimum=1)
     minimum_fit = parse_optional_int(minimum_fit_text, "Minimum fit", errors, minimum=0)
+    minimum_confidence = parse_optional_int(minimum_confidence_text, "Minimum confidence", errors, minimum=0)
+    minimum_cleanliness = parse_optional_int(minimum_cleanliness_text, "Minimum cleanliness", errors, minimum=0)
+    maximum_volatility = parse_optional_int(maximum_volatility_text, "Maximum volatility", errors, minimum=0)
     if minimum_score is not None and minimum_score > 99:
         errors.append("Minimum score must be 99 or lower.")
     if minimum_fit is not None and minimum_fit > 5:
         errors.append("Minimum fit must be 5 or lower.")
+    if minimum_confidence is not None and minimum_confidence > 99:
+        errors.append("Minimum confidence must be 99 or lower.")
+    if minimum_cleanliness is not None and minimum_cleanliness > 99:
+        errors.append("Minimum cleanliness must be 99 or lower.")
+    if maximum_volatility is not None and maximum_volatility > 99:
+        errors.append("Maximum volatility must be 99 or lower.")
     if scan_hours is not None and step_minutes is not None and scan_hours * 60 < step_minutes:
         errors.append("Step minutes must fit inside the scan range.")
     return errors

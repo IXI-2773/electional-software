@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from backend.electional.desktop import (
+    _polar,
     aspect_curve_points,
     body_marker_offsets,
     fixed_star_contact_count,
@@ -21,6 +22,7 @@ from backend.electional.desktop import (
     wheel_degrees,
     window_score_color,
 )
+from backend.electional.chart import build_snapshot
 from backend.electional.locations import (
     DEFAULT_TIMEZONE,
     LocationPreset,
@@ -28,6 +30,7 @@ from backend.electional.locations import (
     combined_location_names,
     default_location_for_timezone,
     home_location_for_app,
+    get_location,
     load_home_location_name,
     load_user_locations,
     save_home_location_name,
@@ -108,6 +111,22 @@ class DesktopUiHelpersTest(unittest.TestCase):
     def test_wheel_degrees_places_ascendant_on_left_side(self) -> None:
         self.assertEqual(wheel_degrees(110.0, 110.0), 180)
         self.assertEqual(wheel_degrees(290.0, 110.0), 0)
+        self.assertEqual(wheel_degrees(20.0, 110.0), 90)
+        self.assertEqual(wheel_degrees(200.0, 110.0), 270)
+
+    def test_real_chart_angles_render_in_expected_quadrants(self) -> None:
+        snapshot = build_snapshot("2026-05-26", "09:00", get_location("los-angeles"), "traditional-lilly")
+        ascendant = next(angle for angle in snapshot["angles"] if angle["id"] == "asc")
+        asc_lon = float(ascendant["longitude"])
+        screen_points = {
+            angle["id"]: _polar(0.0, 0.0, 100.0, wheel_degrees(float(angle["longitude"]), asc_lon))
+            for angle in snapshot["angles"]
+        }
+
+        self.assertLess(screen_points["asc"][0], 0)
+        self.assertGreater(screen_points["dsc"][0], 0)
+        self.assertLess(screen_points["mc"][1], 0)
+        self.assertGreater(screen_points["ic"][1], 0)
 
     def test_planet_marker_offsets_spread_close_cluster_symmetrically(self) -> None:
         offsets = planet_marker_offsets([10.0, 13.0, 16.0], compact=False)
@@ -760,11 +779,55 @@ class DesktopUiHelpersTest(unittest.TestCase):
             "houseRulerContext": {"summary": "House ruler available.", "scoreImpact": 0, "confidence": "solid", "factors": []},
             "receptionContext": {"summary": "No reception.", "scoreImpact": 0, "confidence": "solid", "factors": []},
             "planetConditionContext": {"summary": "No conditions.", "scoreImpact": 0, "confidence": "approximate", "factors": []},
+            "declinationContext": {
+                "summary": "Declination scan found 1 out-of-bounds body and 1 parallel contact.",
+                "scoreImpact": -1,
+                "confidence": "solid",
+                "factors": [
+                    {
+                        "title": "Moon out of bounds",
+                        "detail": "Moon has declination +24.1 deg, outside the solar bounds.",
+                        "scoreImpact": -1,
+                        "severity": "caution",
+                    }
+                ],
+            },
             "advancedAspectContext": {"summary": "No patterns.", "scoreImpact": 0, "confidence": "experimental", "factors": []},
+            "fixedStarContext": {
+                "summary": "1 fixed-star contact found.",
+                "scoreImpact": 2.0,
+                "confidence": "approximate",
+                "factors": [
+                    {
+                        "title": "Venus conjunct Spica",
+                        "detail": "0 deg 12 min longitude orb; strength 0.90",
+                        "scoreImpact": 2.0,
+                        "severity": "support",
+                    }
+                ],
+            },
         }
 
         self.assertIn("Mercury significator", "\n".join(judgment_context_lines(snapshot, "significatorContext")))
+        self.assertIn("Moon out of bounds", "\n".join(judgment_context_lines(snapshot, "declinationContext")))
         self.assertIn("Significators", "\n".join(factor_explorer_lines(snapshot)))
+        self.assertIn("Fixed Stars", "\n".join(factor_explorer_lines(snapshot)))
+
+        baseline = {
+            "score": 66,
+            "significatorContext": {"scoreImpact": 0.5, "factors": []},
+            "moonCondition": {"scoreImpact": 0, "factors": []},
+            "houseRulerContext": {"scoreImpact": 0, "factors": []},
+            "receptionContext": {"scoreImpact": 0, "factors": []},
+            "planetConditionContext": {"scoreImpact": -0.5, "factors": []},
+            "declinationContext": {"scoreImpact": 0, "factors": []},
+            "advancedAspectContext": {"scoreImpact": 0, "factors": []},
+            "fixedStarContext": {"scoreImpact": 0, "factors": []},
+        }
+        compared = "\n".join(factor_explorer_lines(snapshot, baseline))
+        self.assertIn("Compared with search-start chart: +5 points.", compared)
+        self.assertIn("improved +1.0 vs start", compared)
+        self.assertIn("worsened -1.0 vs start", compared)
 
     def test_lunar_and_motion_summaries_are_human_readable(self) -> None:
         phase = format_lunar_phase(
@@ -782,6 +845,17 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("Waxing Gibbous", phase)
         self.assertIn("82% lit", phase)
         self.assertEqual(motion, "Retrograde -0.42 deg/day")
+
+        station_motion = format_motion_summary(
+            {
+                "motion": {
+                    "label": "Direct",
+                    "dailyLongitudeChange": 0.04,
+                    "station": {"isInStationWindow": True, "phase": "approaching station", "daysFromStation": 1.5},
+                }
+            }
+        )
+        self.assertIn("approaching station", station_motion)
 
     def test_aspect_summary_includes_applying_phase(self) -> None:
         summary = format_aspect_summary(

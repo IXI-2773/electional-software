@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
+from math import hypot
 from typing import Iterable, Mapping
 
 import astronomy
@@ -112,6 +113,54 @@ FIXED_STAR_SCORING = {
 }
 
 
+def _float_or_none(value: object) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def fixed_star_orb_limit(star: Mapping[str, object], base_orb_limit: float = FIXED_STAR_CONTACT_ORB) -> float:
+    """Return a magnitude-aware conjunction orb for a fixed-star diagnostic."""
+    magnitude = _float_or_none(star.get("magnitude"))
+    if magnitude is None:
+        return base_orb_limit
+    if magnitude > 50:
+        return min(base_orb_limit, 0.35)
+    if magnitude <= 0:
+        return base_orb_limit * 1.25
+    if magnitude <= 1:
+        return base_orb_limit * 1.15
+    if magnitude <= 2:
+        return base_orb_limit
+    if magnitude <= 3:
+        return base_orb_limit * 0.75
+    return base_orb_limit * 0.5
+
+
+def fixed_star_contact_strength(
+    longitude_distance: float,
+    orb_limit: float,
+    latitude_distance: float | None = None,
+) -> tuple[float, float, str]:
+    longitude_strength = max(0.45, 1.0 - (longitude_distance / max(orb_limit, 0.01)) * 0.45)
+    latitude_strength = 1.0
+    confidence = "longitude-only"
+    if latitude_distance is not None:
+        confidence = "longitude+latitude"
+        if latitude_distance <= 0.5:
+            latitude_strength = 1.0
+        elif latitude_distance <= 1.5:
+            latitude_strength = 0.85
+        elif latitude_distance <= 3.0:
+            latitude_strength = 0.65
+        elif latitude_distance <= 5.0:
+            latitude_strength = 0.4
+        else:
+            latitude_strength = 0.2
+    return round(longitude_strength * latitude_strength, 3), round(latitude_strength, 3), confidence
+
+
 @lru_cache(maxsize=2048)
 def _cached_star_ecliptic(star_id: str, time_text: str) -> tuple[float, float]:
     star = FIXED_STAR_BY_ID[star_id]
@@ -155,21 +204,53 @@ def detect_fixed_star_contacts(
         if not body_name:
             continue
         for star in stars:
-            distance = angular_distance(float(body["longitude"]), float(star["longitude"]))
-            if distance <= orb_limit:
+            longitude_distance = angular_distance(float(body["longitude"]), float(star["longitude"]))
+            contact_orb_limit = fixed_star_orb_limit(star, orb_limit)
+            if longitude_distance <= contact_orb_limit:
                 star_id = str(star["id"])
-                score = FIXED_STAR_SCORING.get(star_id, 0.0)
+                body_latitude = _float_or_none(body.get("latitude"))
+                star_latitude = _float_or_none(star.get("latitude"))
+                latitude_distance = (
+                    abs(body_latitude - star_latitude)
+                    if body_latitude is not None and star_latitude is not None
+                    else None
+                )
+                ecliptic_distance = (
+                    hypot(longitude_distance, latitude_distance)
+                    if latitude_distance is not None
+                    else longitude_distance
+                )
+                contact_strength, latitude_strength, precision = fixed_star_contact_strength(
+                    longitude_distance,
+                    contact_orb_limit,
+                    latitude_distance,
+                )
+                base_score = FIXED_STAR_SCORING.get(star_id, 0.0)
+                score = round(base_score * contact_strength, 2)
                 contacts.append(
                     {
                         "body": body_name,
                         "star": star["name"],
                         "starId": star_id,
-                        "orb": distance,
-                        "orbText": format_orb(distance),
+                        "orb": longitude_distance,
+                        "orbText": format_orb(longitude_distance),
+                        "orbLimit": contact_orb_limit,
+                        "orbLimitText": format_orb(contact_orb_limit),
+                        "longitudeDistance": longitude_distance,
+                        "longitudeDistanceText": format_orb(longitude_distance),
+                        "latitudeDistance": latitude_distance,
+                        "latitudeDistanceText": format_orb(latitude_distance) if latitude_distance is not None else None,
+                        "eclipticDistance": ecliptic_distance,
+                        "eclipticDistanceText": format_orb(ecliptic_distance),
+                        "contactStrength": contact_strength,
+                        "latitudeStrength": latitude_strength,
+                        "precision": precision,
+                        "baseScore": base_score,
                         "score": score,
                         "tone": "support" if score > 0 else "stress" if score < 0 else "mixed",
                         "note": star["electionalNote"],
                         "label": f"{body_name} conjunct {star['name']}",
+                        "magnitude": star.get("magnitude"),
                     }
                 )
 

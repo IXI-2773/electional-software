@@ -13,11 +13,19 @@ The current Python slice includes:
 - ASC, MC, DSC, IC, Whole Sign houses, and angularity.
 - Seven Hermetic Lots / Parts.
 - Moon phase, daily planetary motion, and retrograde scoring pressure.
+- Station-window, very slow, and very fast motion diagnostics for planet condition scoring.
 - Applying/separating aspect phase for reports, APIs, and scoring explanations.
 - Election condition flags for tightening aspect and angular planet context.
 - Structured score accounting with category totals, net point adjustments, grades, strengths, and risks.
 - Unequal ecliptic constellation span diagnostics, ASC rising speed, and small constellation/rising score factors.
 - Layered judgment contexts for significators, Moon condition, house rulers, reception, planet condition, advanced aspects, and factor exploration.
+- Factor Explorer comparison deltas between the search-start chart and selected election window.
+- Advanced aspect interruption checks for basic prohibition and frustration.
+- Objective-specific aspect importance notes inside advanced judgment contexts.
+- Declination coordinates, out-of-bounds checks, and parallel/contra-parallel diagnostics.
+- Magnitude-aware fixed-star contact orbs with latitude-aware strength diagnostics.
+- Cached snapshot calculation and fast/deep search mode for large limited scans.
+- Desktop tooling for viewing and clearing the snapshot calculation cache.
 - A small standard-library JSON API.
 - A native Python desktop interface.
 - Persistent shortlisted candidate windows for comparing promising electional picks.

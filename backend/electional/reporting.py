@@ -82,7 +82,13 @@ def format_motion_summary(planet: dict[str, object]) -> str:
     if not isinstance(motion, dict):
         return "Motion unknown"
     daily_change = float(motion.get("dailyLongitudeChange", 0))
-    return f"{motion.get('label', 'Motion unknown')} {daily_change:+.2f} deg/day"
+    summary = f"{motion.get('label', 'Motion unknown')} {daily_change:+.2f} deg/day"
+    station = motion.get("station")
+    if isinstance(station, dict) and station.get("isInStationWindow"):
+        days = station.get("daysFromStation")
+        days_text = f", {float(days):+.1f}d" if days is not None else ""
+        summary += f" ({station.get('phase', 'station window')}{days_text})"
+    return summary
 
 
 def format_lunar_phase(snapshot: dict[str, object]) -> str:
@@ -651,7 +657,7 @@ def build_classical_point_data_page(snapshot: dict[str, object]) -> str:
         + "\n\nLunar Nodes\n"
         + ("\n".join(node_lines) if node_lines else "- No lunar nodes calculated.")
         + "\n\nFixed Star Contacts\n"
-        + ("\n".join(star_contact_lines) if star_contact_lines else "- No fixed-star conjunctions within 1 degree.")
+        + ("\n".join(star_contact_lines) if star_contact_lines else "- No fixed-star conjunctions within the diagnostic star orb.")
     )
 
 
@@ -765,7 +771,9 @@ JUDGMENT_CONTEXT_LABELS = {
     "houseRulerContext": "House Rulers",
     "receptionContext": "Reception",
     "planetConditionContext": "Planet Condition",
+    "declinationContext": "Declination",
     "advancedAspectContext": "Advanced Aspects",
+    "fixedStarContext": "Fixed Stars",
     "constellationContext": "Constellation / Rising",
 }
 
@@ -796,6 +804,25 @@ def judgment_context_lines(snapshot: dict[str, object], context_key: str) -> lis
     return lines
 
 
+def _factor_context_impact(snapshot: dict[str, object], context_key: str) -> float:
+    context = snapshot.get(context_key)
+    if context_key == "constellationContext":
+        rising = context.get("rising", {}) if isinstance(context, dict) else {}
+        return float(rising.get("scoreImpact", 0)) if isinstance(rising, dict) else 0.0
+    return float(context.get("scoreImpact", 0)) if isinstance(context, dict) else 0.0
+
+
+def _factor_delta_text(current: float, baseline: dict[str, object] | None, context_key: str) -> str:
+    if not baseline:
+        return ""
+    previous = _factor_context_impact(baseline, context_key)
+    delta = current - previous
+    if abs(delta) < 0.05:
+        return " | unchanged vs start"
+    direction = "improved" if delta > 0 else "worsened"
+    return f" | {direction} {delta:+.1f} vs start"
+
+
 def factor_explorer_lines(snapshot: dict[str, object], baseline: dict[str, object] | None = None) -> list[str]:
     lines = ["Factor Explorer", f"Score: {snapshot.get('score', 'n/a')}"]
     if baseline and baseline is not snapshot:
@@ -805,14 +832,9 @@ def factor_explorer_lines(snapshot: dict[str, object], baseline: dict[str, objec
         except (TypeError, ValueError):
             lines.append("Compared with search-start chart: n/a.")
     for context_key, label in JUDGMENT_CONTEXT_LABELS.items():
-        if context_key == "constellationContext":
-            context = snapshot.get(context_key)
-            rising = context.get("rising", {}) if isinstance(context, dict) else {}
-            impact = float(rising.get("scoreImpact", 0)) if isinstance(rising, dict) else 0.0
-        else:
-            context = snapshot.get(context_key)
-            impact = float(context.get("scoreImpact", 0)) if isinstance(context, dict) else 0.0
-        lines.extend(["", f"{label} ({impact:+.1f})"])
+        context = snapshot.get(context_key)
+        impact = _factor_context_impact(snapshot, context_key)
+        lines.extend(["", f"{label} ({impact:+.1f}{_factor_delta_text(impact, baseline if baseline is not snapshot else None, context_key)})"])
         if context_key == "constellationContext":
             lines.extend(constellation_lines(snapshot)[:8])
             continue
@@ -942,7 +964,21 @@ def format_window_label(rank: int, window: dict[str, object]) -> str:
 def format_fixed_star_contact(contact: dict[str, object]) -> str:
     score = float(contact.get("score", 0))
     score_text = f"{score:+.1f}" if score else "0.0"
-    return f"{contact['label']} ({contact['orbText']} orb, {contact.get('tone', 'mixed')}, {score_text})"
+    limit_text = contact.get("orbLimitText")
+    latitude_text = contact.get("latitudeDistanceText")
+    precision = contact.get("precision")
+    strength = contact.get("contactStrength")
+    details = [f"{contact['orbText']} longitude orb"]
+    if limit_text:
+        details.append(f"limit {limit_text}")
+    if latitude_text:
+        details.append(f"latitude gap {latitude_text}")
+    if precision:
+        details.append(str(precision))
+    if strength is not None:
+        details.append(f"strength {float(strength):.2f}")
+    details.extend([str(contact.get("tone", "mixed")), score_text])
+    return f"{contact['label']} ({', '.join(details)})"
 
 
 def build_report_text(
@@ -1025,7 +1061,9 @@ def build_report_text(
         f"House rulers:\n{chr(10).join(judgment_context_lines(selected_window, 'houseRulerContext'))}\n"
         f"Reception:\n{chr(10).join(judgment_context_lines(selected_window, 'receptionContext'))}\n"
         f"Planet condition:\n{chr(10).join(judgment_context_lines(selected_window, 'planetConditionContext'))}\n"
+        f"Declination:\n{chr(10).join(judgment_context_lines(selected_window, 'declinationContext'))}\n"
         f"Advanced aspects:\n{chr(10).join(judgment_context_lines(selected_window, 'advancedAspectContext'))}\n"
+        f"Fixed stars:\n{chr(10).join(judgment_context_lines(selected_window, 'fixedStarContext'))}\n"
         f"Constellation proportions:\n{chr(10).join(constellation_lines(selected_window))}\n"
         f"Factor explorer:\n{chr(10).join(factor_explorer_lines(selected_window))}\n"
         f"Calculation backend:\n{chr(10).join(backend_lines) or '- Backend unavailable.'}\n"
@@ -1037,7 +1075,7 @@ def build_report_text(
         f"Ranked Windows:\n{ranked_windows}\n\n"
         f"Aspects:\n{aspects or '- No selected major aspects in orb.'}\n\n"
         f"Aspectarian:\n{format_aspectarian(selected_window)}\n\n"
-        f"Fixed Star Contacts:\n{fixed_star_contacts or '- No fixed-star conjunctions within 1 degree.'}\n\n"
+        f"Fixed Star Contacts:\n{fixed_star_contacts or '- No fixed-star conjunctions within the diagnostic star orb.'}\n\n"
         f"Lunar Nodes:\n{nodes or '- No lunar nodes calculated.'}\n\n"
         f"Lots:\n{lots or '- No lots calculated.'}\n\n"
         f"Planets:\n{planets}\n"

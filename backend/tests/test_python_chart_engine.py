@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from backend.electional.chart import build_election_report, build_snapshot, build_transit_windows
+from backend.electional.chart import build_election_report, build_snapshot, build_transit_windows, clear_snapshot_cache, snapshot_cache_info
 from backend.electional.ephemeris import get_planet_positions, lunar_phase_from_positions, signed_longitude_delta
 from backend.electional.fixed_stars import detect_fixed_star_contacts, fixed_star_positions
 from backend.electional.houses import calculate_angles, calculate_house_cusps, house_number
+from backend.electional.judgment import advanced_aspect_context, planet_condition_context
 from backend.electional.locations import get_location
 from backend.electional.lunar_nodes import calculate_lunar_nodes, mean_node_tropical_longitude, true_node_tropical_longitude
 from backend.electional.planetary_hours import day_ruler_for_moment, planetary_hour_context
@@ -35,6 +36,8 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertAlmostEqual(positions["Moon"], 193.2205, delta=0.01)
         self.assertAlmostEqual(positions["Mercury"], 79.3437, delta=0.01)
         self.assertIn("motion", planets[0])
+        self.assertIn("declination", planets[0])
+        self.assertIn("rightAscensionHours", planets[0])
         self.assertIn(planets[0]["motion"]["direction"], {"direct", "retrograde", "stationary"})
 
     def test_signed_longitude_delta_handles_zodiac_wrap(self) -> None:
@@ -89,6 +92,57 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertEqual(contacts[0]["label"], "Venus conjunct Spica")
         self.assertGreater(contacts[0]["score"], 0)
 
+    def test_fixed_star_contacts_use_magnitude_aware_orbs(self) -> None:
+        contacts = detect_fixed_star_contacts(
+            [{"name": "Venus", "longitude": 11.2, "latitude": 0.0}],
+            [
+                {
+                    "id": "spica",
+                    "name": "Spica",
+                    "longitude": 10.0,
+                    "latitude": 0.1,
+                    "magnitude": -1.0,
+                    "electionalNote": "Protection",
+                }
+            ],
+        )
+
+        self.assertEqual(len(contacts), 1)
+        self.assertGreater(contacts[0]["orbLimit"], 1.0)
+        self.assertEqual(contacts[0]["precision"], "longitude+latitude")
+        self.assertIn("eclipticDistance", contacts[0])
+
+    def test_fixed_star_latitude_gap_reduces_contact_score(self) -> None:
+        tight_latitude = detect_fixed_star_contacts(
+            [{"name": "Venus", "longitude": 10.2, "latitude": 0.0}],
+            [
+                {
+                    "id": "spica",
+                    "name": "Spica",
+                    "longitude": 10.0,
+                    "latitude": 0.1,
+                    "magnitude": 0.97,
+                    "electionalNote": "Protection",
+                }
+            ],
+        )
+        wide_latitude = detect_fixed_star_contacts(
+            [{"name": "Venus", "longitude": 10.2, "latitude": 0.0}],
+            [
+                {
+                    "id": "spica",
+                    "name": "Spica",
+                    "longitude": 10.0,
+                    "latitude": 6.0,
+                    "magnitude": 0.97,
+                    "electionalNote": "Protection",
+                }
+            ],
+        )
+
+        self.assertGreater(tight_latitude[0]["score"], wide_latitude[0]["score"])
+        self.assertLess(wide_latitude[0]["latitudeStrength"], 1.0)
+
     def test_sidereal_lunar_rule_context(self) -> None:
         self.assertEqual(nakshatra_for_longitude(0)["name"], "Ashwini")
         self.assertEqual(nakshatra_for_longitude(50)["name"], "Rohini")
@@ -100,6 +154,140 @@ class PythonChartEngineTest(unittest.TestCase):
 
         self.assertEqual(rule["title"], "Mercury combust")
         self.assertLess(rule["scoreImpact"], 0)
+
+    def test_planet_condition_tracks_station_windows_and_relevance(self) -> None:
+        context = planet_condition_context(
+            [
+                {"name": "Sun", "longitude": 10.0},
+                {
+                    "name": "Mercury",
+                    "longitude": 40.0,
+                    "motion": {
+                        "dailyLongitudeChange": 0.01,
+                        "station": {
+                            "available": True,
+                            "isInStationWindow": True,
+                            "phase": "approaching station",
+                            "daysFromStation": 2.0,
+                        },
+                    },
+                },
+                {
+                    "name": "Saturn",
+                    "longitude": 90.0,
+                    "motion": {
+                        "dailyLongitudeChange": 0.01,
+                        "station": {
+                            "available": True,
+                            "isInStationWindow": True,
+                            "phase": "station window",
+                            "daysFromStation": 0.0,
+                        },
+                    },
+                },
+            ],
+            ["Mercury"],
+        )
+
+        factors = {factor["body"]: factor for factor in context["factors"]}
+        self.assertEqual(context["conditions"][0]["name"], "Mercury")
+        self.assertEqual(context["conditions"][0]["station"], "approaching station")
+        self.assertLess(factors["Mercury"]["scoreImpact"], factors["Saturn"]["scoreImpact"])
+        self.assertEqual(context["conditions"][1]["relevance"], "background")
+
+    def test_advanced_aspects_detect_prohibition_and_frustration(self) -> None:
+        context = advanced_aspect_context(
+            [
+                {
+                    "label": "Mercury trine Jupiter",
+                    "bodies": ["Mercury", "Jupiter"],
+                    "isApplying": True,
+                    "daysToExact": 3.0,
+                    "timeToExactText": "3d",
+                    "tone": "support",
+                },
+                {
+                    "label": "Mercury square Mars",
+                    "bodies": ["Mercury", "Mars"],
+                    "isApplying": True,
+                    "daysToExact": 1.0,
+                    "timeToExactText": "1d",
+                    "tone": "stress",
+                },
+                {
+                    "label": "Moon sextile Jupiter",
+                    "bodies": ["Moon", "Jupiter"],
+                    "isApplying": True,
+                    "daysToExact": 0.5,
+                    "timeToExactText": "12h",
+                    "tone": "support",
+                },
+            ],
+            [
+                {"name": "Mercury", "motion": {"dailyLongitudeChange": 1.2}},
+                {"name": "Jupiter", "motion": {"dailyLongitudeChange": 0.1}},
+                {"name": "Mars", "motion": {"dailyLongitudeChange": 0.5}},
+                {"name": "Moon", "motion": {"dailyLongitudeChange": 12.5}},
+            ],
+            {"points": [{"name": "Mercury"}, {"name": "Jupiter"}]},
+        )
+
+        pattern_types = {pattern["type"] for pattern in context["patterns"]}
+        factor_titles = {factor["title"] for factor in context["factors"]}
+
+        self.assertIn("prohibition", pattern_types)
+        self.assertIn("frustration", pattern_types)
+        self.assertIn("Possible prohibition", factor_titles)
+        self.assertIn("Possible frustration", factor_titles)
+
+    def test_advanced_aspects_explain_objective_importance(self) -> None:
+        launch = advanced_aspect_context(
+            [
+                {
+                    "label": "Sun trine Jupiter",
+                    "bodies": ["Sun", "Jupiter"],
+                    "tone": "support",
+                    "isApplying": True,
+                    "daysToExact": 1.0,
+                    "timingQuality": "soon",
+                },
+                {
+                    "label": "Mercury square Mars",
+                    "bodies": ["Mercury", "Mars"],
+                    "tone": "stress",
+                    "isApplying": True,
+                    "daysToExact": 0.5,
+                    "timingQuality": "soon",
+                },
+            ],
+            [
+                {"name": "Sun", "motion": {"dailyLongitudeChange": 1.0}},
+                {"name": "Jupiter", "motion": {"dailyLongitudeChange": 0.1}},
+                {"name": "Mercury", "motion": {"dailyLongitudeChange": 1.2}},
+                {"name": "Mars", "motion": {"dailyLongitudeChange": 0.5}},
+            ],
+            {"points": [{"name": "Sun"}, {"name": "Mercury"}]},
+            "Launch or publish",
+        )
+        relationship = advanced_aspect_context(
+            [
+                {
+                    "label": "Sun trine Jupiter",
+                    "bodies": ["Sun", "Jupiter"],
+                    "tone": "support",
+                    "isApplying": True,
+                    "daysToExact": 1.0,
+                    "timingQuality": "soon",
+                }
+            ],
+            [{"name": "Sun", "motion": {"dailyLongitudeChange": 1.0}}, {"name": "Jupiter", "motion": {"dailyLongitudeChange": 0.1}}],
+            {"points": [{"name": "Sun"}]},
+            "Relationship timing",
+        )
+
+        self.assertTrue(any(pattern["type"] == "objective-importance" for pattern in launch["patterns"]))
+        self.assertTrue(any("public launch" in factor["detail"] for factor in launch["factors"]))
+        self.assertFalse(any("public launch" in factor["detail"] for factor in relationship["factors"]))
 
     def test_electional_rules_include_lunar_context_and_score_impact(self) -> None:
         rules = evaluate_electional_rules(
@@ -208,7 +396,9 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertIn("houseRulerContext", snapshot)
         self.assertIn("receptionContext", snapshot)
         self.assertIn("planetConditionContext", snapshot)
+        self.assertIn("declinationContext", snapshot)
         self.assertIn("advancedAspectContext", snapshot)
+        self.assertIn("fixedStarContext", snapshot)
         self.assertIn("timingProfile", snapshot)
         self.assertIn("summary", snapshot["timingProfile"])
         self.assertTrue(snapshot["planetaryHour"]["available"])
@@ -220,6 +410,7 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertIn("fixedStarContacts", snapshot)
         self.assertIn("lunarPhase", snapshot)
         self.assertTrue(all("motion" in planet for planet in snapshot["positions"]))
+        self.assertTrue(all("declination" in planet for planet in snapshot["positions"]))
         self.assertTrue(all("constellation" in planet for planet in snapshot["positions"]))
         self.assertEqual(len(windows), 6)
         self.assertGreaterEqual(windows[0]["score"], windows[-1]["score"])
@@ -294,6 +485,37 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertLessEqual(len(windows), 3)
         self.assertTrue(all(window["score"] >= 50 for window in windows))
         self.assertGreaterEqual(windows[0]["score"], windows[-1]["score"])
+
+    def test_snapshot_cache_returns_isolated_copies(self) -> None:
+        clear_snapshot_cache()
+        location = get_location("paris")
+        first = build_snapshot("2026-05-26", "09:00", location, "traditional-lilly")
+        first["positions"][0]["name"] = "Changed"
+        second = build_snapshot("2026-05-26", "09:00", location, "traditional-lilly")
+        cache = snapshot_cache_info()
+
+        self.assertGreaterEqual(cache["hits"], 1)
+        self.assertNotEqual(second["positions"][0]["name"], "Changed")
+
+    def test_snapshot_cache_clear_resets_stored_snapshots(self) -> None:
+        clear_snapshot_cache()
+        location = get_location("paris")
+        build_snapshot("2026-05-26", "09:00", location, "traditional-lilly")
+        self.assertGreater(snapshot_cache_info()["currsize"], 0)
+
+        clear_snapshot_cache()
+
+        self.assertEqual(snapshot_cache_info()["currsize"], 0)
+
+    def test_search_uses_fast_deep_mode_for_limited_large_scans(self) -> None:
+        location = get_location("paris")
+        config = SearchConfig(end_offset_minutes=24 * 60, step_minutes=60, max_results=5)
+        report = build_election_report("2026-05-26", "09:00", location, "traditional-lilly", search_config=config)
+
+        self.assertEqual(report["searchMode"], "fast/deep")
+        self.assertEqual(report["searchedWindowCount"], 25)
+        self.assertLess(report["deepWindowCount"], report["searchedWindowCount"])
+        self.assertTrue(all(window["calculationMode"] == "full" for window in report["windows"]))
 
 
 if __name__ == "__main__":

@@ -10,6 +10,18 @@ from .presets import DETRIMENTS, EXALTATIONS, FALLS, RULERS, get_bound_lord
 BENEFICS = {"Venus", "Jupiter"}
 MALEFICS = {"Mars", "Saturn"}
 FAST_TRANSLATORS = {"Moon", "Mercury", "Venus"}
+OUT_OF_BOUNDS_DECLINATION = 23.4367
+DECLINATION_ORB = 1.0
+PLANET_SPEED_BANDS = {
+    "Mercury": {"slow": 0.25, "fast": 1.8},
+    "Venus": {"slow": 0.10, "fast": 1.25},
+    "Mars": {"slow": 0.15, "fast": 0.75},
+    "Jupiter": {"slow": 0.02, "fast": 0.25},
+    "Saturn": {"slow": 0.01, "fast": 0.13},
+    "Uranus": {"slow": 0.005, "fast": 0.06},
+    "Neptune": {"slow": 0.003, "fast": 0.04},
+    "Pluto": {"slow": 0.002, "fast": 0.04},
+}
 
 OBJECTIVE_TOPICS: dict[str, dict[str, object]] = {
     "Launch or publish": {"houses": (10,), "planets": ("Sun", "Mercury"), "label": "public launch"},
@@ -22,6 +34,50 @@ OBJECTIVE_TOPICS: dict[str, dict[str, object]] = {
 }
 
 DEFAULT_OBJECTIVE = "Launch or publish"
+OBJECTIVE_ASPECT_PRIORITIES: dict[str, dict[str, object]] = {
+    "Launch or publish": {
+        "supportBodies": {"Sun", "Mercury", "Jupiter", "Venus"},
+        "cautionBodies": {"Mars", "Saturn"},
+        "supportSummary": "public launch visibility",
+        "cautionSummary": "public launch drag or conflict",
+    },
+    "Meeting or negotiation": {
+        "supportBodies": {"Mercury", "Venus", "Jupiter", "Moon"},
+        "cautionBodies": {"Mars", "Saturn"},
+        "supportSummary": "agreement, clarity, and cooperation",
+        "cautionSummary": "argument, delay, or hardened positions",
+    },
+    "Creative work": {
+        "supportBodies": {"Venus", "Sun", "Moon", "Mercury"},
+        "cautionBodies": {"Mars", "Saturn"},
+        "supportSummary": "creative flow and visible expression",
+        "cautionSummary": "blockage, friction, or overwork",
+    },
+    "Relationship timing": {
+        "supportBodies": {"Venus", "Moon", "Jupiter"},
+        "cautionBodies": {"Mars", "Saturn"},
+        "supportSummary": "connection, warmth, and receptivity",
+        "cautionSummary": "separation, conflict, or coldness",
+    },
+    "Travel departure": {
+        "supportBodies": {"Mercury", "Jupiter", "Moon"},
+        "cautionBodies": {"Mars", "Saturn"},
+        "supportSummary": "movement, guidance, and safe passage",
+        "cautionSummary": "delay, accident pressure, or travel friction",
+    },
+    "Money or business": {
+        "supportBodies": {"Venus", "Jupiter", "Mercury"},
+        "cautionBodies": {"Mars", "Saturn"},
+        "supportSummary": "profit, agreement, and growth",
+        "cautionSummary": "loss pressure, scarcity, or conflict",
+    },
+    "Health or surgery caution": {
+        "supportBodies": {"Jupiter", "Venus", "Moon"},
+        "cautionBodies": {"Mars", "Saturn", "Sun"},
+        "supportSummary": "recovery support and steadiness",
+        "cautionSummary": "inflammation, cutting pressure, or depletion",
+    },
+}
 
 
 def _position_by_name(positions: Sequence[Mapping[str, object]]) -> dict[str, Mapping[str, object]]:
@@ -88,6 +144,23 @@ def _severity_for_score(score: float) -> str:
     if score < 0:
         return "caution"
     return "info"
+
+
+def _slug(text: object) -> str:
+    return str(text).replace(" ", "-").replace("/", "-").lower()
+
+
+def _timing_multiplier(aspect: Mapping[str, object]) -> float:
+    timing_quality = str(aspect.get("timingQuality", ""))
+    if aspect.get("isApplying"):
+        if timing_quality == "soon":
+            return 1.2
+        if timing_quality == "near-term":
+            return 1.0
+        if timing_quality == "later":
+            return 0.7
+        return 0.8
+    return 0.4
 
 
 def _planet_factor_score(planet: Mapping[str, object]) -> float:
@@ -399,19 +472,79 @@ def planet_condition_context(
     sun = by_name.get("Sun")
     factors = []
     conditions = []
-    relevant = set(relevant_names) | {"Sun", "Moon", "Mercury", "Venus", "Mars", "Jupiter", "Saturn"}
+    topic_relevant = set(relevant_names) | {"Moon"}
+    background_relevant = {"Mercury", "Venus", "Mars", "Jupiter", "Saturn"}
+    relevant = topic_relevant | background_relevant
     for planet in positions:
         name = str(planet.get("name"))
         if name == "Sun":
             continue
         motion = planet.get("motion") if isinstance(planet.get("motion"), Mapping) else {}
         daily = float(motion.get("dailyLongitudeChange", 0)) if isinstance(motion, Mapping) else 0.0
-        condition = {"name": name, "dailyLongitudeChange": daily, "visibility": "unknown", "station": "normal"}
-        if abs(daily) <= 0.08 and name not in {"Moon"} and name in relevant:
+        multiplier = 1.0 if name in topic_relevant else 0.4
+        condition = {
+            "name": name,
+            "dailyLongitudeChange": daily,
+            "visibility": "unknown",
+            "station": "normal",
+            "speed": "normal",
+            "relevance": "primary" if name in topic_relevant else "background",
+        }
+        station = motion.get("station") if isinstance(motion, Mapping) else None
+        if isinstance(station, Mapping):
+            condition["stationDiagnostic"] = dict(station)
+        if isinstance(station, Mapping) and station.get("isInStationWindow") and name not in {"Moon"} and name in relevant:
+            station_phase = str(station.get("phase", "station window"))
+            days = station.get("daysFromStation")
+            days_text = f"{float(days):+.1f} days from estimated station" if days is not None else "inside the station scan window"
+            score = -1.2 * multiplier
+            condition["station"] = station_phase
+            factors.append(
+                _factor(
+                    f"{name.lower()}-station-window",
+                    "planet-condition",
+                    f"{name} {station_phase}",
+                    f"{name} is {days_text}; current speed {daily:+.3f} deg/day.",
+                    score,
+                    "caution",
+                    name,
+                )
+            )
+        elif abs(daily) <= 0.08 and name not in {"Moon"} and name in relevant:
+            score = -1.0 * multiplier
             condition["station"] = "stationary"
-            factors.append(_factor(f"{name.lower()}-stationary", "planet-condition", f"{name} station pressure", f"{name} is nearly stationary ({daily:+.2f} deg/day).", -1.0, "caution", name))
+            factors.append(_factor(f"{name.lower()}-stationary", "planet-condition", f"{name} station pressure", f"{name} is nearly stationary ({daily:+.2f} deg/day).", score, "caution", name))
         elif planet.get("isRetrograde"):
             condition["station"] = "retrograde"
+        speed_band = PLANET_SPEED_BANDS.get(name)
+        abs_daily = abs(daily)
+        if speed_band and name in relevant and condition["station"] == "normal":
+            if 0 < abs_daily <= float(speed_band["slow"]):
+                condition["speed"] = "very slow"
+                factors.append(
+                    _factor(
+                        f"{name.lower()}-very-slow",
+                        "planet-condition",
+                        f"{name} very slow",
+                        f"{name} is moving only {daily:+.3f} deg/day, below its diagnostic slow threshold.",
+                        -0.5 * multiplier,
+                        "caution",
+                        name,
+                    )
+                )
+            elif abs_daily >= float(speed_band["fast"]) and daily > 0:
+                condition["speed"] = "very fast"
+                factors.append(
+                    _factor(
+                        f"{name.lower()}-very-fast",
+                        "planet-condition",
+                        f"{name} fast motion",
+                        f"{name} is moving {daily:+.3f} deg/day, above its diagnostic fast threshold.",
+                        0.3 * multiplier,
+                        "support",
+                        name,
+                    )
+                )
         if sun:
             separation = angular_distance(float(planet.get("longitude", 0)), float(sun.get("longitude", 0)))
             condition["solarSeparation"] = separation
@@ -436,19 +569,199 @@ def planet_condition_context(
     }
 
 
+def declination_context(
+    positions: Sequence[Mapping[str, object]],
+    significator_ctx: Mapping[str, object],
+) -> dict[str, object]:
+    significator_names = {str(point.get("name")) for point in significator_ctx.get("points", []) if isinstance(point, Mapping)}
+    relevant = significator_names | {"Moon", "Mercury", "Venus", "Mars", "Jupiter", "Saturn"}
+    points = []
+    factors = []
+    contacts = []
+    usable_positions = [planet for planet in positions if planet.get("declination") is not None]
+
+    for planet in usable_positions:
+        name = str(planet.get("name"))
+        declination = float(planet.get("declination", 0))
+        is_oob = abs(declination) > OUT_OF_BOUNDS_DECLINATION
+        points.append(
+            {
+                "name": name,
+                "declination": declination,
+                "rightAscensionHours": planet.get("rightAscensionHours"),
+                "isOutOfBounds": is_oob,
+            }
+        )
+        if is_oob and name in relevant:
+            if name == "Moon":
+                score = -1.0
+                severity = "caution"
+            elif name in MALEFICS:
+                score = -0.5
+                severity = "caution"
+            elif name in BENEFICS:
+                score = 0.5
+                severity = "support"
+            else:
+                score = 0.0
+                severity = "info"
+            factors.append(
+                _factor(
+                    f"declination-oob-{name.lower()}",
+                    "declination",
+                    f"{name} out of bounds",
+                    f"{name} has declination {declination:+.1f} deg, outside the solar bounds.",
+                    score,
+                    severity,
+                    name,
+                )
+            )
+
+    for first_index, first in enumerate(usable_positions):
+        first_name = str(first.get("name"))
+        first_declination = float(first.get("declination", 0))
+        for second in usable_positions[first_index + 1 :]:
+            second_name = str(second.get("name"))
+            second_declination = float(second.get("declination", 0))
+            same_side = first_declination * second_declination >= 0
+            parallel_orb = abs(first_declination - second_declination)
+            contra_orb = abs(first_declination + second_declination)
+            contact_type = ""
+            orb = 0.0
+            if same_side and parallel_orb <= DECLINATION_ORB:
+                contact_type = "parallel"
+                orb = parallel_orb
+            elif not same_side and contra_orb <= DECLINATION_ORB:
+                contact_type = "contra-parallel"
+                orb = contra_orb
+            if not contact_type:
+                continue
+            involves_key = first_name in relevant or second_name in relevant
+            if not involves_key:
+                continue
+            score = 0.0
+            severity = "info"
+            bodies = {first_name, second_name}
+            if bodies & significator_names:
+                if bodies & BENEFICS:
+                    score += 0.5
+                    severity = "support"
+                if bodies & MALEFICS:
+                    score -= 0.5
+                    severity = "caution" if score < 0 else severity
+            contacts.append(
+                {
+                    "type": contact_type,
+                    "bodies": [first_name, second_name],
+                    "orb": orb,
+                    "declinations": [first_declination, second_declination],
+                }
+            )
+            if score:
+                factors.append(
+                    _factor(
+                        f"declination-{contact_type}-{first_name.lower()}-{second_name.lower()}",
+                        "declination",
+                        f"{first_name} {contact_type} {second_name}",
+                        f"{first_name} and {second_name} are {contact_type} in declination within {orb:.1f} deg.",
+                        score,
+                        severity,
+                        first_name,
+                    )
+                )
+
+    out_of_bounds_count = sum(1 for point in points if point["isOutOfBounds"])
+    return {
+        **_context(
+            f"Declination scan found {out_of_bounds_count} out-of-bounds body/bodies and {len(contacts)} parallel contact(s).",
+            factors,
+            "solid",
+        ),
+        "points": points,
+        "contacts": contacts,
+        "outOfBoundsLimit": OUT_OF_BOUNDS_DECLINATION,
+        "parallelOrb": DECLINATION_ORB,
+    }
+
+
 def advanced_aspect_context(
     detected_aspects: Sequence[Mapping[str, object]],
     positions: Sequence[Mapping[str, object]],
     significator_ctx: Mapping[str, object],
+    objective: str = DEFAULT_OBJECTIVE,
 ) -> dict[str, object]:
     by_name = _position_by_name(positions)
     significator_names = {str(point.get("name")) for point in significator_ctx.get("points", []) if isinstance(point, Mapping)}
+    topic = OBJECTIVE_ASPECT_PRIORITIES.get(objective, OBJECTIVE_ASPECT_PRIORITIES[DEFAULT_OBJECTIVE])
+    support_bodies = set(topic.get("supportBodies", set()))
+    caution_bodies = set(topic.get("cautionBodies", set()))
     factors = []
     patterns = []
     by_body: dict[str, list[Mapping[str, object]]] = {}
     for aspect in detected_aspects:
         for body in aspect.get("bodies", []):
             by_body.setdefault(str(body), []).append(aspect)
+
+    objective_candidates: list[dict[str, object]] = []
+    for aspect in detected_aspects:
+        bodies = {str(body) for body in aspect.get("bodies", [])}
+        if not (bodies & significator_names):
+            continue
+        timing = _timing_multiplier(aspect)
+        label = str(aspect.get("label", "Aspect"))
+        tone = str(aspect.get("tone", "mixed"))
+        if tone == "support" and bodies & support_bodies:
+            score = round(0.6 * timing, 2)
+            objective_candidates.append(
+                _factor(
+                    f"objective-aspect-support-{_slug(label)}",
+                    "advanced-aspects",
+                    "Objective aspect support",
+                    f"{label} supports {topic.get('supportSummary', 'the selected objective')}.",
+                    score,
+                    "support",
+                    next(iter(bodies & significator_names), ""),
+                )
+            )
+        elif tone == "stress" and bodies & caution_bodies:
+            score = round(-0.7 * timing, 2)
+            objective_candidates.append(
+                _factor(
+                    f"objective-aspect-caution-{_slug(label)}",
+                    "advanced-aspects",
+                    "Objective aspect caution",
+                    f"{label} can show {topic.get('cautionSummary', 'friction for the selected objective')}.",
+                    score,
+                    "caution",
+                    next(iter(bodies & significator_names), ""),
+                )
+            )
+        elif tone == "mixed" and bodies & support_bodies and not bodies & caution_bodies:
+            score = round(0.25 * timing, 2)
+            objective_candidates.append(
+                _factor(
+                    f"objective-aspect-mixed-{_slug(label)}",
+                    "advanced-aspects",
+                    "Objective aspect emphasis",
+                    f"{label} directly involves a key body for {objective}.",
+                    score,
+                    "support" if score > 0 else "info",
+                    next(iter(bodies & significator_names), ""),
+                )
+            )
+
+    objective_candidates.sort(key=lambda factor: abs(float(factor.get("scoreImpact", 0))), reverse=True)
+    for factor in objective_candidates[:3]:
+        factors.append(factor)
+        patterns.append(
+            {
+                "type": "objective-importance",
+                "objective": objective,
+                "title": factor.get("title"),
+                "body": factor.get("body"),
+                "scoreImpact": factor.get("scoreImpact"),
+            }
+        )
 
     for translator in FAST_TRANSLATORS:
         contacts = by_body.get(translator, [])
@@ -496,6 +809,120 @@ def advanced_aspect_context(
                     )
                 )
 
+    applying_with_time = [
+        aspect
+        for aspect in detected_aspects
+        if aspect.get("isApplying") and aspect.get("daysToExact") is not None and len(aspect.get("bodies", [])) == 2
+    ]
+    applying_with_time.sort(key=lambda aspect: float(aspect.get("daysToExact", 999)))
+    seen_interruptions: set[tuple[str, str, str]] = set()
+    for primary in applying_with_time:
+        primary_bodies = [str(body) for body in primary.get("bodies", [])]
+        primary_body_set = set(primary_bodies)
+        primary_significators = primary_body_set & significator_names
+        if len(primary_significators) < 2:
+            continue
+        primary_days = float(primary.get("daysToExact", 999))
+        for interrupting in applying_with_time:
+            if interrupting is primary:
+                continue
+            interrupt_days = float(interrupting.get("daysToExact", 999))
+            if interrupt_days >= primary_days:
+                continue
+            interrupt_bodies = [str(body) for body in interrupting.get("bodies", [])]
+            interrupt_set = set(interrupt_bodies)
+            shared = primary_body_set & interrupt_set
+            outsiders = interrupt_set - primary_body_set
+            if not shared or not outsiders:
+                continue
+            outsider = next(iter(outsiders))
+            shared_body = next(iter(shared))
+            key = ("prohibition", str(primary.get("label", "")), str(interrupting.get("label", "")))
+            if key in seen_interruptions:
+                continue
+            seen_interruptions.add(key)
+            severity_score = -1.0 if outsider in MALEFICS or interrupting.get("tone") == "stress" else -0.5
+            patterns.append(
+                {
+                    "type": "prohibition",
+                    "intendedAspect": primary.get("label"),
+                    "interruptingAspect": interrupting.get("label"),
+                    "sharedBody": shared_body,
+                    "interrupter": outsider,
+                    "intendedDaysToExact": primary_days,
+                    "interruptingDaysToExact": interrupt_days,
+                }
+            )
+            factors.append(
+                _factor(
+                    f"prohibition-{_slug(shared_body)}-{_slug(outsider)}",
+                    "advanced-aspects",
+                    "Possible prohibition",
+                    (
+                        f"{primary.get('label')} perfects in {primary.get('timeToExactText') or f'{primary_days:.1f}d'}, "
+                        f"but {interrupting.get('label')} perfects sooner."
+                    ),
+                    severity_score,
+                    "caution",
+                    shared_body,
+                )
+            )
+
+    seen_frustrations: set[tuple[str, str, str]] = set()
+    for target, contacts in by_body.items():
+        target_applying = [
+            aspect
+            for aspect in contacts
+            if aspect.get("isApplying") and aspect.get("daysToExact") is not None and len(aspect.get("bodies", [])) == 2
+        ]
+        if len(target_applying) < 2:
+            continue
+        target_applying.sort(key=lambda aspect: float(aspect.get("daysToExact", 999)))
+        for later in target_applying[1:]:
+            later_bodies = {str(body) for body in later.get("bodies", [])}
+            if not (later_bodies & significator_names):
+                continue
+            earlier = target_applying[0]
+            earlier_bodies = {str(body) for body in earlier.get("bodies", [])}
+            earlier_other = next((body for body in earlier_bodies if body != target), "")
+            later_other = next((body for body in later_bodies if body != target), "")
+            if not earlier_other or not later_other or earlier_other == later_other:
+                continue
+            key = ("frustration", target, later_other)
+            if key in seen_frustrations:
+                continue
+            seen_frustrations.add(key)
+            earlier_days = float(earlier.get("daysToExact", 999))
+            later_days = float(later.get("daysToExact", 999))
+            if earlier_days >= later_days:
+                continue
+            patterns.append(
+                {
+                    "type": "frustration",
+                    "target": target,
+                    "earlierAspect": earlier.get("label"),
+                    "laterAspect": later.get("label"),
+                    "earlierBody": earlier_other,
+                    "laterBody": later_other,
+                    "earlierDaysToExact": earlier_days,
+                    "laterDaysToExact": later_days,
+                }
+            )
+            factors.append(
+                _factor(
+                    f"frustration-{_slug(target)}-{_slug(later_other)}",
+                    "advanced-aspects",
+                    "Possible frustration",
+                    (
+                        f"{target} perfects with {earlier_other} before {later.get('label')} can complete, "
+                        f"which may redirect the promised contact."
+                    ),
+                    -0.75,
+                    "caution",
+                    target,
+                )
+            )
+
     for aspect in detected_aspects:
         bodies = {str(body) for body in aspect.get("bodies", [])}
         if bodies & significator_names and aspect.get("isApplying") and aspect.get("tone") == "stress":
@@ -517,6 +944,42 @@ def advanced_aspect_context(
     }
 
 
+def fixed_star_context(contacts: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    factors: list[dict[str, object]] = []
+    for contact in contacts:
+        score = float(contact.get("score", 0))
+        label = str(contact.get("label", "Fixed-star contact"))
+        star_id = str(contact.get("starId", "fixed-star")).replace(" ", "-").lower()
+        body = str(contact.get("body", ""))
+        detail_parts = [
+            f"{contact.get('orbText', 'n/a')} longitude orb",
+            f"limit {contact.get('orbLimitText', 'n/a')}",
+        ]
+        if contact.get("latitudeDistanceText"):
+            detail_parts.append(f"latitude gap {contact.get('latitudeDistanceText')}")
+        if contact.get("contactStrength") is not None:
+            detail_parts.append(f"strength {float(contact.get('contactStrength', 0)):.2f}")
+        if contact.get("precision"):
+            detail_parts.append(str(contact.get("precision")))
+        factor = _factor(
+            f"fixed-star-{body.lower().replace(' ', '-')}-{star_id}",
+            "fixed-stars",
+            label,
+            "; ".join(detail_parts),
+            score,
+            _severity_for_score(score),
+            body,
+        )
+        factor["star"] = contact.get("star")
+        factor["precision"] = contact.get("precision", "longitude-only")
+        factor["contactStrength"] = contact.get("contactStrength")
+        factors.append(factor)
+
+    if not factors:
+        return _context("No fixed-star conjunctions were found inside the diagnostic star orbs.", [], "approximate")
+    return _context(f"{len(factors)} fixed-star contact(s) found with diagnostic orb and strength scoring.", factors, "approximate")
+
+
 def build_judgment_contexts(
     positions: Sequence[Mapping[str, object]],
     angles: Sequence[Mapping[str, object]],
@@ -531,13 +994,15 @@ def build_judgment_contexts(
     reception = reception_context(positions, detected_aspects, significators)
     relevant_names = [str(point.get("name")) for point in significators.get("points", []) if isinstance(point, Mapping)]
     planet_condition = planet_condition_context(positions, relevant_names)
-    advanced_aspects = advanced_aspect_context(detected_aspects, positions, significators)
+    declination = declination_context(positions, significators)
+    advanced_aspects = advanced_aspect_context(detected_aspects, positions, significators, objective)
     return {
         "significatorContext": significators,
         "moonCondition": moon,
         "houseRulerContext": house_rulers,
         "receptionContext": reception,
         "planetConditionContext": planet_condition,
+        "declinationContext": declination,
         "advancedAspectContext": advanced_aspects,
     }
 

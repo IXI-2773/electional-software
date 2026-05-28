@@ -408,10 +408,9 @@ def rejection_summary(rejections: list[RejectionRecord]) -> dict[str, object]:
     }
 
 
-def rank_search_windows(windows: list[dict[str, object]], config: SearchConfig = DEFAULT_SEARCH_CONFIG) -> list[dict[str, object]]:
-    filtered, _rejections = split_ranked_windows(windows, config)
-    ranked = sorted(
-        filtered,
+def sort_search_windows(windows: list[dict[str, object]]) -> list[dict[str, object]]:
+    return sorted(
+        windows,
         key=lambda item: (
             int(item["score"]),
             diagnostic_score(item, "confidence"),
@@ -421,4 +420,24 @@ def rank_search_windows(windows: list[dict[str, object]], config: SearchConfig =
         ),
         reverse=True,
     )
+
+
+def deep_candidate_count(total_count: int, config: SearchConfig = DEFAULT_SEARCH_CONFIG) -> int:
+    if config.max_results:
+        return min(total_count, max(config.max_results * 3, config.max_results + 6, 12))
+    return total_count
+
+
+def fast_deep_candidates(
+    windows: list[dict[str, object]],
+    config: SearchConfig = DEFAULT_SEARCH_CONFIG,
+) -> tuple[list[dict[str, object]], list[RejectionRecord]]:
+    filtered, rejections = split_ranked_windows(windows, config)
+    ranked = sort_search_windows(filtered)
+    return ranked[: deep_candidate_count(len(ranked), config)], rejections
+
+
+def rank_search_windows(windows: list[dict[str, object]], config: SearchConfig = DEFAULT_SEARCH_CONFIG) -> list[dict[str, object]]:
+    filtered, _rejections = split_ranked_windows(windows, config)
+    ranked = sort_search_windows(filtered)
     return ranked[: config.max_results] if config.max_results else ranked

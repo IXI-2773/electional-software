@@ -51,7 +51,7 @@ Astrolog ships `sefstars.txt`, a Swiss Ephemeris fixed-star data file. The Pytho
 - Antares.
 - Galactic Center.
 
-Contacts are screened as conjunctions within 1 degree and surfaced in the desktop Fixed Stars tab/report sections.
+Contacts are screened as conjunctions within a diagnostic star-specific orb: bright stars can use a slightly wider allowance, dim or special points are tighter, and contacts with known ecliptic latitude carry a strength adjustment.
 
 ## Python-Only Rule Direction
 

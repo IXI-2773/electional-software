@@ -41,6 +41,8 @@ PLANET_MODELS = (
 )
 
 ENGINE_NAME = engine_name()
+STATION_DIAGNOSTIC_BODIES = {"Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"}
+STATION_SCAN_DAYS = 7
 
 
 def normalize_degrees(value: float) -> float:
@@ -94,27 +96,95 @@ def _cached_ecliptic_coordinates(body_name: str, time_text: str) -> tuple[float,
     return ecliptic.elat, ecliptic.elon, distance
 
 
+@lru_cache(maxsize=4096)
+def _cached_equatorial_coordinates(body_name: str, time_text: str) -> tuple[float, float]:
+    time = astronomy.Time(time_text)
+    body = getattr(astronomy.Body, body_name)
+    equatorial = astronomy.Equator(body, time, astronomy.Observer(0, 0, 0), True, True)
+    return equatorial.ra, equatorial.dec
+
+
 def get_ecliptic_coordinates(body_name: str, moment: datetime) -> dict[str, float | None]:
     professional = swiss_ecliptic_coordinates(body_name, moment)
+    right_ascension, declination = _cached_equatorial_coordinates(body_name, astronomy_time_string(moment))
     if professional:
-        return professional
+        return {
+            **professional,
+            "rightAscensionHours": right_ascension,
+            "declination": declination,
+        }
     latitude, longitude, distance = _cached_ecliptic_coordinates(body_name, astronomy_time_string(moment))
     return {
         "latitude": latitude,
         "longitude": longitude,
         "distanceAu": distance,
+        "rightAscensionHours": right_ascension,
+        "declination": declination,
     }
 
 
-def get_body_motion(body_name: str, moment: datetime) -> dict[str, object]:
+@lru_cache(maxsize=8192)
+def _cached_daily_longitude_change(body_name: str, time_text: str) -> float:
+    moment = datetime.fromisoformat(time_text)
+    current = get_ecliptic_coordinates(body_name, moment)
+    swiss_speed = current.get("dailyLongitudeChange")
+    if swiss_speed is not None:
+        return float(swiss_speed)
+    previous = normalize_degrees(float(get_ecliptic_coordinates(body_name, moment - timedelta(hours=12))["longitude"]))
+    next_position = normalize_degrees(float(get_ecliptic_coordinates(body_name, moment + timedelta(hours=12))["longitude"]))
+    return signed_longitude_delta(previous, next_position)
+
+
+def _daily_longitude_change(body_name: str, moment: datetime) -> float:
+    return _cached_daily_longitude_change(body_name, astronomy_time_string(moment))
+
+
+def station_diagnostic(body_name: str, moment: datetime, window_days: int = STATION_SCAN_DAYS) -> dict[str, object]:
+    if body_name not in STATION_DIAGNOSTIC_BODIES:
+        return {"available": False, "reason": "Luminaries do not station in this diagnostic."}
+
+    samples: list[tuple[int, float]] = [
+        (offset, _daily_longitude_change(body_name, moment + timedelta(days=offset)))
+        for offset in range(-window_days, window_days + 1)
+    ]
+    closest_offset, closest_speed = min(samples, key=lambda item: abs(item[1]))
+    current_speed = next(speed for offset, speed in samples if offset == 0)
+    crossing_offsets = []
+    for (first_offset, first_speed), (second_offset, second_speed) in zip(samples, samples[1:]):
+        if first_speed == 0 or second_speed == 0 or (first_speed < 0 < second_speed) or (first_speed > 0 > second_speed):
+            crossing_offsets.append((first_offset + second_offset) / 2)
+
+    nearest_crossing = min(crossing_offsets, key=abs) if crossing_offsets else None
+    if nearest_crossing is None and abs(closest_speed) <= 0.08:
+        nearest_crossing = float(closest_offset)
+    if nearest_crossing is None:
+        phase = "normal"
+    elif nearest_crossing < -0.5:
+        phase = "leaving station"
+    elif nearest_crossing > 0.5:
+        phase = "approaching station"
+    else:
+        phase = "station window"
+
+    return {
+        "available": True,
+        "windowDays": window_days,
+        "phase": phase,
+        "daysFromStation": nearest_crossing,
+        "closestSampleOffsetDays": closest_offset,
+        "closestSampleSpeed": closest_speed,
+        "currentSpeed": current_speed,
+        "isInStationWindow": phase != "normal",
+    }
+
+
+def get_body_motion(body_name: str, moment: datetime, include_station_diagnostic: bool = True) -> dict[str, object]:
     current = get_ecliptic_coordinates(body_name, moment)
     swiss_speed = current.get("dailyLongitudeChange")
     if swiss_speed is not None:
         daily_change = float(swiss_speed)
     else:
-        previous = normalize_degrees(float(get_ecliptic_coordinates(body_name, moment - timedelta(hours=12))["longitude"]))
-        next_position = normalize_degrees(float(get_ecliptic_coordinates(body_name, moment + timedelta(hours=12))["longitude"]))
-        daily_change = signed_longitude_delta(previous, next_position)
+        daily_change = _daily_longitude_change(body_name, moment)
     is_retrograde = daily_change < -0.02
     is_stationary = abs(daily_change) <= 0.02
 
@@ -128,13 +198,16 @@ def get_body_motion(body_name: str, moment: datetime) -> dict[str, object]:
         direction = "direct"
         label = "Direct"
 
-    return {
+    motion = {
         "direction": direction,
         "label": label,
         "dailyLongitudeChange": daily_change,
         "isRetrograde": is_retrograde,
         "isStationary": is_stationary,
     }
+    if include_station_diagnostic:
+        motion["station"] = station_diagnostic(body_name, moment)
+    return motion
 
 
 def lunar_phase_from_positions(positions: list[dict[str, object]]) -> dict[str, object]:
@@ -171,11 +244,15 @@ def lunar_phase_from_positions(positions: list[dict[str, object]]) -> dict[str, 
     }
 
 
-def get_planet_positions(moment: datetime, zodiac_system_id: str = "tropical") -> list[dict[str, object]]:
+def get_planet_positions(
+    moment: datetime,
+    zodiac_system_id: str = "tropical",
+    include_station_diagnostics: bool = True,
+) -> list[dict[str, object]]:
     positions = []
     for planet in PLANET_MODELS:
         coordinates = get_ecliptic_coordinates(str(planet["astronomy_body"]), moment)
-        motion = get_body_motion(str(planet["astronomy_body"]), moment)
+        motion = get_body_motion(str(planet["astronomy_body"]), moment, include_station_diagnostics)
         tropical_longitude = normalize_degrees(float(coordinates["longitude"]))
         longitude = apply_zodiac_system(tropical_longitude, moment, zodiac_system_id)
         positions.append(
@@ -184,6 +261,8 @@ def get_planet_positions(moment: datetime, zodiac_system_id: str = "tropical") -
                 "name": planet["name"],
                 "astronomyBody": planet["astronomy_body"],
                 "latitude": coordinates["latitude"],
+                "declination": coordinates["declination"],
+                "rightAscensionHours": coordinates["rightAscensionHours"],
                 "longitude": longitude,
                 "tropicalLongitude": tropical_longitude,
                 "distanceAu": coordinates["distanceAu"],

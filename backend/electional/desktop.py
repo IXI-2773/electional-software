@@ -11,7 +11,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from .calendar_export import calendar_from_entries
-from .chart import build_election_report, format_angle, format_position
+from .chart import build_election_report, clear_snapshot_cache, format_angle, format_position, snapshot_cache_info
 from .locations import (
     DEFAULT_TIMEZONE,
     LOCATION_PRESETS,
@@ -227,7 +227,7 @@ def star_abbreviation(name: str) -> str:
 def wheel_degrees(longitude: float, ascendant_longitude: float) -> float:
     """Convert ecliptic longitude into desktop chart-wheel screen degrees."""
 
-    return 180 - ((longitude - ascendant_longitude) % 360)
+    return (180 + ((longitude - ascendant_longitude) % 360)) % 360
 
 
 def midpoint_longitude(start: float, end: float) -> float:
@@ -677,25 +677,36 @@ class ElectionalDesktopApp:
         menu = ttk.Frame(self.root, style="Top.TFrame", padding=(14, 6))
         menu.pack(fill=tk.X)
         for item in ("Chart", "Selected Chart", "Search", "Configuration", "Astro Mapping"):
-            tk.Label(
-                menu,
-                text=item,
-                bg=PALETTE["top_bar"],
-                fg="#eaf4f1",
-                font=("Segoe UI Semibold", 9),
-                padx=15,
-            ).pack(side=tk.LEFT)
+            self._top_nav_button(menu, item).pack(side=tk.LEFT, padx=(0, 4))
 
         ribbon = tk.Frame(self.root, bg=PALETTE["ribbon"], padx=12, pady=9)
         ribbon.pack(fill=tk.X)
         groups = (
-            ("Chart", ("New Chart", "Save", "Calendar", "Ask")),
+            ("Chart", ("New Chart", "Save", "Report", "Wheel", "Calendar", "Ask")),
             ("Calculate", ("Transits", "Electional Search", "Shortlist")),
-            ("Inspect", ("Chart Data", "Health", "Focus Wheel", "Void Course", "Preferences")),
+            ("Inspect", ("Chart Data", "Diagnostics", "Declination", "Health", "Focus Wheel", "Void Course", "Preferences")),
+            ("Tools", ("Score Audit", "Factor Map", "Cache Stats", "Clear Cache")),
             ("References", ("Systems", "Bounds", "Lots", "Fixed Stars", "Heliacal Search")),
         )
         for group_title, items in groups:
             self._ribbon_group(ribbon, group_title, items).pack(side=tk.LEFT, fill=tk.Y, padx=(0, 8))
+
+    def _top_nav_button(self, parent: tk.Widget, label: str) -> tk.Button:
+        return tk.Button(
+            parent,
+            text=label,
+            command=lambda: self._run_top_nav_action(label),
+            bg=PALETTE["top_bar"],
+            fg="#eaf4f1",
+            activebackground=PALETTE["accent"],
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            bd=0,
+            padx=14,
+            pady=3,
+            cursor="hand2",
+            font=("Segoe UI Semibold", 9),
+        )
 
     def _ribbon_group(self, parent: tk.Widget, title: str, items: tuple[str, ...]) -> tk.Frame:
         group = tk.Frame(
@@ -724,12 +735,20 @@ class ElectionalDesktopApp:
         descriptions = {
             "New Chart": "Reset",
             "Save": "Report",
+            "Report": "View",
+            "Wheel": "Export",
             "Calendar": ".ics",
             "Ask": "Help",
             "Transits": "Refresh",
             "Electional Search": "Rank",
             "Shortlist": "Pick",
             "Chart Data": "Inspect",
+            "Diagnostics": "Signals",
+            "Declination": "Parallels",
+            "Score Audit": "Points",
+            "Factor Map": "Layers",
+            "Cache Stats": "Speed",
+            "Clear Cache": "Reset",
             "Health": "Engine",
             "Focus Wheel": "F11",
             "Void Course": "Moon",
@@ -742,8 +761,16 @@ class ElectionalDesktopApp:
         }
         title = {
             "New Chart": "New",
+            "Report": "Report",
+            "Wheel": "Wheel",
             "Electional Search": "Search",
             "Chart Data": "Data",
+            "Diagnostics": "Diag",
+            "Declination": "Decl",
+            "Score Audit": "Audit",
+            "Factor Map": "Factors",
+            "Cache Stats": "Cache",
+            "Clear Cache": "Clear",
             "Focus Wheel": "Focus",
             "Void Course": "VOC",
             "Fixed Stars": "Stars",
@@ -778,6 +805,16 @@ class ElectionalDesktopApp:
         ).pack(fill=tk.X, pady=(1, 0))
         self._bind_clickable(button, lambda: self._run_ribbon_action(label))
         return button
+
+    def _run_top_nav_action(self, label: str) -> None:
+        actions = {
+            "Chart": lambda: (self._scroll_center_to_top(), self._focus_detail_page("Window")),
+            "Selected Chart": lambda: self._focus_detail_page("Decision"),
+            "Search": lambda: self._focus_detail_page("Search"),
+            "Configuration": self._show_preferences_dialog,
+            "Astro Mapping": self._show_astro_mapping_dialog,
+        }
+        actions.get(label, lambda: self._show_unknown_action(label))()
 
     def _bind_clickable(self, widget: tk.Widget, command: Callable[[], None]) -> None:
         widget.bind("<Button-1>", lambda _event: command())
@@ -816,12 +853,20 @@ class ElectionalDesktopApp:
         actions = {
             "New Chart": self._new_chart,
             "Save": self._save_current_report,
+            "Report": self._show_current_report_dialog,
+            "Wheel": self._save_chart_wheel,
             "Calendar": self._save_selected_calendar_event,
             "Ask": self._show_quick_help,
             "Transits": self.calculate,
             "Electional Search": self.calculate,
             "Shortlist": self._add_selected_to_shortlist,
             "Chart Data": self._show_chart_inspector,
+            "Diagnostics": lambda: self._focus_detail_page("Diagnostics"),
+            "Declination": lambda: self._focus_detail_page("Declination"),
+            "Score Audit": self._show_score_audit_dialog,
+            "Factor Map": self._show_factor_map_dialog,
+            "Cache Stats": self._show_cache_stats_dialog,
+            "Clear Cache": self._clear_search_cache,
             "Health": self._show_calculation_health_dialog,
             "Focus Wheel": self._toggle_focus_mode,
             "Void Course": self._show_void_course_dialog,
@@ -1273,8 +1318,8 @@ class ElectionalDesktopApp:
         self._show_text_dialog("Electional Software Help", body)
 
     def _show_unknown_action(self, feature_name: str) -> None:
-        self.status_var.set(f"{feature_name} is queued for a later build.")
-        messagebox.showinfo(feature_name, f"{feature_name} is queued for a later build, but every visible ribbon action should now explain its purpose.")
+        self.status_var.set(f"No action is wired for {feature_name}.")
+        messagebox.showinfo(feature_name, f"No desktop action is wired for {feature_name}. Use Ask to open the help panel or report this missing button.")
 
     def _show_preferences_dialog(self) -> None:
         dialog = tk.Toplevel(self.root)
@@ -1564,8 +1609,8 @@ class ElectionalDesktopApp:
             f"Chart time: {self.selected_window['formattedTime']}",
             f"Zodiac: {self.selected_window['zodiacSystem'].name}",
             "",
-            "Contacts within 1 degree",
-            *(contact_lines or ["No fixed-star conjunctions within 1 degree."]),
+            "Contacts within diagnostic star orb",
+            *(contact_lines or ["No fixed-star conjunctions within the diagnostic star orb."]),
             "",
             "Reference Positions",
             *star_lines,
@@ -1590,6 +1635,115 @@ class ElectionalDesktopApp:
         ]
         self._show_text_dialog("Heliacal Search", "\n".join(lines))
         self.status_var.set("Opened solar elongation screening.")
+
+    def _show_astro_mapping_dialog(self) -> None:
+        if not self.selected_window or not self.current_location:
+            messagebox.showinfo("Astro Mapping", "Calculate a chart before opening astro mapping.")
+            return
+        angular_bodies = [
+            (
+                f"- {planet['name']}: {format_position(planet)} "
+                f"near {planet['closestAngle']['shortName']} ({float(planet['closestAngle']['distance']):.1f} deg), "
+                f"House {planet.get('house', 'n/a')}"
+            )
+            for planet in self.selected_window.get("positions", [])
+            if isinstance(planet, dict) and planet.get("isAngular")
+        ]
+        angle_lines = [
+            f"- {angle['shortName']}: {format_angle(angle)}"
+            for angle in self.selected_window.get("angles", [])
+            if isinstance(angle, dict)
+        ]
+        location = self.current_location
+        lines = [
+            "Astro Mapping",
+            f"Location: {location.name}",
+            f"Coordinates: {location.latitude:.4f}, {location.longitude:.4f}",
+            f"Timezone: {location.timezone}",
+            f"Chart time: {self.selected_window['formattedTime']}",
+            "",
+            "Angles",
+            *(angle_lines or ["- Angles unavailable."]),
+            "",
+            "Angular Bodies",
+            *(angular_bodies or ["- No calculated planets are within the angular orb in this chart."]),
+            "",
+            "Use this as the local mapping readout: it shows what is rising, culminating, setting, or anti-culminating at the selected place and time.",
+        ]
+        self._show_text_dialog("Astro Mapping", "\n".join(lines))
+        self.status_var.set("Opened local astro mapping readout.")
+
+    def _show_score_audit_dialog(self) -> None:
+        if not self.selected_window:
+            messagebox.showinfo("Score Audit", "Calculate a chart before opening score audit.")
+            return
+        lines = [
+            "Score Audit",
+            f"Time: {self.selected_window.get('formattedTime', 'n/a')}",
+            f"Score: {self.selected_window.get('score', 'n/a')}",
+            "",
+            "Breakdown",
+            format_score_breakdown(self.selected_window),
+            "",
+            "Point Accounting",
+            *score_accounting_lines(self.selected_window),
+            "",
+            "Evaluation",
+            *score_evaluation_lines(self.selected_window),
+            "",
+            "Diagnostics",
+            *score_diagnostic_lines(self.selected_window),
+            "",
+            "Reason Lines",
+            *score_reason_lines(self.selected_window),
+        ]
+        self._show_text_dialog("Score Audit", "\n".join(lines))
+        self.status_var.set("Opened score audit.")
+
+    def _show_factor_map_dialog(self) -> None:
+        if not self.selected_window:
+            messagebox.showinfo("Factor Map", "Calculate a chart before opening factor map.")
+            return
+        lines = factor_explorer_lines(self.selected_window, self.input_snapshot)
+        self._show_text_dialog("Factor Map", "\n".join(lines))
+        self.status_var.set("Opened factor map.")
+
+    def _show_cache_stats_dialog(self) -> None:
+        cache = snapshot_cache_info()
+        lines = [
+            "Search Cache Stats",
+            f"- Hits: {cache.get('hits', 0)}",
+            f"- Misses: {cache.get('misses', 0)}",
+            f"- Stored snapshots: {cache.get('currsize', 0)} / {cache.get('maxsize', 0)}",
+            "",
+            "Current Search",
+            f"- Summary: {self.current_search_summary or 'No search calculated yet.'}",
+            f"- Scanned windows: {self.current_searched_window_count}",
+            "",
+            "Actions",
+            "- Use Tools > Clear Cache to reset stored chart snapshots before comparing fresh calculation speed.",
+            "",
+            "Note: repeated searches with the same time, location, objective, systems, model, and aspects reuse cached chart snapshots.",
+        ]
+        self._show_text_dialog("Cache Stats", "\n".join(lines))
+        self.status_var.set("Opened search cache stats.")
+
+    def _clear_search_cache(self) -> None:
+        before = snapshot_cache_info()
+        clear_snapshot_cache()
+        after = snapshot_cache_info()
+        self.status_var.set(f"Cleared {before.get('currsize', 0)} cached chart snapshot(s).")
+        self._log_event(f"Cleared search cache: {before.get('currsize', 0)} stored snapshots removed")
+        lines = [
+            "Search Cache Cleared",
+            f"- Removed snapshots: {before.get('currsize', 0)}",
+            f"- Hits before clear: {before.get('hits', 0)}",
+            f"- Misses before clear: {before.get('misses', 0)}",
+            f"- Stored snapshots now: {after.get('currsize', 0)} / {after.get('maxsize', 0)}",
+            "",
+            "Next calculation or search will rebuild the needed snapshots.",
+        ]
+        self._show_text_dialog("Clear Cache", "\n".join(lines))
 
     def _show_void_course_dialog(self) -> None:
         if not self.selected_window or not self.current_location:
@@ -1670,7 +1824,7 @@ class ElectionalDesktopApp:
             "Aspectarian\n"
             f"{format_aspectarian(self.selected_window)}\n\n"
             "Fixed Star Contacts\n"
-            f"{fixed_star_contacts or 'No fixed-star conjunctions within 1 degree.'}\n\n"
+            f"{fixed_star_contacts or 'No fixed-star conjunctions within the diagnostic star orb.'}\n\n"
             "Calculation Notes\n"
             f"{notes or 'No calculation warnings.'}"
         )
@@ -1759,7 +1913,16 @@ class ElectionalDesktopApp:
         self.search_preset_var = tk.StringVar(value="Custom")
         self.validation_var = tk.StringVar(value="Validation: waiting for first calculation")
 
-        timing_box = ttk.LabelFrame(parent, text="Timing", style="Panel.TLabelframe", padding=10)
+        control_tabs = ttk.Notebook(parent)
+        control_tabs.pack(fill=tk.X, pady=(0, 10))
+        setup_tab = ttk.Frame(control_tabs, style="Panel.TFrame", padding=8)
+        search_tab = ttk.Frame(control_tabs, style="Panel.TFrame", padding=8)
+        focus_tab = ttk.Frame(control_tabs, style="Panel.TFrame", padding=8)
+        control_tabs.add(setup_tab, text="Setup")
+        control_tabs.add(search_tab, text="Search")
+        control_tabs.add(focus_tab, text="Focus")
+
+        timing_box = ttk.LabelFrame(setup_tab, text="Timing", style="Panel.TLabelframe", padding=10)
         timing_box.pack(fill=tk.X, pady=(0, 10))
         self._labeled_entry(timing_box, "Election date", self.date_var)
         self._labeled_entry(timing_box, "Start time", self.time_var)
@@ -1780,7 +1943,7 @@ class ElectionalDesktopApp:
                 command=lambda delta=minutes: self._shift_time_minutes(delta),
             ).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
 
-        location_box = ttk.LabelFrame(parent, text="Location", style="Panel.TLabelframe", padding=10)
+        location_box = ttk.LabelFrame(setup_tab, text="Location", style="Panel.TLabelframe", padding=10)
         location_box.pack(fill=tk.X, pady=(0, 10))
         self.location_combo = self._labeled_combo(location_box, "Location preset", self.location_var, self.location_names)
         self.location_combo.bind("<<ComboboxSelected>>", self._load_selected_location)
@@ -1815,7 +1978,7 @@ class ElectionalDesktopApp:
         ttk.Button(secondary_location_actions, text="Forget", command=self._forget_location_preset).pack(side=tk.LEFT, expand=True, fill=tk.X)
         self._refresh_location_status()
 
-        model_box = ttk.LabelFrame(parent, text="Election Model", style="Panel.TLabelframe", padding=10)
+        model_box = ttk.LabelFrame(setup_tab, text="Election Model", style="Panel.TLabelframe", padding=10)
         model_box.pack(fill=tk.X, pady=(0, 10))
         self._labeled_combo(model_box, "Objective", self.objective_var, list(OBJECTIVES))
         self._labeled_combo(model_box, "Zodiac system", self.zodiac_system_var, list(ZODIAC_SYSTEM_NAMES))
@@ -1823,8 +1986,8 @@ class ElectionalDesktopApp:
         self.preset_combo = self._labeled_combo(model_box, "Electional model", self.preset_var, [preset.name for preset in ELECTIONAL_PRESETS])
         self.preset_combo.bind("<<ComboboxSelected>>", self._sync_aspects_to_preset)
 
-        search_box = ttk.LabelFrame(model_box, text="Search range", style="Panel.TLabelframe", padding=8)
-        search_box.pack(fill=tk.X, pady=(10, 0))
+        search_box = ttk.LabelFrame(search_tab, text="Search Quality", style="Panel.TLabelframe", padding=10)
+        search_box.pack(fill=tk.X)
         self._labeled_combo(search_box, "Search preset", self.search_preset_var, list(SEARCH_PRESET_NAMES)).bind("<<ComboboxSelected>>", self._apply_selected_search_preset)
         search_row = ttk.Frame(search_box, style="Panel.TFrame")
         search_row.pack(fill=tk.X)
@@ -1950,8 +2113,8 @@ class ElectionalDesktopApp:
         ).pack(anchor="w", fill=tk.X, pady=(7, 0))
         self._update_search_summary()
 
-        aspect_box = ttk.LabelFrame(model_box, text="Aspect focus", style="Panel.TLabelframe", padding=8)
-        aspect_box.pack(fill=tk.X, pady=(10, 12))
+        aspect_box = ttk.LabelFrame(focus_tab, text="Aspect Focus", style="Panel.TLabelframe", padding=10)
+        aspect_box.pack(fill=tk.X, pady=(0, 10))
         preset = ELECTIONAL_PRESETS[1]
         session_aspects = state.get("aspects") if isinstance(state.get("aspects"), dict) else {}
         for aspect_id in ("conjunction", "trine", "sextile", "square", "opposition"):
@@ -1960,7 +2123,23 @@ class ElectionalDesktopApp:
             self.aspect_vars[aspect_id] = var
             ttk.Checkbutton(aspect_box, text=aspect_id.title(), variable=var).pack(anchor="w", pady=2)
 
-        ttk.Button(model_box, text="Calculate Election", command=self.calculate).pack(fill=tk.X, pady=(2, 0))
+        tk.Label(
+            focus_tab,
+            text="Aspect focus controls which contacts are searched and scored. Use the wheel controls above the chart for visual point layers.",
+            bg=PALETTE["panel"],
+            fg=PALETTE["muted"],
+            justify=tk.LEFT,
+            wraplength=250,
+            font=("Segoe UI", 8),
+        ).pack(anchor="w", fill=tk.X)
+
+        action_box = tk.Frame(parent, bg=PALETTE["panel_alt"], highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=10, pady=10)
+        action_box.pack(fill=tk.X, pady=(0, 10))
+        ttk.Button(action_box, text="Calculate Election", command=self.calculate).pack(fill=tk.X)
+        quick_actions = ttk.Frame(action_box, style="Panel.TFrame")
+        quick_actions.pack(fill=tk.X, pady=(7, 0))
+        ttk.Button(quick_actions, text="Preferences", command=self._show_preferences_dialog).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
+        ttk.Button(quick_actions, text="Search Page", command=lambda: self._focus_detail_page("Search")).pack(side=tk.LEFT, expand=True, fill=tk.X)
         tk.Label(
             parent,
             textvariable=self.validation_var,
@@ -2582,6 +2761,7 @@ class ElectionalDesktopApp:
         self.house_rulers_text = self._text_tab("House Rulers")
         self.reception_text = self._text_tab("Reception")
         self.planet_condition_text = self._text_tab("Planet Condition")
+        self.declination_text = self._text_tab("Declination")
         self.advanced_aspects_text = self._text_tab("Advanced")
         self.factor_explorer_text = self._text_tab("Factor Explorer")
         self.constellations_text = self._text_tab("Constellations")
@@ -2817,9 +2997,18 @@ class ElectionalDesktopApp:
         self.current_location = location
         self.input_snapshot = snapshot
         self.current_windows = list(windows)
-        self.current_search_summary = format_search_summary(search_config)
+        search_mode = str(report.get("searchMode") or "full")
+        deep_count = int(report.get("deepWindowCount") or len(windows))
+        searched_count = int(report.get("searchedWindowCount") or len(windows))
+        cache = report.get("snapshotCache", {})
+        cache_text = ""
+        if isinstance(cache, dict):
+            cache_text = f" Cache hits {cache.get('hits', 0)}, stored {cache.get('currsize', 0)}."
+        self.current_search_summary = (
+            f"{format_search_summary(search_config)} Mode: {search_mode}; deep-built {deep_count}/{searched_count}.{cache_text}"
+        )
         self.current_rejection_summary = dict(report.get("rejectionSummary") or {})
-        self.current_searched_window_count = int(report.get("searchedWindowCount") or len(windows))
+        self.current_searched_window_count = searched_count
         self.selected_window = selected_window
 
         self.title_var.set(f"{self.objective_var.get()} near {location.name}")
@@ -3110,7 +3299,7 @@ class ElectionalDesktopApp:
                 cx + outer,
                 cy + outer,
                 start=start,
-                extent=-30,
+                extent=30,
                 fill=SIGN_COLORS[index],
                 outline="",
             )
@@ -3325,19 +3514,21 @@ class ElectionalDesktopApp:
         if self.compact_wheel_var.get():
             return
         x = 16
-        y = max(16, height - 70)
+        y = max(16, height - 88)
         self.canvas.create_rectangle(
             x,
             y,
-            x + 190,
-            y + 52,
+            x + 198,
+            y + 70,
             fill=PALETTE["panel_alt"],
             outline=PALETTE["panel_line"],
         )
         self.canvas.create_line(x + 12, y + 16, x + 42, y + 16, fill=PALETTE["support"], width=2)
-        self.canvas.create_text(x + 50, y + 16, text="applying support", anchor="w", fill=PALETTE["muted"], font=("Segoe UI", 8))
-        self.canvas.create_line(x + 12, y + 36, x + 42, y + 36, fill=PALETTE["stress"], width=2, dash=(5, 4))
-        self.canvas.create_text(x + 50, y + 36, text="separating stress", anchor="w", fill=PALETTE["muted"], font=("Segoe UI", 8))
+        self.canvas.create_text(x + 50, y + 16, text="support", anchor="w", fill=PALETTE["muted"], font=("Segoe UI", 8))
+        self.canvas.create_line(x + 12, y + 36, x + 42, y + 36, fill=PALETTE["stress"], width=2)
+        self.canvas.create_text(x + 50, y + 36, text="stress", anchor="w", fill=PALETTE["muted"], font=("Segoe UI", 8))
+        self.canvas.create_line(x + 12, y + 56, x + 42, y + 56, fill=PALETTE["chart_line"], width=2, dash=(5, 4))
+        self.canvas.create_text(x + 50, y + 56, text="dashed separating", anchor="w", fill=PALETTE["muted"], font=("Segoe UI", 8))
 
     def _draw_angles(self, snapshot: dict[str, object], cx: float, cy: float, outer: float, asc_lon: float) -> None:
         for angle in snapshot["angles"]:
@@ -3692,6 +3883,7 @@ class ElectionalDesktopApp:
         self._set_text(self.house_rulers_text, "\n".join(judgment_context_lines(snapshot, "houseRulerContext")))
         self._set_text(self.reception_text, "\n".join(judgment_context_lines(snapshot, "receptionContext")))
         self._set_text(self.planet_condition_text, "\n".join(judgment_context_lines(snapshot, "planetConditionContext")))
+        self._set_text(self.declination_text, "\n".join(judgment_context_lines(snapshot, "declinationContext")))
         self._set_text(self.advanced_aspects_text, "\n".join(judgment_context_lines(snapshot, "advancedAspectContext")))
         self._set_text(self.factor_explorer_text, "\n".join(factor_explorer_lines(snapshot, self.input_snapshot)))
         self._set_text(self.constellations_text, "\n".join(constellation_lines(snapshot)))
@@ -3807,8 +3999,8 @@ class ElectionalDesktopApp:
             self.fixed_stars_text,
             (
                 f"Fixed-star score: {float(snapshot['scoreBreakdown'].get('fixedStar', 0)):+.1f}\n"
-                "Contacts within 1 degree\n"
-                + ("\n".join(contact_lines) if contact_lines else "No fixed-star conjunctions within 1 degree.")
+                "Contacts within diagnostic star orb\n"
+                + ("\n".join(contact_lines) if contact_lines else "No fixed-star conjunctions within the diagnostic star orb.")
                 + "\n\nReference positions\n"
                 + "\n".join(star_lines)
             ),
@@ -3944,7 +4136,7 @@ class ElectionalDesktopApp:
             f"{star['name']}: {format_position(star)}.\n"
             f"Nature: {star.get('nature', 'n/a')}; magnitude {float(star.get('magnitude', 0)):.2f}.\n"
             f"Note: {star.get('electionalNote', 'No note available.')}\n"
-            f"Contacts: {', '.join(contact_lines) if contact_lines else 'No conjunctions within 1 degree.'}"
+            f"Contacts: {', '.join(contact_lines) if contact_lines else 'No conjunctions within the diagnostic star orb.'}"
         )
         self._set_text(self.interpretation_text, text)
         self._redraw_selected_window()

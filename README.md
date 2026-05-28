@@ -27,6 +27,8 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Search filters now also support `require applying support`, `avoid angular malefics`, and `keep Moon non-void`.
 - Search filters now also support `avoid objective anti-patterns`, so launch, negotiation, travel, and money scans can reject windows that are specifically wrong for that goal.
 - Search filters now also support `minimum confidence`, `minimum cleanliness`, `maximum volatility`, and `require angular benefic` for stronger quality control during scans.
+- Search now uses a snapshot calculation cache plus a fast/deep path for large limited scans, ranking cheaply first and deep-building only buffered top candidates.
+- Desktop cache tools now include both cache stats and a Clear Cache action for fresh search comparisons.
 - Search presets now include `Strict Launch`, `Clean Negotiation`, `Safe Travel`, and `Conservative Money` to fill those filters quickly.
 - Compare tools can now export a saved decision sheet with the selected brief plus top-window comparison.
 - Decision guidance is now more objective-aware for launch/publish, negotiation, travel, and money/business work.
@@ -63,11 +65,17 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Arabic Lots now calculate the seven Hermetic Lots for each chart, with a Lots tab, wheel markers, focus support, and an in-app reference.
 - Lunar nodes now calculate as chart points, appear on the wheel, can be focused, and have their own detail tab.
 - Fixed stars now appear on the wheel rim and can be clicked/focused like other chart points.
+- Fixed-star contacts now use star-specific diagnostic orbs, magnitude sensitivity, and latitude-aware contact strength when both coordinates are available.
 - Moon phase, planetary motion, retrograde state, and electional condition notes now appear in snapshots, reports, and desktop detail tabs.
+- Planet condition diagnostics now estimate station windows, very slow/fast motion, and primary-vs-background scoring pressure.
 - Pure-Python electional rules now add sidereal nakshatra/tithi context plus solar-condition screening for cazimi, combustion, and under-beams.
 - Planetary day/hour is calculated in Python from local sunrise and sunset, appears in reports/UI, and contributes a small electional rule score.
 - Unequal ecliptic constellation spans and ASC rising-speed diagnostics now appear in reports/UI and contribute small, transparent rule-score adjustments.
 - Judgment-engine contexts now add objective-specific significators, Moon condition, house rulers, reception, planet-condition diagnostics, advanced aspect patterns, and a Factor Explorer tab.
+- Factor Explorer now compares selected-window judgment layers against the search-start chart and labels which layers improved or worsened.
+- Advanced aspect diagnostics now flag basic prohibition and frustration patterns when a significator contact is interrupted by a sooner perfection.
+- Advanced aspect diagnostics now explain objective-specific aspect importance, so launch, negotiation, travel, money, relationship, and health work weight contact meaning differently.
+- Declination is now calculated for chart bodies, with out-of-bounds and parallel/contra-parallel diagnostics included in judgment factors.
 - Aspect contacts now show applying/separating phase and feed the score explanation when supportive or stressful contacts are tightening.
 - Applying aspects now include approximate perfection timing, exact-time estimates, and a backend timing profile for next support/stress contacts.
 - The desktop now includes an aspectarian tab and Chart Data aspectarian output for faster visual review of active contacts.

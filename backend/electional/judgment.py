@@ -163,6 +163,58 @@ def _timing_multiplier(aspect: Mapping[str, object]) -> float:
     return 0.4
 
 
+def _signed_longitude_delta(start_longitude: float, end_longitude: float) -> float:
+    return ((end_longitude - start_longitude + 180) % 360) - 180
+
+
+def solar_visibility_diagnostic(name: str, separation: float, signed_from_sun: float) -> dict[str, object]:
+    side = "evening" if signed_from_sun > 0 else "morning" if signed_from_sun < 0 else "solar conjunction"
+    if separation <= 0.283333:
+        phase = "cazimi"
+        label = "Cazimi"
+        note = "in the heart of the Sun"
+    elif separation <= 8.5:
+        phase = "combust"
+        label = "Combust"
+        note = "hidden by solar glare"
+    elif separation <= 15:
+        phase = "under beams"
+        label = "Under beams"
+        note = "weakened by solar glare"
+    elif name in {"Mercury", "Venus"} and separation <= 20:
+        phase = "emerging"
+        label = "Emerging from beams"
+        note = "near an approximate heliacal threshold"
+    else:
+        phase = "clear"
+        label = "Clear of beams"
+        note = "clear angular separation from the Sun"
+    return {
+        "body": name,
+        "phase": phase,
+        "label": label,
+        "side": side,
+        "solarSeparation": separation,
+        "signedSolarDistance": signed_from_sun,
+        "confidence": "diagnostic",
+        "note": note,
+    }
+
+
+def _visibility_factor_score(phase: object, multiplier: float) -> float:
+    match str(phase):
+        case "cazimi":
+            return round(0.5 * multiplier, 2)
+        case "combust":
+            return round(-0.5 * multiplier, 2)
+        case "under beams":
+            return round(-0.3 * multiplier, 2)
+        case "emerging":
+            return round(0.25 * multiplier, 2)
+        case _:
+            return 0.0
+
+
 def _planet_factor_score(planet: Mapping[str, object]) -> float:
     score = 0.0
     dignity = _dignity_score(planet)
@@ -547,21 +599,28 @@ def planet_condition_context(
                 )
         if sun:
             separation = angular_distance(float(planet.get("longitude", 0)), float(sun.get("longitude", 0)))
+            signed_from_sun = _signed_longitude_delta(float(sun.get("longitude", 0)), float(planet.get("longitude", 0)))
+            visibility = solar_visibility_diagnostic(name, separation, signed_from_sun)
             condition["solarSeparation"] = separation
-            if separation <= 0.283333:
-                condition["visibility"] = "cazimi"
-                if name in relevant:
-                    factors.append(_factor(f"{name.lower()}-cazimi-condition", "planet-condition", f"{name} cazimi", f"{name} is in the heart of the Sun; solar-condition rules handle the score.", 0.0, "info", name))
-            elif separation <= 8.5:
-                condition["visibility"] = "combust"
-                if name in relevant:
-                    factors.append(_factor(f"{name.lower()}-combust-condition", "planet-condition", f"{name} combust", f"{name} is combust the Sun; solar-condition rules handle the score.", 0.0, "info", name))
-            elif separation <= 15:
-                condition["visibility"] = "under beams"
-                if name in relevant:
-                    factors.append(_factor(f"{name.lower()}-under-beams-condition", "planet-condition", f"{name} under beams", f"{name} is under the Sun's beams; solar-condition rules handle the score.", 0.0, "info", name))
-            else:
-                condition["visibility"] = "clear"
+            condition["signedSolarDistance"] = signed_from_sun
+            condition["visibility"] = visibility["phase"]
+            condition["visibilityDiagnostic"] = visibility
+            visibility_score = _visibility_factor_score(visibility["phase"], multiplier)
+            if visibility_score and name in relevant:
+                factors.append(
+                    _factor(
+                        f"{name.lower()}-visibility-{visibility['phase']}",
+                        "planet-condition",
+                        f"{name} {visibility['label']}",
+                        (
+                            f"{name} is {visibility['label'].lower()} on the {visibility['side']} side "
+                            f"of the Sun ({separation:.1f} deg separation; diagnostic confidence)."
+                        ),
+                        visibility_score,
+                        _severity_for_score(visibility_score),
+                        name,
+                    )
+                )
         conditions.append(condition)
     return {
         **_context(f"Planet condition scan found {len(factors)} scored condition(s).", factors, "approximate"),

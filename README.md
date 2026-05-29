@@ -29,6 +29,14 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Search filters now also support `minimum confidence`, `minimum cleanliness`, `maximum volatility`, and `require angular benefic` for stronger quality control during scans.
 - Search now uses a snapshot calculation cache plus a fast/deep path for large limited scans, ranking cheaply first and deep-building only buffered top candidates.
 - Desktop cache tools now include both cache stats and a Clear Cache action for fresh search comparisons.
+- Left-panel timing, location, and search shortcut buttons now use cleaner equal-width rows for a steadier layout.
+- Top navigation and wrapped ribbon groups now use clearer task labels, including Advisor, Decision, Compare, Factors, Copy, Search Page, Map, and Export Wheel.
+- The Advisor tab turns score factors into a compact verdict, supports, cautions, and recommended next tools to inspect.
+- The Improve tab turns weak score signals into concrete adjustment moves, including angle, Moon, aspect timing, and support/stress fixes.
+- Button Health checks visible top nav, ribbon, and page-strip controls for missing action wiring or missing detail-page targets.
+- Desktop polish now includes a calmer workbench palette, clearer header hierarchy, active top-nav page state, and softer ribbon tiles.
+- Election scoring now splits angular testimony into benefic support, malefic pressure, luminary support, and other angular emphasis.
+- Angle explanations now name the planet, nearest angle, distance, and point impact in diagnostics, reports, Factor Explorer, and the desktop Angles tab.
 - Search presets now include `Strict Launch`, `Clean Negotiation`, `Safe Travel`, and `Conservative Money` to fill those filters quickly.
 - Compare tools can now export a saved decision sheet with the selected brief plus top-window comparison.
 - Decision guidance is now more objective-aware for launch/publish, negotiation, travel, and money/business work.
@@ -44,6 +52,7 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Medieval Data now summarizes verdict, balance of testimony, score reasons, election flags, and classical judgment sections in one working page.
 - Clean/Full wheel presets make it faster to switch between a readable working chart and a dense inspection chart.
 - Fit and zoom controls improve wheel framing, while applying aspects draw solid and separating aspects draw dashed.
+- The chart wheel now uses a cleaner canvas, subtler rings, visible degree ticks, polished angle badges, and better marker depth.
 - Timing and location context is now shown above the wheel with compact search/selected-window cards.
 - Focus Wheel mode hides the side panels for chart inspection and can be toggled with `F11`.
 - A reference-style View Page strip below the chart opens Interpretation, Aspects, Aspectarian, Point Data, Medieval, Conditions, Chart Data, and wheel export.
@@ -68,6 +77,8 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Fixed-star contacts now use star-specific diagnostic orbs, magnitude sensitivity, and latitude-aware contact strength when both coordinates are available.
 - Moon phase, planetary motion, retrograde state, and electional condition notes now appear in snapshots, reports, and desktop detail tabs.
 - Planet condition diagnostics now estimate station windows, very slow/fast motion, and primary-vs-background scoring pressure.
+- Visibility diagnostics now label morning/evening solar side, cazimi/combust/under-beams/emerging phases, and diagnostic confidence.
+- Visibility pressure now contributes light relevance-weighted planet-condition factors without overpowering classical solar-condition rules.
 - Pure-Python electional rules now add sidereal nakshatra/tithi context plus solar-condition screening for cazimi, combustion, and under-beams.
 - Planetary day/hour is calculated in Python from local sunrise and sunset, appears in reports/UI, and contributes a small electional rule score.
 - Unequal ecliptic constellation spans and ASC rising-speed diagnostics now appear in reports/UI and contribute small, transparent rule-score adjustments.

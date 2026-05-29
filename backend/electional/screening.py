@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from .aspects import ASPECT_BY_ID, angular_distance, format_orb
 from .chart import build_snapshot_for_moment, format_position
+from .judgment import solar_visibility_diagnostic
 from .locations import LocationPreset
 
 
@@ -15,17 +16,27 @@ def solar_elongation_summary(snapshot: dict[str, object]) -> list[str]:
     if not sun:
         return ["Sun position is unavailable."]
 
-    lines = [f"Sun: {format_position(sun)}", "", "Body          Separation   Note"]
+    condition_context = snapshot.get("planetConditionContext", {})
+    conditions = {
+        str(condition.get("name")): condition
+        for condition in condition_context.get("conditions", [])
+        if isinstance(condition_context, dict) and isinstance(condition, dict)
+    }
+    lines = [f"Sun: {format_position(sun)}", "", "Body          Separation   Side      Phase                Note"]
     for name in ("Mercury", "Venus", "Mars", "Jupiter", "Saturn"):
         planet = positions.get(name)
         if not planet:
             continue
-        separation = angular_distance(float(sun["longitude"]), float(planet["longitude"]))
-        if name in {"Mercury", "Venus"}:
-            note = "Under beams" if separation < 15 else "Clear of beams"
-        else:
-            note = "Near Sun" if separation < 15 else "Visible separation"
-        lines.append(f"{name:<13} {separation:>5.1f} deg     {note}")
+        condition = conditions.get(name, {})
+        diagnostic = condition.get("visibilityDiagnostic", {}) if isinstance(condition, dict) else {}
+        if not isinstance(diagnostic, dict) or not diagnostic:
+            signed_from_sun = ((float(planet["longitude"]) - float(sun["longitude"]) + 180) % 360) - 180
+            diagnostic = solar_visibility_diagnostic(name, angular_distance(float(sun["longitude"]), float(planet["longitude"])), signed_from_sun)
+        separation = float(diagnostic.get("solarSeparation", angular_distance(float(sun["longitude"]), float(planet["longitude"]))))
+        side = str(diagnostic.get("side", "n/a"))
+        label = str(diagnostic.get("label", "n/a"))
+        note = str(diagnostic.get("note", "diagnostic unavailable"))
+        lines.append(f"{name:<13} {separation:>5.1f} deg     {side:<8} {label:<20} {note}")
     return lines
 
 

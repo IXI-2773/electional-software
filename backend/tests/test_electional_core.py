@@ -13,7 +13,7 @@ from backend.electional.presets import (
     get_preset,
     summarize_orb,
 )
-from backend.electional.scoring import score_breakdown, score_breakdown_model, score_window
+from backend.electional.scoring import angle_testimony, score_breakdown, score_breakdown_model, score_window
 from backend.electional.timing import timing_profile
 
 
@@ -206,6 +206,29 @@ class ElectionalCoreTest(unittest.TestCase):
         self.assertIn(breakdown["evaluation"]["band"], {"Prime", "Strong", "Workable", "Fragile", "Avoid"})
         self.assertEqual(breakdown["score"], score_window(detected, positions, preset))
         self.assertTrue(any(reason["code"] == "support-aspects" for reason in breakdown["reasons"]))
+
+    def test_angle_testimony_splits_benefic_and_malefic_pressure(self) -> None:
+        preset = get_preset("traditional-lilly")
+        positions = apply_dignities(
+            [
+                {**position("Jupiter", 95, "Cancer", is_angular=True, distance=1), "closestAngle": {"id": "mc", "shortName": "MC", "distance": 1}},
+                {**position("Mars", 215, "Scorpio", is_angular=True, distance=2), "closestAngle": {"id": "asc", "shortName": "ASC", "distance": 2}},
+                {**position("Moon", 45, "Taurus", is_angular=True, distance=4), "closestAngle": {"id": "dsc", "shortName": "DSC", "distance": 4}},
+            ],
+            preset,
+        )
+
+        testimony = angle_testimony(positions)
+        breakdown = score_breakdown([], positions, preset)
+        reasons = {reason["code"]: reason for reason in breakdown["reasons"]}
+
+        self.assertGreater(testimony["beneficSupport"], 0)
+        self.assertLess(testimony["maleficPressure"], 0)
+        self.assertGreater(testimony["luminarySupport"], 0)
+        self.assertIn("angle-benefic-support", reasons)
+        self.assertIn("angle-malefic-pressure", reasons)
+        self.assertIn("angles", breakdown["diagnostics"])
+        self.assertIn("Jupiter strengthens MC", breakdown["diagnostics"]["angles"]["summary"])
 
     def test_score_breakdown_counts_applying_aspect_pressure(self) -> None:
         preset = get_preset("traditional-lilly")

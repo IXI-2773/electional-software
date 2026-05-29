@@ -6,7 +6,7 @@ from backend.electional.chart import build_election_report, build_snapshot, buil
 from backend.electional.ephemeris import get_planet_positions, lunar_phase_from_positions, signed_longitude_delta
 from backend.electional.fixed_stars import detect_fixed_star_contacts, fixed_star_positions
 from backend.electional.houses import calculate_angles, calculate_house_cusps, house_number
-from backend.electional.judgment import advanced_aspect_context, planet_condition_context
+from backend.electional.judgment import advanced_aspect_context, planet_condition_context, solar_visibility_diagnostic
 from backend.electional.locations import get_location
 from backend.electional.lunar_nodes import calculate_lunar_nodes, mean_node_tropical_longitude, true_node_tropical_longitude
 from backend.electional.planetary_hours import day_ruler_for_moment, planetary_hour_context
@@ -155,6 +155,13 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertEqual(rule["title"], "Mercury combust")
         self.assertLess(rule["scoreImpact"], 0)
 
+    def test_visibility_diagnostic_labels_solar_side_and_phase(self) -> None:
+        diagnostic = solar_visibility_diagnostic("Mercury", 17.0, -17.0)
+
+        self.assertEqual(diagnostic["phase"], "emerging")
+        self.assertEqual(diagnostic["side"], "morning")
+        self.assertEqual(diagnostic["confidence"], "diagnostic")
+
     def test_planet_condition_tracks_station_windows_and_relevance(self) -> None:
         context = planet_condition_context(
             [
@@ -189,11 +196,28 @@ class PythonChartEngineTest(unittest.TestCase):
             ["Mercury"],
         )
 
-        factors = {factor["body"]: factor for factor in context["factors"]}
+        factors_by_title = {factor["title"]: factor for factor in context["factors"]}
         self.assertEqual(context["conditions"][0]["name"], "Mercury")
         self.assertEqual(context["conditions"][0]["station"], "approaching station")
-        self.assertLess(factors["Mercury"]["scoreImpact"], factors["Saturn"]["scoreImpact"])
+        self.assertIn("visibilityDiagnostic", context["conditions"][0])
+        self.assertEqual(context["conditions"][0]["visibility"], "clear")
+        self.assertLess(factors_by_title["Mercury approaching station"]["scoreImpact"], factors_by_title["Saturn station window"]["scoreImpact"])
         self.assertEqual(context["conditions"][1]["relevance"], "background")
+
+    def test_planet_condition_scores_visibility_pressure_lightly(self) -> None:
+        context = planet_condition_context(
+            [
+                {"name": "Sun", "longitude": 10.0},
+                {"name": "Mercury", "longitude": 18.0, "motion": {"dailyLongitudeChange": 1.0}},
+                {"name": "Venus", "longitude": 28.0, "motion": {"dailyLongitudeChange": 1.0}},
+            ],
+            ["Mercury"],
+        )
+
+        factors_by_title = {factor["title"]: factor for factor in context["factors"]}
+        self.assertLess(factors_by_title["Mercury Combust"]["scoreImpact"], 0)
+        self.assertGreater(factors_by_title["Venus Emerging from beams"]["scoreImpact"], 0)
+        self.assertLess(abs(factors_by_title["Venus Emerging from beams"]["scoreImpact"]), 0.2)
 
     def test_advanced_aspects_detect_prohibition_and_frustration(self) -> None:
         context = advanced_aspect_context(
@@ -399,6 +423,9 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertIn("declinationContext", snapshot)
         self.assertIn("advancedAspectContext", snapshot)
         self.assertIn("fixedStarContext", snapshot)
+        self.assertIn("angleContext", snapshot)
+        self.assertIn("summary", snapshot["angleContext"])
+        self.assertIn("scoreImpact", snapshot["angleContext"])
         self.assertIn("timingProfile", snapshot)
         self.assertIn("summary", snapshot["timingProfile"])
         self.assertTrue(snapshot["planetaryHour"]["available"])

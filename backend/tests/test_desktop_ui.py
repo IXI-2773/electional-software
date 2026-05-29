@@ -5,8 +5,14 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from backend.electional.desktop import (
+    DETAIL_PAGE_TABS,
+    RIBBON_COLUMNS,
+    RIBBON_GROUPS,
+    TOP_NAV_ITEMS,
+    VIEW_PAGE_TARGETS,
     _polar,
     aspect_curve_points,
+    button_health_lines,
     body_marker_offsets,
     fixed_star_contact_count,
     compact_time_label,
@@ -40,6 +46,8 @@ from backend.electional.locations import (
 from backend.electional.presets import get_preset
 from backend.electional.references import dignity_table_lines, lot_reference_lines, system_reference_lines
 from backend.electional.reporting import (
+    advisor_lines,
+    angle_testimony_lines,
     build_classical_point_data_page,
     build_comparison_export_text,
     build_decision_brief_page,
@@ -60,6 +68,7 @@ from backend.electional.reporting import (
     format_score_breakdown,
     format_window_label,
     factor_explorer_lines,
+    improvement_guide_lines,
     judgment_context_lines,
     rule_lines,
     score_accounting_lines,
@@ -103,6 +112,30 @@ from backend.electional.validation import validate_election_inputs, validate_sea
 
 
 class DesktopUiHelpersTest(unittest.TestCase):
+    def test_top_navigation_uses_current_workspace_labels(self) -> None:
+        self.assertEqual(TOP_NAV_ITEMS, ("Wheel", "Advisor", "Improve", "Decision", "Compare", "Search", "Factors", "Settings", "Map"))
+        self.assertNotIn("Selected Chart", TOP_NAV_ITEMS)
+        self.assertNotIn("Configuration", TOP_NAV_ITEMS)
+        self.assertNotIn("Astro Mapping", TOP_NAV_ITEMS)
+
+    def test_ribbon_groups_keep_primary_actions_visible(self) -> None:
+        labels = [label for _group, items in RIBBON_GROUPS for label in items]
+
+        for expected in ("Calculate", "Advisor", "Improve", "Decision", "Compare", "Factors", "Search Page", "Export Wheel", "Map"):
+            self.assertIn(expected, labels)
+        self.assertNotIn("Transits", labels)
+        self.assertNotIn("Electional Search", labels)
+        self.assertGreaterEqual(RIBBON_COLUMNS, 4)
+
+    def test_button_health_reports_visible_button_wiring(self) -> None:
+        text = "\n".join(button_health_lines(DETAIL_PAGE_TABS))
+
+        self.assertIn("Button Health", text)
+        self.assertIn("All visible top, ribbon, and page-strip buttons have wired actions", text)
+        self.assertIn("Button Health", [label for _group, items in RIBBON_GROUPS for label in items])
+        self.assertIn("Improve", TOP_NAV_ITEMS)
+        self.assertIn("Angles", VIEW_PAGE_TARGETS)
+
     def test_planet_abbreviation_uses_compact_labels(self) -> None:
         self.assertEqual(planet_abbreviation("Mercury"), "Me")
         self.assertEqual(planet_abbreviation("Pluto"), "Pl")
@@ -829,6 +862,120 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("improved +1.0 vs start", compared)
         self.assertIn("worsened -1.0 vs start", compared)
 
+    def test_advisor_lines_surface_next_tools_from_factors(self) -> None:
+        snapshot = {
+            "score": 78,
+            "title": "Launch or publish",
+            "detectedAspects": [{"label": "Mars square Saturn", "tone": "stress"}],
+            "scoreBreakdown": {
+                "evaluation": {"band": "Strong", "grade": "B", "strengths": ["Objective fit +4.0"], "risks": ["Stress -3.0"]},
+            },
+            "moonCondition": {
+                "summary": "Moon applies to Mars.",
+                "scoreImpact": -1,
+                "confidence": "solid",
+                "factors": [
+                    {"title": "Moon applies to Mars", "detail": "Next lunar contact is stressful.", "scoreImpact": -1.0, "severity": "caution"}
+                ],
+            },
+            "receptionContext": {
+                "summary": "Reception helps.",
+                "scoreImpact": 1.5,
+                "confidence": "solid",
+                "factors": [
+                    {"title": "Mutual reception", "detail": "Significators can cooperate.", "scoreImpact": 1.5, "severity": "support"}
+                ],
+            },
+            "planetConditionContext": {"summary": "No conditions.", "scoreImpact": 0, "confidence": "approximate", "factors": []},
+        }
+        baseline = {"score": 72}
+
+        text = "\n".join(advisor_lines(snapshot, baseline, "Launch or publish"))
+
+        self.assertIn("Election Advisor", text)
+        self.assertIn("Change from search start: +6 points", text)
+        self.assertIn("Best Supports", text)
+        self.assertIn("Mutual reception", text)
+        self.assertIn("Needs Attention", text)
+        self.assertIn("Moon applies to Mars", text)
+        self.assertIn("Open Next", text)
+        self.assertIn("Timing + Aspects", text)
+        self.assertIn("Moon + Void Course", text)
+
+    def test_angle_testimony_lines_explain_angular_scoring(self) -> None:
+        snapshot = {
+            "scoreBreakdown": {
+                "diagnostics": {
+                    "angles": {
+                        "summary": "2 angular scoring planet(s); strongest testimony: Venus strengthens ASC.",
+                        "scoreImpact": 4.5,
+                        "beneficSupport": 6.0,
+                        "maleficPressure": -1.5,
+                        "luminarySupport": 0,
+                        "neutralEmphasis": 0,
+                        "factors": [
+                            {
+                                "title": "Venus strengthens ASC",
+                                "angle": "ASC",
+                                "distance": 1.2,
+                                "scoreImpact": 6.0,
+                            },
+                            {
+                                "title": "Saturn pressures MC",
+                                "angle": "MC",
+                                "distance": 3.4,
+                                "scoreImpact": -1.5,
+                            },
+                        ],
+                    }
+                }
+            }
+        }
+
+        text = "\n".join(angle_testimony_lines(snapshot))
+
+        self.assertIn("Angle Testimony", text)
+        self.assertIn("Score impact: +4.5", text)
+        self.assertIn("Venus strengthens ASC", text)
+        self.assertIn("Saturn pressures MC", text)
+
+    def test_improvement_guide_turns_diagnostics_into_actions(self) -> None:
+        snapshot = {
+            "score": 63,
+            "detectedAspects": [{"tone": "stress", "isApplying": True, "orb": 0.8}],
+            "timingProfile": {
+                "nextSupport": {"label": "Venus trine Jupiter", "timeToExactText": "3h"},
+                "nextStress": {"label": "Mars square Saturn", "timeToExactText": "45m"},
+            },
+            "scoreBreakdown": {
+                "diagnostics": {
+                    "signals": {
+                        "applyingSupport": False,
+                        "majorStress": True,
+                        "angularBenefic": False,
+                        "angularMalefic": True,
+                        "moonNonVoid": False,
+                    }
+                },
+                "reasons": [
+                    {"label": "Stress aspects", "value": -7.0},
+                    {"label": "Angular malefic pressure", "value": -5.0},
+                ],
+            },
+            "angleContext": {"factors": [{"body": "Mars", "angle": "ASC", "scoreImpact": -5.0}]},
+            "moonCondition": {"factors": [{"title": "Moon void", "scoreImpact": -1.5}]},
+        }
+
+        text = "\n".join(improvement_guide_lines(snapshot, {"score": 66}))
+
+        self.assertIn("Score Improvement Guide", text)
+        self.assertIn("Change from search start: -3 points", text)
+        self.assertIn("Search for the next window with an applying supportive aspect", text)
+        self.assertIn("Move the minute away from tight applying stress", text)
+        self.assertIn("Reduce Mars angular pressure near ASC", text)
+        self.assertIn("Stress aspects: -7.0", text)
+        self.assertIn("Protect support: Venus trine Jupiter exact in 3h", text)
+
     def test_lunar_and_motion_summaries_are_human_readable(self) -> None:
         phase = format_lunar_phase(
             {
@@ -1016,7 +1163,8 @@ class DesktopUiHelpersTest(unittest.TestCase):
         summary = "\n".join(solar_elongation_summary(snapshot))
 
         self.assertIn("Mercury", summary)
-        self.assertIn("Under beams", summary)
+        self.assertIn("Combust", summary)
+        self.assertIn("evening", summary)
         self.assertIn("Venus", summary)
 
     def test_session_state_round_trip(self) -> None:

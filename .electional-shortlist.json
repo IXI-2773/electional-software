@@ -1,0 +1,26 @@
+[
+  {
+    "addedAt": "2026-05-29T08:13:25.261175+00:00",
+    "aspects": [
+      "Venus square Saturn (0 deg 13 min orb, separating, +1.10 deg/day)"
+    ],
+    "cleanliness": 52,
+    "confidence": 64,
+    "datetime": "2026-05-29T07:40:00+00:00",
+    "flags": [
+      "- Full Moon favors building, growth, and visibility."
+    ],
+    "formattedTime": "Fri, May 29, 5:40 PM AEST",
+    "id": "76c37bdf8a4c",
+    "location": "Sydney, Australia",
+    "lunarPhase": "Full Moon (96% lit, age 12.9 days, turning point)",
+    "note": "",
+    "objective": "Relationship timing",
+    "readiness": 51,
+    "score": 53,
+    "tags": [],
+    "timezone": "Australia/Sydney",
+    "title": "Electional window",
+    "volatility": 38
+  }
+]

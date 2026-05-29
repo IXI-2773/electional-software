@@ -125,6 +125,8 @@ def _cached_snapshot_for_moment(
         judgment_contexts,
     )
     breakdown = score_breakdown(detected, positions, preset, fixed_star_contacts, rule_evaluations, objective)
+    diagnostics = breakdown.get("diagnostics", {}) if isinstance(breakdown, dict) else {}
+    angle_context = diagnostics.get("angles", {}) if isinstance(diagnostics, dict) else {}
     backend_status = calculation_backend_status()
 
     return {
@@ -156,6 +158,7 @@ def _cached_snapshot_for_moment(
         "detectedAspects": detected,
         "score": breakdown["score"],
         "scoreBreakdown": breakdown,
+        "angleContext": angle_context if isinstance(angle_context, dict) else {},
     }
 
 

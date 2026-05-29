@@ -53,6 +53,39 @@ def score_diagnostic_lines(snapshot: dict[str, object]) -> list[str]:
     return lines or ["- Diagnostics unavailable."]
 
 
+def angle_testimony_lines(snapshot: dict[str, object]) -> list[str]:
+    breakdown = snapshot.get("scoreBreakdown")
+    diagnostics = breakdown.get("diagnostics", {}) if isinstance(breakdown, dict) else {}
+    angles = diagnostics.get("angles", {}) if isinstance(diagnostics, dict) else {}
+    if not isinstance(angles, dict):
+        return ["- Angle testimony unavailable."]
+    lines = [
+        "Angle Testimony",
+        str(angles.get("summary", "No angle summary available.")),
+        f"Score impact: {float(angles.get('scoreImpact', 0)):+.1f}",
+        (
+            f"Benefics {float(angles.get('beneficSupport', 0)):+.1f}; "
+            f"malefics {float(angles.get('maleficPressure', 0)):+.1f}; "
+            f"luminaries {float(angles.get('luminarySupport', 0)):+.1f}; "
+            f"other {float(angles.get('neutralEmphasis', 0)):+.1f}."
+        ),
+    ]
+    factors = angles.get("factors", [])
+    if isinstance(factors, list) and factors:
+        lines.extend(["", "Angular Bodies"])
+        for factor in factors[:8]:
+            if not isinstance(factor, dict):
+                continue
+            lines.append(
+                (
+                    f"- {factor.get('title', 'Angular body')}: "
+                    f"{float(factor.get('distance', 0)):.1f} deg from {factor.get('angle', 'angle')} "
+                    f"({float(factor.get('scoreImpact', 0)):+.1f})"
+                )
+            )
+    return lines
+
+
 def build_diagnostics_page(snapshot: dict[str, object]) -> str:
     breakdown = snapshot.get("scoreBreakdown", {})
     evaluation = breakdown.get("evaluation", {}) if isinstance(breakdown, dict) else {}
@@ -63,6 +96,8 @@ def build_diagnostics_page(snapshot: dict[str, object]) -> str:
         f"Grade: {evaluation.get('grade', 'n/a')}\n\n"
         "Backend Metrics\n"
         + "\n".join(score_diagnostic_lines(snapshot))
+        + "\n\nAngles\n"
+        + "\n".join(angle_testimony_lines(snapshot))
         + "\n\nScore Evaluation\n"
         + "\n".join(score_evaluation_lines(snapshot))
     )
@@ -769,6 +804,7 @@ JUDGMENT_CONTEXT_LABELS = {
     "significatorContext": "Significators",
     "moonCondition": "Moon Condition",
     "houseRulerContext": "House Rulers",
+    "angleContext": "Angles",
     "receptionContext": "Reception",
     "planetConditionContext": "Planet Condition",
     "declinationContext": "Declination",
@@ -852,6 +888,222 @@ def factor_explorer_lines(snapshot: dict[str, object], baseline: dict[str, objec
                     f"{float(factor.get('scoreImpact', 0)):+.1f}"
                 )
     return lines
+
+
+def advisor_lines(
+    snapshot: dict[str, object],
+    baseline: dict[str, object] | None = None,
+    objective: str = "",
+) -> list[str]:
+    score = int(snapshot.get("score", 0) or 0)
+    breakdown = snapshot.get("scoreBreakdown")
+    evaluation = breakdown.get("evaluation", {}) if isinstance(breakdown, dict) else {}
+    band = evaluation.get("band", "n/a") if isinstance(evaluation, dict) else "n/a"
+    grade = evaluation.get("grade", "n/a") if isinstance(evaluation, dict) else "n/a"
+    lines = [
+        "Election Advisor",
+        f"Objective: {objective or snapshot.get('title', 'Election')}",
+        f"Score: {score} ({band} / Grade {grade})",
+        "",
+        "Verdict",
+        f"- {_advisor_verdict(score, has_major_stress(snapshot))}",
+    ]
+    if baseline and baseline is not snapshot:
+        try:
+            delta = score - int(baseline.get("score", 0) or 0)
+        except (TypeError, ValueError):
+            delta = None
+        lines.append(f"- Change from search start: {delta:+d} points." if delta is not None else "- Change from search start: n/a.")
+
+    support_factors, caution_factors = _advisor_factor_groups(snapshot)
+    lines.extend(["", "Best Supports"])
+    lines.extend(support_factors[:4] or ["- No strong scored supports surfaced yet."])
+    lines.extend(["", "Needs Attention"])
+    lines.extend(caution_factors[:4] or ["- No major scored cautions surfaced yet."])
+    lines.extend(["", "Open Next"])
+    lines.extend(_advisor_tool_suggestions(snapshot, support_factors, caution_factors))
+    return lines
+
+
+def _advisor_verdict(score: int, major_stress: bool) -> str:
+    if score >= 85 and not major_stress:
+        return "Strong candidate. Use the Factor Explorer and Timing page to protect the exact minute."
+    if score >= 75:
+        return "Usable candidate with conditions. Inspect cautions before committing."
+    if score >= 62:
+        return "Mixed candidate. Compare nearby windows and look for cleaner Moon or significator support."
+    return "Weak candidate. Use search tools to move the window unless timing constraints are unavoidable."
+
+
+def _advisor_factor_groups(snapshot: dict[str, object]) -> tuple[list[str], list[str]]:
+    supports: list[tuple[float, str]] = []
+    cautions: list[tuple[float, str]] = []
+    for context_key, label in JUDGMENT_CONTEXT_LABELS.items():
+        context = snapshot.get(context_key)
+        if not isinstance(context, dict):
+            continue
+        factors = context.get("factors", [])
+        if not isinstance(factors, list):
+            continue
+        for factor in factors:
+            if not isinstance(factor, dict):
+                continue
+            impact = float(factor.get("scoreImpact", 0) or 0)
+            title = str(factor.get("title", "Factor"))
+            detail = str(factor.get("detail", "")).strip()
+            line = f"- {label}: {title} ({impact:+.1f})" + (f" - {detail}" if detail else "")
+            if impact > 0:
+                supports.append((impact, line))
+            elif impact < 0:
+                cautions.append((abs(impact), line))
+    supports.sort(key=lambda item: item[0], reverse=True)
+    cautions.sort(key=lambda item: item[0], reverse=True)
+    return [line for _impact, line in supports], [line for _impact, line in cautions]
+
+
+def _advisor_tool_suggestions(snapshot: dict[str, object], supports: list[str], cautions: list[str]) -> list[str]:
+    suggestions = ["- Factor Explorer: see every scored layer and what changed from the search-start chart."]
+    aspects = snapshot.get("detectedAspects", [])
+    aspect_items = aspects if isinstance(aspects, list) else []
+    has_stress_contact = any(isinstance(aspect, dict) and aspect.get("tone") == "stress" for aspect in aspect_items)
+    if has_major_stress(snapshot) or has_stress_contact:
+        suggestions.append("- Timing + Aspects: inspect the next stress contact before locking the minute.")
+    moon_context = snapshot.get("moonCondition")
+    if isinstance(moon_context, dict) and (moon_context.get("scoreImpact", 0) or 0) < 0:
+        suggestions.append("- Moon + Void Course: check whether lunar condition is the main blocker.")
+    planet_context = snapshot.get("planetConditionContext")
+    if isinstance(planet_context, dict) and (planet_context.get("scoreImpact", 0) or 0) < 0:
+        suggestions.append("- Planet Condition + Heliacal Search: review combustion, beams, stations, and slow motion.")
+    reception_context = snapshot.get("receptionContext")
+    if isinstance(reception_context, dict) and (reception_context.get("scoreImpact", 0) or 0) > 0:
+        suggestions.append("- Reception: use the reception page to explain why a hard contact may be softened.")
+    angle_context = snapshot.get("angleContext")
+    if isinstance(angle_context, dict) and angle_context.get("factors"):
+        suggestions.append("- Angles: inspect which planets are carrying the chart through ASC, MC, DSC, or IC.")
+    constellation_context = snapshot.get("constellationContext")
+    if isinstance(constellation_context, dict):
+        rising = constellation_context.get("rising", {})
+        if isinstance(rising, dict) and abs(float(rising.get("scoreImpact", 0) or 0)) > 0:
+            suggestions.append("- Constellations: review rising speed and boundary timing before fine-tuning ASC.")
+    if supports and cautions:
+        suggestions.append("- Compare: check whether nearby windows keep the support while dropping the largest caution.")
+    return suggestions[:6]
+
+
+def improvement_guide_lines(
+    snapshot: dict[str, object],
+    baseline: dict[str, object] | None = None,
+) -> list[str]:
+    lines = ["Score Improvement Guide", f"Current score: {snapshot.get('score', 'n/a')}"]
+    if baseline and baseline is not snapshot:
+        try:
+            delta = int(snapshot.get("score", 0) or 0) - int(baseline.get("score", 0) or 0)
+            lines.append(f"Change from search start: {delta:+d} points.")
+        except (TypeError, ValueError):
+            lines.append("Change from search start: n/a.")
+    moves = _improvement_moves(snapshot)
+    blockers = _improvement_blockers(snapshot)
+    lines.extend(["", "Best Moves"])
+    lines.extend(moves[:6] or ["- Run a wider search, then compare nearby candidates for stronger support and lower pressure."])
+    lines.extend(["", "Main Blockers"])
+    lines.extend(blockers[:6] or ["- No clear blocker surfaced; use Factor Explorer to inspect smaller testimony layers."])
+    lines.extend(["", "Fine Tuning"])
+    lines.extend(_fine_tuning_lines(snapshot))
+    return lines
+
+
+def _improvement_moves(snapshot: dict[str, object]) -> list[str]:
+    moves: list[str] = []
+    diagnostics = _score_diagnostics(snapshot)
+    signals = diagnostics.get("signals", {}) if isinstance(diagnostics, dict) else {}
+    if isinstance(signals, dict):
+        if not signals.get("applyingSupport"):
+            moves.append("- Search for the next window with an applying supportive aspect; this usually improves timing confidence.")
+        if signals.get("majorStress"):
+            moves.append("- Move the minute away from tight applying stress or compare windows just before/after the stress peak.")
+        if signals.get("angularMalefic"):
+            moves.append("- Adjust time until Mars/Saturn are farther from ASC, MC, DSC, or IC.")
+        if not signals.get("angularBenefic"):
+            moves.append("- Try to bring Venus or Jupiter closer to ASC or MC for cleaner visible support.")
+        if signals.get("moonNonVoid") is False:
+            moves.append("- Shift to a non-void Moon or wait for the Moon's next applying contact.")
+        anti_patterns = signals.get("objectiveAntiPatterns")
+        if isinstance(anti_patterns, list) and anti_patterns:
+            moves.append("- Change objective filters or timing to remove the top objective anti-pattern.")
+
+    angle_context = snapshot.get("angleContext")
+    if isinstance(angle_context, dict):
+        for factor in angle_context.get("factors", []) if isinstance(angle_context.get("factors"), list) else []:
+            if not isinstance(factor, dict):
+                continue
+            impact = float(factor.get("scoreImpact", 0) or 0)
+            if impact < 0:
+                moves.append(f"- Reduce {factor.get('body', 'malefic')} angular pressure near {factor.get('angle', 'angle')}.")
+                break
+    planet_context = snapshot.get("planetConditionContext")
+    if isinstance(planet_context, dict) and float(planet_context.get("scoreImpact", 0) or 0) < 0:
+        moves.append("- Check Planet Condition for stations, retrogrades, combustion, or under-beams pressure before accepting the time.")
+    return _dedupe_lines(moves)
+
+
+def _improvement_blockers(snapshot: dict[str, object]) -> list[str]:
+    blockers: list[tuple[float, str]] = []
+    breakdown = snapshot.get("scoreBreakdown")
+    reasons = breakdown.get("reasons", []) if isinstance(breakdown, dict) else []
+    if isinstance(reasons, list):
+        for reason in reasons:
+            if not isinstance(reason, dict):
+                continue
+            value = float(reason.get("value", 0) or 0)
+            if value < 0:
+                blockers.append((abs(value), f"- {reason.get('label', reason.get('code', 'Score factor'))}: {value:+.1f}"))
+    for context_key, label in JUDGMENT_CONTEXT_LABELS.items():
+        context = snapshot.get(context_key)
+        if not isinstance(context, dict):
+            continue
+        for factor in context.get("factors", []) if isinstance(context.get("factors"), list) else []:
+            if not isinstance(factor, dict):
+                continue
+            impact = float(factor.get("scoreImpact", 0) or 0)
+            if impact < 0:
+                blockers.append((abs(impact), f"- {label}: {factor.get('title', 'Factor')} ({impact:+.1f})"))
+    blockers.sort(key=lambda item: item[0], reverse=True)
+    return _dedupe_lines([line for _impact, line in blockers])
+
+
+def _fine_tuning_lines(snapshot: dict[str, object]) -> list[str]:
+    timing = snapshot.get("timingProfile")
+    lines: list[str] = []
+    if isinstance(timing, dict):
+        next_support = timing.get("nextSupport")
+        next_stress = timing.get("nextStress")
+        if isinstance(next_support, dict):
+            lines.append(f"- Protect support: {next_support.get('label')} exact in {next_support.get('timeToExactText', 'n/a')}.")
+        if isinstance(next_stress, dict):
+            lines.append(f"- Watch stress: {next_stress.get('label')} exact in {next_stress.get('timeToExactText', 'n/a')}.")
+    angles = snapshot.get("angleContext")
+    if isinstance(angles, dict) and angles.get("factors"):
+        lines.append("- Use the Angles tab after every time shift; angle testimony can change quickly.")
+    if snapshot.get("constellationContext"):
+        lines.append("- Use Constellations when the ASC is near a boundary or rising speed is unusual.")
+    return lines or ["- Compare adjacent windows in 5 to 15 minute increments and keep the one with fewer cautions."]
+
+
+def _score_diagnostics(snapshot: dict[str, object]) -> dict[str, object]:
+    breakdown = snapshot.get("scoreBreakdown")
+    diagnostics = breakdown.get("diagnostics", {}) if isinstance(breakdown, dict) else {}
+    return diagnostics if isinstance(diagnostics, dict) else {}
+
+
+def _dedupe_lines(lines: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for line in lines:
+        if line in seen:
+            continue
+        seen.add(line)
+        unique.append(line)
+    return unique
 
 
 def score_evaluation_lines(snapshot: dict[str, object]) -> list[str]:
@@ -1055,6 +1307,9 @@ def build_report_text(
         f"Score evaluation:\n{chr(10).join(score_evaluation_lines(selected_window))}\n"
         f"Score diagnostics:\n{chr(10).join(score_diagnostic_lines(selected_window))}\n"
         f"Score reasons:\n{chr(10).join(score_reason_lines(selected_window))}\n"
+        f"Angle testimony:\n{chr(10).join(angle_testimony_lines(selected_window))}\n"
+        f"Advisor:\n{chr(10).join(advisor_lines(selected_window, None, str(selected_window.get('title', 'Election'))))}\n"
+        f"Improvement guide:\n{chr(10).join(improvement_guide_lines(selected_window))}\n"
         f"Planetary hour:\n{chr(10).join(planetary_hour_lines) or '- Planetary hour unavailable.'}\n"
         f"Significators:\n{chr(10).join(judgment_context_lines(selected_window, 'significatorContext'))}\n"
         f"Moon condition:\n{chr(10).join(judgment_context_lines(selected_window, 'moonCondition'))}\n"

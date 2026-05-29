@@ -49,12 +49,22 @@ SCORE_CATEGORIES = {
     "preferred-aspects": "Objective fit",
     "close-contacts": "Aspect timing",
     "angularity": "Planet condition",
+    "angle-benefic-support": "Angle testimony",
+    "angle-malefic-pressure": "Angle testimony",
+    "angle-luminary-support": "Angle testimony",
+    "angle-neutral-emphasis": "Angle testimony",
     "essential-dignity": "Planet condition",
     "fixed-stars": "Fixed stars",
     "electional-rules": "Electional rules",
     "aspect-timing": "Aspect timing",
     "retrograde-pressure": "Risk pressure",
     "objective-weighting": "Objective fit",
+}
+ANGLE_WEIGHTS = {
+    "asc": 1.15,
+    "mc": 1.2,
+    "dsc": 1.0,
+    "ic": 0.9,
 }
 
 OBJECTIVE_PROFILES = {
@@ -278,25 +288,78 @@ def tone_counts(detected_aspects: Sequence[Mapping[str, object]]) -> dict[str, i
     return counts
 
 
-def angularity_score(positions: Sequence[Mapping[str, object]]) -> float:
+def angle_testimony(positions: Sequence[Mapping[str, object]]) -> dict[str, object]:
     score = 0.0
+    benefic_support = 0.0
+    malefic_pressure = 0.0
+    luminary_support = 0.0
+    neutral_emphasis = 0.0
+    factors: list[dict[str, object]] = []
     for planet in positions:
         if not planet.get("isAngular"):
             continue
 
         closest_angle = planet.get("closestAngle") or {}
         distance = float(closest_angle.get("distance", ANGULAR_ORB))
-        closeness = max(1, ANGULAR_ORB - distance)
+        angle_id = str(closest_angle.get("id", "")).lower()
+        angle_name = str(closest_angle.get("shortName") or closest_angle.get("name") or "angle")
+        angle_weight = ANGLE_WEIGHTS.get(angle_id, 1.0)
+        closeness_ratio = max(0.0, (ANGULAR_ORB - distance) / ANGULAR_ORB)
+        closeness = max(0.4, 0.65 + closeness_ratio)
         name = str(planet["name"])
 
         if name in BENEFIC_BODIES:
-            score += 7 + closeness
+            impact = (5.5 + closeness * 3.0) * angle_weight
+            benefic_support += impact
+            severity = "support"
+            title = f"{name} strengthens {angle_name}"
         elif name in CHALLENGING_BODIES:
-            score -= 5 + closeness
+            impact = -((4.5 + closeness * 3.2) * angle_weight)
+            malefic_pressure += impact
+            severity = "caution"
+            title = f"{name} pressures {angle_name}"
+        elif name in {"Sun", "Moon"}:
+            impact = (1.8 + closeness * 1.7) * angle_weight
+            luminary_support += impact
+            severity = "support"
+            title = f"{name} emphasizes {angle_name}"
         else:
-            score += 2
+            impact = (0.8 + closeness * 0.9) * angle_weight
+            neutral_emphasis += impact
+            severity = "info"
+            title = f"{name} is angular at {angle_name}"
+        score += impact
+        factors.append(
+            {
+                "body": name,
+                "angle": angle_name,
+                "angleId": angle_id,
+                "distance": distance,
+                "scoreImpact": impact,
+                "severity": severity,
+                "title": title,
+                "detail": f"{name} is {distance:.1f} deg from {angle_name}; angular testimony is strongest within {ANGULAR_ORB} deg.",
+            }
+        )
 
-    return score
+    if not factors:
+        summary = "No selected scoring planets are within the angular orb."
+    else:
+        strongest = sorted(factors, key=lambda factor: abs(float(factor["scoreImpact"])), reverse=True)[0]
+        summary = f"{len(factors)} angular scoring planet(s); strongest testimony: {strongest['title']}."
+    return {
+        "score": score,
+        "beneficSupport": benefic_support,
+        "maleficPressure": malefic_pressure,
+        "luminarySupport": luminary_support,
+        "neutralEmphasis": neutral_emphasis,
+        "factors": factors,
+        "summary": summary,
+    }
+
+
+def angularity_score(positions: Sequence[Mapping[str, object]]) -> float:
+    return float(angle_testimony(positions)["score"])
 
 
 def retrograde_pressure(positions: Sequence[Mapping[str, object]]) -> float:
@@ -457,7 +520,8 @@ def score_breakdown_model(
     objective_matches = sum(1 for aspect in detected_aspects if aspect.get("aspectId") in preset.preferred_aspects)
     close_contacts = sum(1 for aspect in detected_aspects if float(aspect.get("orb", 99)) <= scoring.close_contact_orb)
     preset_positions = filter_positions_for_preset(positions, preset)
-    angularity = angularity_score(preset_positions)
+    angles = angle_testimony(preset_positions)
+    angularity = float(angles["score"])
     dignity = dignity_score(positions, preset)
     retrograde = retrograde_pressure(preset_positions)
     support_points = weighted_value(counts["support"] * scoring.support_weight, profile, "support")
@@ -521,7 +585,30 @@ def score_breakdown_model(
         ScoreReason("applying-stress", "Applying stress aspects", applying_stress_points, count=applying_counts["stress"]),
         ScoreReason("preferred-aspects", "Preferred aspect types", preferred_points, count=objective_matches),
         ScoreReason("close-contacts", "Close contacts", close_contact_points, count=close_contacts),
-        ScoreReason("angularity", "Angular planet emphasis", angularity_points, raw=angularity),
+        ScoreReason(
+            "angle-benefic-support",
+            "Angular benefic support",
+            weighted_value(float(angles["beneficSupport"]) * scoring.angular_multiplier, profile, "angularity"),
+            raw=float(angles["beneficSupport"]),
+        ),
+        ScoreReason(
+            "angle-malefic-pressure",
+            "Angular malefic pressure",
+            weighted_value(float(angles["maleficPressure"]) * scoring.angular_multiplier, profile, "angularity"),
+            raw=float(angles["maleficPressure"]),
+        ),
+        ScoreReason(
+            "angle-luminary-support",
+            "Angular luminary support",
+            weighted_value(float(angles["luminarySupport"]) * scoring.angular_multiplier, profile, "angularity"),
+            raw=float(angles["luminarySupport"]),
+        ),
+        ScoreReason(
+            "angle-neutral-emphasis",
+            "Other angular emphasis",
+            weighted_value(float(angles["neutralEmphasis"]) * scoring.angular_multiplier, profile, "angularity"),
+            raw=float(angles["neutralEmphasis"]),
+        ),
         ScoreReason("essential-dignity", "Essential dignity", dignity_points, raw=dignity),
         ScoreReason("fixed-stars", "Fixed star contacts", fixed_star_points, count=len(fixed_star_contacts)),
         ScoreReason("electional-rules", "Electional rules", rule_points),
@@ -547,6 +634,11 @@ def score_breakdown_model(
         applying_support_count=applying_counts["support"],
         applying_stress_count=applying_counts["stress"],
     )
+    diagnostics["angles"] = {
+        **angles,
+        "scoreImpact": angularity_points,
+        "confidence": "solid",
+    }
 
     return ScoreBreakdown(
         base=58,

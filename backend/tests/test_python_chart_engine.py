@@ -513,6 +513,16 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertTrue(all(window["score"] >= 50 for window in windows))
         self.assertGreaterEqual(windows[0]["score"], windows[-1]["score"])
 
+    def test_election_report_full_search_honors_filters(self) -> None:
+        location = get_location("los-angeles")
+        config = SearchConfig(end_offset_minutes=240, step_minutes=60, minimum_score=101)
+
+        report = build_election_report("2026-05-26", "09:00", location, "traditional-lilly", search_config=config)
+
+        self.assertEqual(report["searchMode"], "full")
+        self.assertEqual(report["windows"], [])
+        self.assertGreater(report["rejectionSummary"]["count"], 0)
+
     def test_snapshot_cache_returns_isolated_copies(self) -> None:
         clear_snapshot_cache()
         location = get_location("paris")

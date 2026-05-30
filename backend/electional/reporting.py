@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Mapping
+
 BENEFIC_NAMES = {"Venus", "Jupiter"}
 CHALLENGING_NAMES = {"Mars", "Saturn"}
 
 from .chart import format_angle, format_position
 from .locations import LocationPreset
+from .presets import RULERS
 from .search import has_major_stress
 
 
@@ -397,6 +400,45 @@ def build_transit_search_page(
             + (f"  [{aspect_labels}]" if aspect_labels else "")
         )
 
+    aspect_patterns: dict[str, dict[str, object]] = {}
+    for window in windows:
+        if not isinstance(window, dict):
+            continue
+        score = float(window.get("score", 0))
+        for aspect in window.get("detectedAspects", []):
+            if not isinstance(aspect, dict):
+                continue
+            label = str(aspect.get("label") or aspect.get("aspectName") or "Aspect")
+            item = aspect_patterns.setdefault(
+                label,
+                {
+                    "label": label,
+                    "tone": aspect.get("tone", "mixed"),
+                    "count": 0,
+                    "bestScore": -999.0,
+                    "bestTime": "",
+                    "totalScore": 0.0,
+                },
+            )
+            item["count"] = int(item["count"]) + 1
+            item["totalScore"] = float(item["totalScore"]) + score
+            if score > float(item["bestScore"]):
+                item["bestScore"] = score
+                item["bestTime"] = str(window.get("formattedTime", "time n/a"))
+                item["tone"] = aspect.get("tone", item.get("tone", "mixed"))
+
+    aspect_pattern_lines = []
+    ranked_patterns = sorted(
+        aspect_patterns.values(),
+        key=lambda item: (float(item["bestScore"]), int(item["count"]), float(item["totalScore"])),
+        reverse=True,
+    )
+    for item in ranked_patterns[:5]:
+        aspect_pattern_lines.append(
+            f"- {item['label']} ({item.get('tone', 'mixed')}): "
+            f"seen {item['count']}x; best score {float(item['bestScore']):.0f} at {item.get('bestTime') or 'time n/a'}"
+        )
+
     rejection_lines = []
     if isinstance(rejection_summary, dict) and rejection_summary.get("count"):
         top_reasons = rejection_summary.get("topReasons", [])
@@ -435,6 +477,9 @@ def build_transit_search_page(
         f"- Timing summary: {selected_window.get('timingProfile', {}).get('summary', 'Timing profile unavailable.')}\n\n"
         "Selected Diagnostics\n"
         + "\n".join(score_diagnostic_lines(selected_window))
+        + "\n\n"
+        "Best Aspect Patterns\n"
+        + ("\n".join(aspect_pattern_lines) if aspect_pattern_lines else "- No aspect patterns available in ranked windows.")
         + "\n\n"
         "Ranked Windows\n"
         + ("\n".join(ranked_lines) if ranked_lines else "- No ranked windows matched the current filters.")
@@ -1126,6 +1171,208 @@ def score_evaluation_lines(snapshot: dict[str, object]) -> list[str]:
     return lines
 
 
+def _float_value(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _position_by_name(snapshot: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
+    positions = snapshot.get("positions", [])
+    if not isinstance(positions, list):
+        return {}
+    return {
+        str(planet.get("name")): planet
+        for planet in positions
+        if isinstance(planet, Mapping) and planet.get("name")
+    }
+
+
+def _house_class(house: object) -> tuple[str, float]:
+    try:
+        house_number = int(house)
+    except (TypeError, ValueError):
+        return "unknown house", 0.0
+    if house_number in {1, 4, 7, 10}:
+        return "angular", 1.5
+    if house_number in {2, 5, 8, 11}:
+        return "succedent", 0.7
+    return "cadent", -0.2
+
+
+def _dignity_label_and_score(planet: Mapping[str, object] | None) -> tuple[str, float]:
+    if not isinstance(planet, Mapping):
+        return "dignity unavailable", 0.0
+    dignity = planet.get("dignity")
+    if isinstance(dignity, Mapping):
+        label = str(dignity.get("label") or "Peregrine")
+        return label, _float_value(dignity.get("score"))
+    return "dignity unavailable", 0.0
+
+
+def _planet_condition_phrase(planet: Mapping[str, object] | None) -> str:
+    if not isinstance(planet, Mapping):
+        return "not found in the selected point set."
+    house = planet.get("house", "n/a")
+    house_label, _house_score = _house_class(house)
+    dignity_label, dignity_score = _dignity_label_and_score(planet)
+    pieces = [f"House {house} ({house_label})", f"{dignity_label} {dignity_score:+.0f}"]
+    closest_angle = planet.get("closestAngle")
+    if isinstance(closest_angle, Mapping):
+        short_name = closest_angle.get("shortName") or closest_angle.get("name")
+        distance = closest_angle.get("distance")
+        if short_name and distance is not None:
+            pieces.append(f"nearest {short_name} {_float_value(distance):.1f} deg")
+    if planet.get("isRetrograde"):
+        pieces.append("retrograde")
+    return "; ".join(pieces)
+
+
+def _angle_sign(snapshot: Mapping[str, object], angle_id: str, fallback_house: int) -> str:
+    angles = snapshot.get("angles", [])
+    if isinstance(angles, list):
+        for angle in angles:
+            if not isinstance(angle, Mapping) or angle.get("id") != angle_id:
+                continue
+            zodiac = angle.get("zodiac")
+            if isinstance(zodiac, Mapping) and zodiac.get("sign"):
+                return str(zodiac.get("sign"))
+    house_cusps = snapshot.get("houseCusps", [])
+    if isinstance(house_cusps, list):
+        for cusp in house_cusps:
+            if not isinstance(cusp, Mapping) or cusp.get("house") != fallback_house:
+                continue
+            zodiac = cusp.get("zodiac")
+            if isinstance(zodiac, Mapping) and zodiac.get("sign"):
+                return str(zodiac.get("sign"))
+    return ""
+
+
+def _aspect_label(aspect: Mapping[str, object]) -> str:
+    label = aspect.get("label")
+    if label:
+        return str(label)
+    bodies = aspect.get("bodies", [])
+    aspect_name = str(aspect.get("aspectName") or "aspect").lower()
+    if isinstance(bodies, list) and len(bodies) == 2:
+        return f"{bodies[0]} {aspect_name} {bodies[1]}"
+    return str(aspect.get("aspectName") or "Aspect")
+
+
+def _aspect_strength_score(
+    aspect: Mapping[str, object],
+    positions_by_name: Mapping[str, Mapping[str, object]],
+    priority_bodies: set[str],
+) -> float:
+    bodies = aspect.get("bodies", [])
+    if not isinstance(bodies, list) or len(bodies) != 2:
+        return -999.0
+    aspect_name = str(aspect.get("aspectName") or "")
+    score = {
+        "Conjunction": 4.0,
+        "Opposition": 3.4,
+        "Trine": 3.2,
+        "Square": 3.0,
+        "Sextile": 2.2,
+    }.get(aspect_name, 1.5)
+    orb = _float_value(aspect.get("orb"), 8.0)
+    score += max(0.0, 6.0 - orb) * 1.4
+    if aspect.get("isApplying"):
+        score += 1.6
+    elif str(aspect.get("phaseLabel", "")).lower().startswith("applying"):
+        score += 1.2
+    elif str(aspect.get("phaseLabel", "")).lower().startswith("separating"):
+        score -= 0.4
+    if aspect.get("tone") in {"support", "stress"}:
+        score += 0.5
+    for body in bodies:
+        name = str(body)
+        planet = positions_by_name.get(name)
+        if name in priority_bodies:
+            score += 2.4
+        if name in {"Moon", "Sun"}:
+            score += 0.4
+        if planet:
+            _house_label, house_score = _house_class(planet.get("house"))
+            _dignity_label, dignity_score = _dignity_label_and_score(planet)
+            score += house_score + abs(dignity_score) * 0.35
+    return score
+
+
+def strongest_aspect_analysis_lines(snapshot: dict[str, object]) -> list[str]:
+    """Explain the most important aspect with house, dignity, and angle lord context."""
+
+    positions_by_name = _position_by_name(snapshot)
+    aspects = snapshot.get("detectedAspects", [])
+    if not positions_by_name:
+        return ["Strongest Aspect", "- Planet positions are unavailable."]
+    if not isinstance(aspects, list) or not aspects:
+        return ["Strongest Aspect", "- No selected major aspects in orb."]
+
+    asc_sign = _angle_sign(snapshot, "asc", 1)
+    tenth_sign = _angle_sign(snapshot, "mc", 10)
+    asc_lord = RULERS.get(asc_sign, "")
+    tenth_lord = RULERS.get(tenth_sign, "")
+    priority_bodies = {name for name in (asc_lord, tenth_lord, "Moon") if name}
+    scored_aspects = [
+        (
+            _aspect_strength_score(aspect, positions_by_name, priority_bodies),
+            aspect,
+        )
+        for aspect in aspects
+        if isinstance(aspect, Mapping)
+    ]
+    if not scored_aspects:
+        return ["Strongest Aspect", "- No readable aspect contacts in the selected chart."]
+    strength, strongest = max(scored_aspects, key=lambda item: item[0])
+    bodies = strongest.get("bodies", [])
+    body_names = [str(body) for body in bodies] if isinstance(bodies, list) else []
+    orb_text = strongest.get("orbText") or f"{_float_value(strongest.get('orb')):.2f} deg"
+    phase = "applying" if strongest.get("isApplying") else str(strongest.get("phaseLabel") or "phase unknown").lower()
+    tone = str(strongest.get("tone") or "mixed")
+    role_notes = []
+    for name in body_names:
+        if name == asc_lord:
+            role_notes.append(f"{name} is the ASC lord")
+        if name == tenth_lord:
+            role_notes.append(f"{name} is the 10th lord")
+        if name == "Moon":
+            role_notes.append("Moon carries timing and flow")
+
+    lines = [
+        "Strongest Aspect",
+        f"- {_aspect_label(strongest)} ({tone}); strength {strength:.1f}.",
+        f"- Orb: {orb_text}; motion: {phase}.",
+    ]
+    if role_notes:
+        lines.append("- Key role: " + "; ".join(dict.fromkeys(role_notes)) + ".")
+    lines.extend(["", "Why It Scores Strongly"])
+    for name in body_names:
+        planet = positions_by_name.get(name)
+        lines.append(f"- {name}: {_planet_condition_phrase(planet)}.")
+    lines.extend(
+        [
+            "",
+            "Angles And Lords",
+            (
+                f"- ASC: {asc_sign or 'n/a'}; ASC lord {asc_lord or 'n/a'} is "
+                f"{_planet_condition_phrase(positions_by_name.get(asc_lord))}"
+            ),
+            (
+                f"- 10th/MC: {tenth_sign or 'n/a'}; 10th lord {tenth_lord or 'n/a'} is "
+                f"{_planet_condition_phrase(positions_by_name.get(tenth_lord))}"
+            ),
+        ]
+    )
+    house_rulers = snapshot.get("houseRulerContext", {})
+    if isinstance(house_rulers, Mapping):
+        summary = house_rulers.get("summary")
+        if summary:
+            lines.append(f"- Objective houses: {summary}")
+    return lines
+
+
 def format_aspectarian(snapshot: dict[str, object]) -> str:
     """Render a compact aspectarian-style table for the selected chart."""
 
@@ -1169,7 +1416,7 @@ def format_aspectarian(snapshot: dict[str, object]) -> str:
             row.append(f"{tone}{marker[:3]:>3}")
         lines.append(" ".join(row))
 
-    lines.extend(["", "Legend: + supportive, ! stressful, * mixed."])
+    lines.extend(["", "Legend: + supportive, ! stressful, * mixed.", "", *strongest_aspect_analysis_lines(snapshot)])
     return "\n".join(lines)
 
 
@@ -1329,6 +1576,7 @@ def build_report_text(
         f"Note: {selected_window.get('note', '')}\n\n"
         f"Ranked Windows:\n{ranked_windows}\n\n"
         f"Aspects:\n{aspects or '- No selected major aspects in orb.'}\n\n"
+        f"Aspect strength:\n{chr(10).join(strongest_aspect_analysis_lines(selected_window))}\n\n"
         f"Aspectarian:\n{format_aspectarian(selected_window)}\n\n"
         f"Fixed Star Contacts:\n{fixed_star_contacts or '- No fixed-star conjunctions within the diagnostic star orb.'}\n\n"
         f"Lunar Nodes:\n{nodes or '- No lunar nodes calculated.'}\n\n"

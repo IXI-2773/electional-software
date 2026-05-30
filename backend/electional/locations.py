@@ -89,6 +89,18 @@ def combined_location_names(user_locations: list[LocationPreset]) -> list[str]:
     return names
 
 
+def combined_visible_location_names(
+    user_locations: list[LocationPreset],
+    hidden_builtin_ids: set[str] | list[str] | tuple[str, ...] | None = None,
+) -> list[str]:
+    hidden = {str(location_id) for location_id in (hidden_builtin_ids or set())}
+    names = [location.name for location in LOCATION_PRESETS if location.id not in hidden]
+    for location in user_locations:
+        if location.name not in names:
+            names.append(location.name)
+    return names
+
+
 def resolve_location_by_name(name: str | None, user_locations: list[LocationPreset]) -> LocationPreset | None:
     candidate = (name or "").strip().lower()
     if not candidate:
@@ -131,6 +143,33 @@ def save_home_location_name(name: str | None, path: Path = LOCATION_SETTINGS_PAT
         settings["home_location_name"] = name.strip()
     else:
         settings.pop("home_location_name", None)
+    save_location_settings(settings, path)
+
+
+def load_hidden_builtin_location_ids(path: Path = LOCATION_SETTINGS_PATH) -> set[str]:
+    settings = load_location_settings(path)
+    raw_ids = settings.get("hidden_builtin_location_ids", [])
+    if not isinstance(raw_ids, list):
+        return set()
+    valid_ids = {location.id for location in LOCATION_PRESETS}
+    return {str(location_id) for location_id in raw_ids if str(location_id) in valid_ids}
+
+
+def save_hidden_builtin_location_ids(hidden_ids: set[str] | list[str] | tuple[str, ...], path: Path = LOCATION_SETTINGS_PATH) -> None:
+    settings = load_location_settings(path)
+    valid_ids = {location.id for location in LOCATION_PRESETS}
+    normalized = sorted({str(location_id) for location_id in hidden_ids if str(location_id) in valid_ids})
+    if normalized:
+        settings["hidden_builtin_location_ids"] = normalized
+    else:
+        settings.pop("hidden_builtin_location_ids", None)
+    save_location_settings(settings, path)
+
+
+def reset_location_defaults(path: Path = LOCATION_SETTINGS_PATH) -> None:
+    settings = load_location_settings(path)
+    settings.pop("home_location_name", None)
+    settings.pop("hidden_builtin_location_ids", None)
     save_location_settings(settings, path)
 
 

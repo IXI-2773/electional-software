@@ -29,6 +29,7 @@ class ConstellationDiagnosticsTests(unittest.TestCase):
         self.assertIn("currentConstellationRisingMinutes", rising)
         self.assertIn("currentSignRisingMinutes", rising)
         self.assertIn("constellationContext", snapshot["ruleEvaluations"])
+        self.assertIn("not full sky-polygon outlines", context["sourceNote"])
         self.assertIsInstance(rising["scoreImpact"], float)
 
 

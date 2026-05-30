@@ -19,8 +19,9 @@ from .locations import LocationPreset
 SIDEREAL_DEGREES_PER_HOUR = 360.985647 / 24
 
 SOURCE_NOTE = (
-    "Approximate unequal ecliptic constellation spans for planning diagnostics; "
-    "zodiac signs, houses, and dignities still use the selected astrological system."
+    "Approximate unequal IAU ecliptic-crossing constellation spans for planning diagnostics; "
+    "the wheel shows ecliptic span, not full sky-polygon outlines, and zodiac signs, houses, "
+    "and dignities still use the selected astrological system."
 )
 
 ECLIPTIC_CONSTELLATION_SPANS: tuple[dict[str, object], ...] = (

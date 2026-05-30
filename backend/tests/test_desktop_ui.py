@@ -6,16 +6,21 @@ from tempfile import TemporaryDirectory
 import unittest
 from backend.electional.desktop import (
     DETAIL_PAGE_TABS,
+    ElectionalDesktopApp,
     RIBBON_COLUMNS,
     RIBBON_GROUPS,
     TOP_NAV_ITEMS,
+    VIEW_PAGE_QUICK_ACTIONS,
     VIEW_PAGE_TARGETS,
+    VIEW_PAGE_STRIP_ACTIONS,
     _polar,
     aspect_curve_points,
     button_health_lines,
+    constellation_arc_segments,
     body_marker_offsets,
     fixed_star_contact_count,
     compact_time_label,
+    compact_judgment_lines,
     location_summary,
     planet_abbreviation,
     planet_marker_offsets,
@@ -33,12 +38,16 @@ from backend.electional.locations import (
     DEFAULT_TIMEZONE,
     LocationPreset,
     build_custom_location,
+    combined_visible_location_names,
     combined_location_names,
     default_location_for_timezone,
     home_location_for_app,
     get_location,
+    load_hidden_builtin_location_ids,
     load_home_location_name,
     load_user_locations,
+    reset_location_defaults,
+    save_hidden_builtin_location_ids,
     save_home_location_name,
     save_user_locations,
     upsert_user_location,
@@ -53,6 +62,7 @@ from backend.electional.reporting import (
     build_decision_brief_page,
     build_diagnostics_page,
     build_medieval_data_page,
+    build_report_text,
     build_transit_search_page,
     build_window_comparison_page,
     condition_lines,
@@ -74,6 +84,7 @@ from backend.electional.reporting import (
     score_accounting_lines,
     score_diagnostic_lines,
     score_evaluation_lines,
+    strongest_aspect_analysis_lines,
 )
 from backend.electional.scoring import score_breakdown
 from backend.electional.search import (
@@ -121,20 +132,35 @@ class DesktopUiHelpersTest(unittest.TestCase):
     def test_ribbon_groups_keep_primary_actions_visible(self) -> None:
         labels = [label for _group, items in RIBBON_GROUPS for label in items]
 
-        for expected in ("Calculate", "Advisor", "Improve", "Decision", "Compare", "Factors", "Search Page", "Export Wheel", "Map"):
+        for expected in ("Calculate", "Advisor", "Improve", "Decision", "Compare", "Factors", "Search Page", "Day Report", "Report", "Map"):
             self.assertIn(expected, labels)
+        self.assertIn("Aspect Strength", labels)
+        self.assertNotIn("Export Wheel", labels)
+        self.assertNotIn("Button Health", labels)
+        self.assertLessEqual(len(labels), 23)
         self.assertNotIn("Transits", labels)
         self.assertNotIn("Electional Search", labels)
-        self.assertGreaterEqual(RIBBON_COLUMNS, 4)
+        self.assertLessEqual(RIBBON_COLUMNS, 3)
 
     def test_button_health_reports_visible_button_wiring(self) -> None:
         text = "\n".join(button_health_lines(DETAIL_PAGE_TABS))
 
         self.assertIn("Button Health", text)
         self.assertIn("All visible top, ribbon, and page-strip buttons have wired actions", text)
-        self.assertIn("Button Health", [label for _group, items in RIBBON_GROUPS for label in items])
         self.assertIn("Improve", TOP_NAV_ITEMS)
         self.assertIn("Angles", VIEW_PAGE_TARGETS)
+        self.assertIn("Aspect Strength", VIEW_PAGE_TARGETS)
+        self.assertIn("Save Wheel", VIEW_PAGE_STRIP_ACTIONS)
+
+    def test_view_page_quick_actions_stay_compact(self) -> None:
+        self.assertLessEqual(len(VIEW_PAGE_QUICK_ACTIONS), 5)
+        for label in VIEW_PAGE_QUICK_ACTIONS:
+            self.assertIn(label, VIEW_PAGE_STRIP_ACTIONS)
+
+    def test_report_buttons_have_desktop_handlers(self) -> None:
+        self.assertTrue(hasattr(ElectionalDesktopApp, "_show_current_report_dialog"))
+        self.assertTrue(hasattr(ElectionalDesktopApp, "_show_daily_aspect_report_dialog"))
+        self.assertTrue(hasattr(ElectionalDesktopApp, "_astrolabe_button"))
 
     def test_planet_abbreviation_uses_compact_labels(self) -> None:
         self.assertEqual(planet_abbreviation("Mercury"), "Me")
@@ -160,6 +186,15 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertGreater(screen_points["dsc"][0], 0)
         self.assertLess(screen_points["mc"][1], 0)
         self.assertGreater(screen_points["ic"][1], 0)
+
+    def test_constellation_arc_segments_keep_unequal_ecliptic_spans(self) -> None:
+        segments = {str(segment["id"]): segment for segment in constellation_arc_segments()}
+
+        self.assertEqual(len(segments), 13)
+        self.assertAlmostEqual(float(segments["virgo"]["extent"]), 44.0)
+        self.assertAlmostEqual(float(segments["scorpius"]["extent"]), 6.0)
+        self.assertAlmostEqual(float(segments["ophiuchus"]["extent"]), 18.0)
+        self.assertNotEqual(float(segments["virgo"]["extent"]), 30.0)
 
     def test_planet_marker_offsets_spread_close_cluster_symmetrically(self) -> None:
         offsets = planet_marker_offsets([10.0, 13.0, 16.0], compact=False)
@@ -1145,6 +1180,129 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("+Tri", table)
         self.assertIn("!Sqr", table)
 
+    def test_strongest_aspect_analysis_explains_lords_houses_and_dignity(self) -> None:
+        snapshot = {
+            "positions": [
+                {
+                    "name": "Venus",
+                    "house": 10,
+                    "dignity": {"label": "Exalted", "score": 4},
+                    "closestAngle": {"shortName": "MC", "distance": 1.2},
+                },
+                {
+                    "name": "Jupiter",
+                    "house": 1,
+                    "dignity": {"label": "Domicile", "score": 5},
+                    "closestAngle": {"shortName": "ASC", "distance": 2.0},
+                },
+                {
+                    "name": "Moon",
+                    "house": 9,
+                    "dignity": {"label": "Peregrine", "score": 0},
+                },
+                {
+                    "name": "Mars",
+                    "house": 7,
+                    "dignity": {"label": "Fall", "score": -4},
+                    "closestAngle": {"shortName": "DSC", "distance": 3.4},
+                },
+            ],
+            "angles": [
+                {"id": "asc", "zodiac": {"sign": "Cancer"}},
+                {"id": "mc", "zodiac": {"sign": "Aries"}},
+            ],
+            "houseCusps": [{"house": 10, "zodiac": {"sign": "Aries"}}],
+            "houseRulerContext": {"summary": "Launch/public: evaluated the 10th ruler."},
+            "detectedAspects": [
+                {
+                    "bodies": ["Venus", "Jupiter"],
+                    "aspectName": "Trine",
+                    "label": "Venus trine Jupiter",
+                    "tone": "support",
+                    "orb": 0.4,
+                    "orbText": "0 deg 24 min",
+                    "isApplying": True,
+                },
+                {
+                    "bodies": ["Moon", "Mars"],
+                    "aspectName": "Square",
+                    "label": "Moon square Mars",
+                    "tone": "stress",
+                    "orb": 3.0,
+                    "isApplying": False,
+                },
+            ],
+        }
+
+        text = "\n".join(strongest_aspect_analysis_lines(snapshot))
+
+        self.assertIn("Strongest Aspect", text)
+        self.assertIn("Venus trine Jupiter", text)
+        self.assertIn("House 10", text)
+        self.assertIn("Exalted", text)
+        self.assertIn("ASC lord Moon", text)
+        self.assertIn("10th/MC: Aries", text)
+        self.assertIn("10th lord Mars", text)
+        self.assertIn("Fall", text)
+
+    def test_compact_judgment_lines_feed_astrolabe_panel(self) -> None:
+        snapshot = {
+            "positions": [
+                {"name": "Venus", "house": 10, "dignity": {"label": "Exalted", "score": 4}},
+                {"name": "Jupiter", "house": 1, "dignity": {"label": "Domicile", "score": 5}},
+                {"name": "Moon", "house": 9, "dignity": {"label": "Peregrine", "score": 0}},
+                {"name": "Mars", "house": 7, "dignity": {"label": "Fall", "score": -4}},
+            ],
+            "angles": [
+                {"id": "asc", "zodiac": {"sign": "Cancer"}},
+                {"id": "mc", "zodiac": {"sign": "Aries"}},
+            ],
+            "detectedAspects": [
+                {
+                    "bodies": ["Venus", "Jupiter"],
+                    "aspectName": "Trine",
+                    "label": "Venus trine Jupiter",
+                    "tone": "support",
+                    "orb": 0.4,
+                    "orbText": "0 deg 24 min",
+                    "isApplying": True,
+                }
+            ],
+            "scoreBreakdown": {"reasons": [{"label": "Preferred aspect types", "value": 4.0, "count": 1}]},
+        }
+
+        lines = compact_judgment_lines(snapshot)
+        text = "\n".join(lines)
+
+        self.assertIn("Strongest: Venus trine Jupiter", text)
+        self.assertIn("applying", text)
+        self.assertIn("ASC lord: Cancer / Moon", text)
+        self.assertIn("10th lord: Aries / Mars", text)
+        self.assertIn("Top reasons", text)
+
+    def test_center_strongest_aspect_card_is_not_wired(self) -> None:
+        self.assertFalse(hasattr(ElectionalDesktopApp, "_build_strongest_aspect_card"))
+        self.assertFalse(hasattr(ElectionalDesktopApp, "_refresh_strongest_aspect_card"))
+
+    def test_report_export_includes_aspect_strength_block(self) -> None:
+        location = LocationPreset("los-angeles", "Los Angeles, CA", 34.0522, -118.2437, "America/Los_Angeles")
+        snapshot = build_snapshot(
+            "2026-05-30",
+            "11:37",
+            location,
+            "traditional-lilly",
+            ("trine", "sextile", "square", "opposition", "conjunction"),
+            "tropical",
+            "whole-sign",
+            "Launch or publish",
+        )
+        snapshot.update({"time": "11:37 AM", "title": "Strong election", "note": "Readable report fixture."})
+
+        text = build_report_text(snapshot, [snapshot], location)
+
+        self.assertIn("Aspect strength:", text)
+        self.assertIn("Strongest Aspect", text)
+
     def test_lot_reference_includes_new_hermetic_lots(self) -> None:
         reference = "\n".join(lot_reference_lines())
 
@@ -1210,6 +1368,7 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(loaded["display_options"]["wheel_zoom"], 0.94)
         self.assertEqual(loaded["display_options"]["point_set"], "ten-planets")
         self.assertEqual(loaded["display_options"]["page_mode"], "wheel")
+        self.assertEqual(loaded["display_options"]["right_panel_theme"], "astrolabe")
 
     def test_user_locations_round_trip(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -1246,10 +1405,35 @@ class DesktopUiHelpersTest(unittest.TestCase):
 
         self.assertEqual(location.name, "Temple Office")
 
+    def test_builtin_locations_can_be_hidden_and_reset_without_deleting_them(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            settings_path = Path(temp_dir) / "location-settings.json"
+
+            save_hidden_builtin_location_ids({"sydney"}, settings_path)
+            hidden = load_hidden_builtin_location_ids(settings_path)
+            names = combined_visible_location_names([], hidden)
+            resolved = get_location("sydney")
+            reset_location_defaults(settings_path)
+            reset_hidden = load_hidden_builtin_location_ids(settings_path)
+
+        self.assertIn("sydney", hidden)
+        self.assertNotIn("Sydney, Australia", names)
+        self.assertEqual(resolved.name, "Sydney, Australia")
+        self.assertEqual(reset_hidden, set())
+
     def test_session_state_infers_full_point_set_from_legacy_lot_display(self) -> None:
         loaded = clean_session_state({"display_options": {"show_lots": True}})
 
         self.assertEqual(loaded["display_options"]["point_set"], "full-electional")
+
+    def test_session_state_preserves_current_wheel_zoom_range(self) -> None:
+        high = clean_session_state({"display_options": {"wheel_zoom": 1.18}})
+        low = clean_session_state({"display_options": {"wheel_zoom": 0.5}})
+        default = clean_session_state({})
+
+        self.assertEqual(high["display_options"]["wheel_zoom"], 1.18)
+        self.assertEqual(low["display_options"]["wheel_zoom"], 0.82)
+        self.assertEqual(default["display_options"]["wheel_zoom"], 0.98)
 
     def test_user_location_upsert_replaces_same_name(self) -> None:
         original = LocationPreset("user-home", "Home Base", 33.0, -118.0, "America/Los_Angeles")
@@ -1353,6 +1537,7 @@ class DesktopUiHelpersTest(unittest.TestCase):
         text = build_transit_search_page(input_snapshot, selected_window, windows, location, "Scan 12h from start, every 30m; score >= 70.")
 
         self.assertIn("Transit Search Page", text)
+        self.assertIn("Best Aspect Patterns", text)
         self.assertIn("Difference: +2h", text)
         self.assertIn("Los Angeles, CA", text)
         self.assertIn("Sun trine Jupiter", text)

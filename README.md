@@ -30,11 +30,13 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Search now uses a snapshot calculation cache plus a fast/deep path for large limited scans, ranking cheaply first and deep-building only buffered top candidates.
 - Desktop cache tools now include both cache stats and a Clear Cache action for fresh search comparisons.
 - Left-panel timing, location, and search shortcut buttons now use cleaner equal-width rows for a steadier layout.
-- Top navigation and wrapped ribbon groups now use clearer task labels, including Advisor, Decision, Compare, Factors, Copy, Search Page, Map, and Export Wheel.
+- Top navigation and tighter wrapped ribbon groups now use clearer task labels, including Advisor, Decision, Compare, Factors, Day Report, Copy, Search Page, and Map.
 - The Advisor tab turns score factors into a compact verdict, supports, cautions, and recommended next tools to inspect.
 - The Improve tab turns weak score signals into concrete adjustment moves, including angle, Moon, aspect timing, and support/stress fixes.
 - Button Health checks visible top nav, ribbon, and page-strip controls for missing action wiring or missing detail-page targets.
 - Desktop polish now includes a calmer workbench palette, clearer header hierarchy, active top-nav page state, and softer ribbon tiles.
+- The wheel is larger and cleaner, with sharper planet markers, stronger angle lines, angle constellation labels, and an outer unequal constellation band.
+- The constellation band uses approximate IAU ecliptic-crossing spans, including Ophiuchus and narrow Scorpius, instead of treating constellations as equal zodiac signs.
 - Election scoring now splits angular testimony into benefic support, malefic pressure, luminary support, and other angular emphasis.
 - Angle explanations now name the planet, nearest angle, distance, and point impact in diagnostics, reports, Factor Explorer, and the desktop Angles tab.
 - Search presets now include `Strict Launch`, `Clean Negotiation`, `Safe Travel`, and `Conservative Money` to fill those filters quickly.
@@ -55,13 +57,13 @@ A private work-in-progress application for electional astrology: transits, aspec
 - The chart wheel now uses a cleaner canvas, subtler rings, visible degree ticks, polished angle badges, and better marker depth.
 - Timing and location context is now shown above the wheel with compact search/selected-window cards.
 - Focus Wheel mode hides the side panels for chart inspection and can be toggled with `F11`.
-- A reference-style View Page strip below the chart opens Interpretation, Aspects, Aspectarian, Point Data, Medieval, Conditions, Chart Data, and wheel export.
+- A compact View Page selector below the chart opens the full interpretation/detail pages while keeping Search, Aspect Strength, Chart Data, and wheel export close at hand.
 - Timing controls now support fine adjustments with `-15m`, `-5m`, `+5m`, and `+15m` buttons.
 - A Timing detail tab summarizes next exact contact, next support, and next stress from the backend timing profile.
 - A Log detail tab records calculations, selected windows, saved reports/wheels, location changes, and focused chart points.
 - The desktop app remembers the last working session and saved reports include ranked candidate windows.
-- Scoreboard cards, report copy/view/save actions, and double-click window selection support a faster working session.
-- The scoreboard now surfaces objective fit alongside score, support, stress, angularity, stars, and rules.
+- The astrolabe-style judgment panel, report copy/view/save actions, and double-click window selection support a faster working session.
+- The judgment panel now surfaces objective fit alongside score, support, stress, angularity, stars, rules, strongest aspect, ASC lord, and 10th lord.
 - Chart planets are selectable and update the point-interpretation panel with dignity, angle, and aspect context.
 - The wheel center now masks aspect lines and clearly distinguishes search start time from selected ranked-window time.
 - The desktop layout now uses cleaner workflow sections, a calmer blue/ivory palette, and card-based candidate windows instead of a plain listbox.

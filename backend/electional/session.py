@@ -40,9 +40,10 @@ DEFAULT_DISPLAY_OPTIONS = {
     "show_nodes": False,
     "show_fixed_stars": False,
     "compact_wheel": True,
-    "wheel_zoom": 0.88,
+    "wheel_zoom": 0.98,
     "point_set": DEFAULT_POINT_SET_ID,
     "page_mode": "wheel",
+    "right_panel_theme": "astrolabe",
 }
 
 
@@ -62,6 +63,13 @@ def infer_page_mode_id(display_options: dict[str, Any]) -> str:
     if page_mode in {"wheel", "wheel-aspectarian", "classical-point-data", "medieval-data", "transit-search"}:
         return page_mode
     return "wheel"
+
+
+def infer_right_panel_theme(display_options: dict[str, Any]) -> str:
+    theme = str(display_options.get("right_panel_theme") or "").strip().lower()
+    if theme in {"astrolabe"}:
+        return theme
+    return "astrolabe"
 
 
 def load_session_state(path: Path = SESSION_PATH) -> dict[str, Any]:
@@ -133,8 +141,9 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
                 for key, default_value in DEFAULT_DISPLAY_OPTIONS.items()
                 if isinstance(default_value, bool)
             },
-            "wheel_zoom": max(0.76, min(1.04, wheel_zoom)),
+            "wheel_zoom": max(0.82, min(1.18, wheel_zoom)),
             "point_set": infer_point_set_id(display_options),
             "page_mode": infer_page_mode_id(display_options),
+            "right_panel_theme": infer_right_panel_theme(display_options),
         },
     }

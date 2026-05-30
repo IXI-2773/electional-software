@@ -29,11 +29,14 @@ The current Python slice includes:
 - Cached snapshot calculation and fast/deep search mode for large limited scans.
 - Desktop tooling for viewing and clearing the snapshot calculation cache.
 - Cleaner equal-width desktop control rows for timing, location, and search shortcuts.
-- Clearer desktop top navigation and wrapped ribbon action groups for advisor, decision, compare, factors, copy, search, map, help, and wheel export workflows.
+- Clearer desktop top navigation and tighter wrapped ribbon action groups for advisor, decision, compare, factors, day-report, copy, search, and map workflows.
+- A compact astrolabe-style judgment panel for score, strongest aspect, ASC lord, 10th lord, and top reasons.
 - Advisor text that turns scored supports/cautions into practical next tool recommendations.
 - Improve text that converts weak diagnostics into concrete timing, angle, Moon, and aspect adjustment moves.
 - Button Health diagnostics for top navigation, ribbon actions, page shortcuts, and detail-page targets.
 - Modernized desktop header, active navigation state, softer ribbon controls, and calmer workbench colors.
+- Larger, cleaner wheel rendering with stronger angle glyphs, sharper planet markers, and an outer unequal ecliptic constellation band.
+- Constellation diagnostics now clarify that spans follow approximate IAU ecliptic crossings, not full sky-polygon outlines.
 - Split angular scoring into benefic support, malefic pressure, luminary support, and neutral angle emphasis.
 - Angle testimony appears as structured `angleContext`, score diagnostics, report text, Factor Explorer output, and a desktop Angles tab.
 - A small standard-library JSON API.

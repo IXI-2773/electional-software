@@ -360,7 +360,7 @@ def build_election_report(
             )
             windows.append(snapshot_to_window(window_snapshot, location))
         ranked, rejections = split_ranked_windows(windows, search_config)
-        ranked = rank_search_windows(windows, search_config)
+        ranked = rank_search_windows(ranked, search_config)
 
     return {
         "snapshot": snapshot,

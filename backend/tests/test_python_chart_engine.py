@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from backend.electional.chart import build_election_report, build_snapshot, build_transit_windows, clear_snapshot_cache, snapshot_cache_info
-from backend.electional.ephemeris import get_planet_positions, lunar_phase_from_positions, signed_longitude_delta
+from backend.electional.ephemeris import format_zodiac_position, get_planet_positions, get_zodiac_position_for_system, lunar_phase_from_positions, signed_longitude_delta
 from backend.electional.fixed_stars import detect_fixed_star_contacts, fixed_star_positions
 from backend.electional.houses import calculate_angles, calculate_house_cusps, house_number
 from backend.electional.judgment import advanced_aspect_context, planet_condition_context, solar_visibility_diagnostic
-from backend.electional.locations import get_location
+from backend.electional.locations import LocationPreset, get_location, load_user_locations, save_user_locations
 from backend.electional.lunar_nodes import calculate_lunar_nodes, mean_node_tropical_longitude, true_node_tropical_longitude
 from backend.electional.planetary_hours import day_ruler_for_moment, planetary_hour_context
-from backend.electional.professional import calculation_backend_status
+from backend.electional.professional import calculation_backend_status, engine_name
 from backend.electional.rules import evaluate_electional_rules, nakshatra_for_longitude, solar_condition_for_body, tithi_from_phase
 from backend.electional.search import SearchConfig
 from backend.electional.systems import ayanamsha_for_system, get_zodiac_system
@@ -26,6 +28,15 @@ class PythonChartEngineTest(unittest.TestCase):
     def test_time_parser_accepts_desktop_am_pm_input(self) -> None:
         self.assertEqual(normalize_time_text("09:00 AM"), "09:00")
         self.assertEqual(normalize_time_text("9:30 PM"), "21:30")
+
+    def test_timezone_conversion_rejects_nonexistent_dst_time(self) -> None:
+        with self.assertRaisesRegex(ValueError, "does not exist"):
+            zoned_time_to_utc("2026-03-08", "02:30", "America/Los_Angeles")
+
+    def test_timezone_conversion_uses_first_ambiguous_dst_occurrence(self) -> None:
+        moment = zoned_time_to_utc("2026-11-01", "01:30", "America/Los_Angeles")
+
+        self.assertEqual(moment.isoformat(), "2026-11-01T08:30:00+00:00")
 
     def test_ephemeris_matches_jpl_fixture_tolerance(self) -> None:
         moment = zoned_time_to_utc("2026-05-26", "09:00", "America/Los_Angeles")
@@ -62,16 +73,75 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertAlmostEqual(tropical["Sun"]["longitude"] - sidereal["Sun"]["longitude"], 24.22, delta=0.05)
         self.assertEqual(sidereal["Sun"]["zodiac"]["sign"], "Taurus")
 
-    def test_astrolog_style_sidereal_offsets_are_available(self) -> None:
+    def test_professional_sidereal_ayanamshas_are_available(self) -> None:
         moment = zoned_time_to_utc("2026-05-26", "09:00", "America/Los_Angeles")
 
         lahiri = ayanamsha_for_system(moment, "sidereal-lahiri")
         fagan = ayanamsha_for_system(moment, "sidereal-fagan-bradley")
         krishnamurti = ayanamsha_for_system(moment, "sidereal-krishnamurti")
+        raman = ayanamsha_for_system(moment, "sidereal-raman")
 
         self.assertEqual(get_zodiac_system("Sidereal Fagan-Bradley").id, "sidereal-fagan-bradley")
-        self.assertAlmostEqual(lahiri - fagan, 0.883208, delta=0.0001)
-        self.assertAlmostEqual(krishnamurti - fagan, 0.98006, delta=0.0001)
+        self.assertAlmostEqual(lahiri, 24.2259, delta=0.001)
+        self.assertAlmostEqual(fagan, 25.1091, delta=0.001)
+        self.assertAlmostEqual(krishnamurti, 24.1290, delta=0.001)
+        self.assertAlmostEqual(raman, 22.7796, delta=0.001)
+
+    def test_true_13_sign_mode_uses_unequal_constellations_and_disables_traditional_scoring(self) -> None:
+        moment = zoned_time_to_utc("2026-06-04", "12:08", "America/Los_Angeles")
+        zodiac = get_zodiac_position_for_system(259.0, moment, "true-13-sign", tropical_longitude=259.0)
+        snapshot = build_snapshot(
+            "2026-06-04",
+            "12:08",
+            LocationPreset("user-indio-california-d", "Indio, California d", 33.7206, -116.2156, "America/Los_Angeles"),
+            "traditional-lilly",
+            None,
+            "true-13-sign",
+            "topocentric",
+        )
+
+        self.assertEqual(get_zodiac_system("True 13-Sign").id, "true-13-sign")
+        self.assertEqual(zodiac["sign"], "Ophiuchus")
+        self.assertEqual(zodiac["abbreviation"], "Oph")
+        self.assertIn("Ophiuchus", format_zodiac_position(zodiac))
+        self.assertFalse(snapshot["traditionalRulesEnabled"])
+        self.assertFalse(snapshot["ruleEvaluations"]["traditionalRulesEnabled"])
+        self.assertIn("disabled", snapshot["ruleEvaluations"]["traditionalRulesNote"].lower())
+        self.assertEqual(next(planet for planet in snapshot["positions"] if planet["name"] == "Sun")["dignity"]["score"], 0)
+
+    def test_indio_user_locations_are_corrected_to_real_indio_coordinates(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "locations.json"
+            save_user_locations(
+                [
+                    LocationPreset("user-indio-california", "Indio, California", 33.0522, -116.2437, "America/Los_Angeles"),
+                    LocationPreset("user-indio-california-d", "Indio, California d", 33.0522, -116.2437, "America/Los_Angeles"),
+                ],
+                path,
+            )
+            loaded = load_user_locations(path)
+
+        self.assertEqual([location.name for location in loaded], ["Indio, California", "Indio, California d"])
+        self.assertTrue(all(abs(location.latitude - 33.7206) < 0.0001 for location in loaded))
+        self.assertTrue(all(abs(location.longitude + 116.2156) < 0.0001 for location in loaded))
+
+    def test_indio_snapshot_validation_uses_corrected_profile(self) -> None:
+        snapshot = build_snapshot(
+            "2026-06-04",
+            "12:08",
+            LocationPreset("user-indio-california-d", "Indio, California d", 33.0522, -116.2437, "America/Los_Angeles"),
+            "traditional-lilly",
+            None,
+            "sidereal-fagan-bradley",
+            "topocentric",
+        )
+
+        validation = snapshot["locationValidation"]
+        self.assertTrue(validation["correctedKnownLocation"])
+        self.assertAlmostEqual(validation["latitude"], 33.7206, delta=0.0001)
+        self.assertAlmostEqual(validation["longitude"], -116.2156, delta=0.0001)
+        self.assertEqual(snapshot["formattedTime"], "Thu, Jun 4, 12:08 PM PDT")
+        self.assertTrue(any("Indio coordinates" in note for note in snapshot["calculationNotes"]))
 
     def test_fixed_stars_are_projected_into_selected_zodiac(self) -> None:
         moment = zoned_time_to_utc("2026-05-26", "09:00", "America/Los_Angeles")
@@ -408,7 +478,7 @@ class PythonChartEngineTest(unittest.TestCase):
         snapshot = build_snapshot("2026-05-26", "09:00", location, "traditional-lilly")
         windows = build_transit_windows("2026-05-26", "09:00", location, "traditional-lilly")
 
-        self.assertEqual(snapshot["engine"], "Astronomy Engine Python")
+        self.assertEqual(snapshot["engine"], engine_name())
         self.assertIn("calculationBackend", snapshot)
         self.assertIn("calculationNotes", snapshot)
         self.assertIn("ruleEvaluations", snapshot)
@@ -439,8 +509,28 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertTrue(all("motion" in planet for planet in snapshot["positions"]))
         self.assertTrue(all("declination" in planet for planet in snapshot["positions"]))
         self.assertTrue(all("constellation" in planet for planet in snapshot["positions"]))
+        self.assertTrue(any("anglePhase" in planet["closestAngle"] for planet in snapshot["positions"]))
         self.assertEqual(len(windows), 6)
         self.assertGreaterEqual(windows[0]["score"], windows[-1]["score"])
+
+    def test_full_snapshot_includes_refined_angle_timing(self) -> None:
+        location = get_location("los-angeles")
+        snapshot = build_snapshot("2026-05-26", "09:00", location, "traditional-lilly")
+        angular_planets = [
+            planet
+            for planet in snapshot["positions"]
+            if planet.get("isAngular") and isinstance(planet.get("closestAngle"), dict)
+        ]
+
+        self.assertTrue(angular_planets)
+        self.assertTrue(all("anglePhaseLabel" in planet["closestAngle"] for planet in angular_planets))
+        applying = [
+            planet
+            for planet in angular_planets
+            if planet["closestAngle"].get("isApplyingToAngle")
+        ]
+        if applying:
+            self.assertTrue(any(planet["closestAngle"].get("timeToAngleExactText") for planet in applying))
 
     def test_objective_changes_significator_selection(self) -> None:
         location = get_location("paris")

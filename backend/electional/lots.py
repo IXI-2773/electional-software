@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from .ephemeris import get_zodiac_position, normalize_degrees
+from datetime import datetime
+
+from .ephemeris import get_zodiac_position_for_system, normalize_degrees
 from .houses import closest_angle, house_number
 
 LOT_TOPICS = {
@@ -44,6 +46,8 @@ def calculate_lots(
     angles: list[dict[str, object]],
     house_cusps: list[dict[str, object]],
     house_system_id: str,
+    moment: datetime | None = None,
+    zodiac_system_id: str = "tropical",
 ) -> list[dict[str, object]]:
     ascendant = next(angle for angle in angles if angle["id"] == "asc")
     asc_longitude = float(ascendant["longitude"])
@@ -113,7 +117,7 @@ def calculate_lots(
                 "name": name,
                 "shortName": short_name,
                 "longitude": longitude,
-                "zodiac": get_zodiac_position(longitude),
+                "zodiac": get_zodiac_position_for_system(longitude, moment or datetime.now(), zodiac_system_id),
                 "house": house_number(longitude, float(ascendant["longitude"]), house_system_id, house_cusps),
                 "closestAngle": {
                     "id": nearest["id"],

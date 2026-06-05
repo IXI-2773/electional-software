@@ -9,7 +9,7 @@ from math import cos, floor, radians
 import astronomy
 
 from .professional import engine_name, swiss_ecliptic_coordinates
-from .systems import apply_zodiac_system
+from .systems import apply_zodiac_system, get_zodiac_system
 from .time_utils import astronomy_time_string
 
 ZODIAC_SIGNS = (
@@ -70,13 +70,56 @@ def get_zodiac_position(longitude: float) -> dict[str, object]:
 
     return {
         "sign": ZODIAC_SIGNS[sign_index],
+        "abbreviation": ZODIAC_SIGNS[sign_index][:2],
         "degree": degree,
         "minute": minute,
+        "kind": "sign",
     }
 
 
 def format_zodiac_position(zodiac: dict[str, object]) -> str:
-    return f"{zodiac['degree']} {zodiac['sign']} {int(zodiac['minute']):02d}"
+    sign = str(zodiac.get("sign") or zodiac.get("abbreviation") or "Unknown")
+    return f"{int(zodiac.get('degree', 0))} {sign} {int(zodiac.get('minute', 0)):02d}"
+
+
+def get_zodiac_position_for_system(
+    longitude: float,
+    moment: datetime,
+    system_id_or_name: str | None,
+    *,
+    tropical_longitude: float | None = None,
+) -> dict[str, object]:
+    system = get_zodiac_system(system_id_or_name)
+    if system.mode != "constellational":
+        return get_zodiac_position(longitude)
+
+    from .constellations import ECLIPTIC_CONSTELLATION_SPANS, constellation_for_longitude
+
+    reference_longitude = normalize_degrees(tropical_longitude if tropical_longitude is not None else longitude)
+    constellation = constellation_for_longitude(reference_longitude)
+    total_minutes = round(float(constellation["degreeIntoConstellation"]) * 60)
+    span_minutes = round(float(constellation["spanDegrees"]) * 60)
+    if total_minutes >= span_minutes:
+        next_span = constellation.get("nextConstellation", {})
+        if isinstance(next_span, dict) and next_span.get("name"):
+            return {
+                "sign": str(next_span.get("name")),
+                "abbreviation": str(next_span.get("abbreviation") or str(next_span.get("name"))[:3]),
+                "degree": 0,
+                "minute": 0,
+                "kind": "constellation",
+                "spanDegrees": float(next(item["end"] - item["start"]) % 360 or 360 for item in ECLIPTIC_CONSTELLATION_SPANS if item["id"] == next_span.get("id")),
+            }
+        total_minutes = max(0, span_minutes - 1)
+    degree, minute = divmod(total_minutes, 60)
+    return {
+        "sign": str(constellation["name"]),
+        "abbreviation": str(constellation["abbreviation"]),
+        "degree": int(degree),
+        "minute": int(minute),
+        "kind": "constellation",
+        "spanDegrees": float(constellation["spanDegrees"]),
+    }
 
 
 @lru_cache(maxsize=4096)
@@ -266,7 +309,7 @@ def get_planet_positions(
                 "longitude": longitude,
                 "tropicalLongitude": tropical_longitude,
                 "distanceAu": coordinates["distanceAu"],
-                "zodiac": get_zodiac_position(longitude),
+                "zodiac": get_zodiac_position_for_system(longitude, moment, zodiac_system_id, tropical_longitude=tropical_longitude),
                 "motion": motion,
                 "isRetrograde": motion["isRetrograde"],
             }

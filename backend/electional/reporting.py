@@ -7,6 +7,7 @@ from typing import Mapping
 BENEFIC_NAMES = {"Venus", "Jupiter"}
 CHALLENGING_NAMES = {"Mars", "Saturn"}
 
+from .aspect_highlights import aspect_strength, strongest_aspect_result
 from .chart import format_angle, format_position
 from .locations import LocationPreset
 from .presets import RULERS
@@ -83,6 +84,8 @@ def angle_testimony_lines(snapshot: dict[str, object]) -> list[str]:
                 (
                     f"- {factor.get('title', 'Angular body')}: "
                     f"{float(factor.get('distance', 0)):.1f} deg from {factor.get('angle', 'angle')} "
+                    f"{factor.get('phaseLabel', '') or ''} "
+                    f"{('exact in ' + str(factor.get('timeToExactText'))) if factor.get('timeToExactText') else ''} "
                     f"({float(factor.get('scoreImpact', 0)):+.1f})"
                 )
             )
@@ -335,7 +338,12 @@ def build_medieval_data_page(snapshot: dict[str, object]) -> str:
         f"Zodiac: {snapshot['zodiacSystem'].name}\n"
         f"House system: {snapshot['houseSystem'].name}\n"
         f"Ayanamsha: {float(snapshot['ayanamsha']):.3f} deg\n"
-        f"Score: {snapshot['score']}\n"
+        + (
+            "Traditional scoring: disabled in True 13-Sign mode\n"
+            if not snapshot.get("traditionalRulesEnabled", True)
+            else ""
+        )
+        + f"Score: {snapshot['score']}\n"
         f"Lunar phase: {format_lunar_phase(snapshot)}\n\n"
         "Verdict\n"
         + "\n".join(evaluation_lines)
@@ -1265,39 +1273,154 @@ def _aspect_strength_score(
     positions_by_name: Mapping[str, Mapping[str, object]],
     priority_bodies: set[str],
 ) -> float:
-    bodies = aspect.get("bodies", [])
-    if not isinstance(bodies, list) or len(bodies) != 2:
-        return -999.0
-    aspect_name = str(aspect.get("aspectName") or "")
-    score = {
-        "Conjunction": 4.0,
-        "Opposition": 3.4,
-        "Trine": 3.2,
-        "Square": 3.0,
-        "Sextile": 2.2,
-    }.get(aspect_name, 1.5)
-    orb = _float_value(aspect.get("orb"), 8.0)
-    score += max(0.0, 6.0 - orb) * 1.4
-    if aspect.get("isApplying"):
-        score += 1.6
-    elif str(aspect.get("phaseLabel", "")).lower().startswith("applying"):
-        score += 1.2
-    elif str(aspect.get("phaseLabel", "")).lower().startswith("separating"):
-        score -= 0.4
-    if aspect.get("tone") in {"support", "stress"}:
-        score += 0.5
-    for body in bodies:
-        name = str(body)
-        planet = positions_by_name.get(name)
-        if name in priority_bodies:
-            score += 2.4
-        if name in {"Moon", "Sun"}:
-            score += 0.4
-        if planet:
-            _house_label, house_score = _house_class(planet.get("house"))
-            _dignity_label, dignity_score = _dignity_label_and_score(planet)
-            score += house_score + abs(dignity_score) * 0.35
-    return score
+    return aspect_strength(aspect, positions_by_name, priority_bodies)
+
+
+def format_aspect_highlight(result: Mapping[str, object] | None) -> str:
+    """Render one strongest-aspect result for dashboards and reports."""
+
+    if not result:
+        return "No selected major aspect in orb."
+    label = _aspect_label(result)
+    tone = str(result.get("tone") or "mixed").title()
+    phase = str(result.get("phaseLabel") or ("Applying" if result.get("isApplying") else "Separating"))
+    orb = str(result.get("orbText") or f"{_float_value(result.get('orb')):.2f} deg")
+    exact = str(result.get("perfectsAtText") or result.get("timeToExactText") or "exact timing n/a")
+    time = str(result.get("formattedTime") or "")
+    strength = _float_value(result.get("strength"))
+    relevance = "supportive electional contact" if result.get("tone") == "support" else "stress to manage" if result.get("tone") == "stress" else "mixed testimony"
+    text = f"{label} | {tone} | orb {orb} | {phase.lower()} | peak {exact} | strength {strength:.1f} | {relevance}"
+    return f"{text}\n{time}" if time else text
+
+
+def format_aspect_highlight_dashboard(highlights: Mapping[str, object] | None) -> str:
+    """Compact current/day/24-hour strongest-aspect block."""
+
+    if not highlights:
+        return "Aspect dashboard unavailable."
+    sections = (
+        ("Current", highlights.get("current")),
+        ("Local Day", highlights.get("localDay")),
+        ("Next 24h", highlights.get("rolling24Hours")),
+    )
+    lines: list[str] = []
+    for title, result in sections:
+        lines.append(title)
+        lines.append(format_aspect_highlight(result if isinstance(result, Mapping) else None))
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def _analysis_score_band(score: int) -> str:
+    if score >= 90:
+        return "Prime"
+    if score >= 80:
+        return "Strong"
+    if score >= 70:
+        return "Workable"
+    if score >= 60:
+        return "Mixed"
+    return "Weak"
+
+
+def build_analysis_page(
+    snapshot: dict[str, object],
+    windows: list[dict[str, object]],
+    location: object,
+    highlights: Mapping[str, object] | None = None,
+    search_summary: str = "",
+    rejection_summary: Mapping[str, object] | None = None,
+) -> str:
+    """Full electional analysis page content."""
+
+    traditional_enabled = bool(snapshot.get("traditionalRulesEnabled", True))
+    rejection_summary = rejection_summary or {}
+    breakdown = snapshot.get("scoreBreakdown", {})
+    diagnostics = breakdown.get("diagnostics", {}) if isinstance(breakdown, Mapping) else {}
+    strongest = strongest_aspect_result(snapshot)
+    timeline = highlights.get("timeline", []) if isinstance(highlights, Mapping) else []
+    rolling = highlights.get("rollingTimeline", []) if isinstance(highlights, Mapping) else []
+    location_name = getattr(location, "name", "Location unavailable")
+    timezone = getattr(location, "timezone", "Timezone unavailable")
+    score = int(snapshot.get("score", 0) or 0)
+    rules_note = (
+        "Traditional dignity/rulership sections are unavailable in True 13-Sign mode; aspect, house, motion, and angularity testimony remain active."
+        if not traditional_enabled
+        else "Traditional dignity and rulership testimony is enabled for this zodiac framework."
+    )
+    diagnostic_lines = score_diagnostic_lines(snapshot)
+    if isinstance(diagnostics, Mapping):
+        diagnostic_lines.extend(
+            f"- {label.title()}: {value.get('summary', value.get('band', 'n/a'))}"
+            for label, value in diagnostics.items()
+            if isinstance(value, Mapping) and label in {"readiness", "cleanliness", "volatility", "confidence"}
+        )
+
+    lines = [
+        "Analysis",
+        "",
+        "Executive Judgment And Recommendation",
+        f"- Score {score} / {_analysis_score_band(score)}.",
+        f"- Recommendation: {snapshot.get('title', 'Electional window')}. {snapshot.get('note', '')}",
+        f"- Strongest at displayed time: {format_aspect_highlight(strongest)}",
+        "",
+        "Current, Local-Day, And Rolling-24-Hour Aspect Highlights",
+        format_aspect_highlight_dashboard(highlights),
+        "",
+        "Local-Day Aspect Timeline",
+    ]
+    lines.extend(
+        f"- {format_aspect_highlight(item)}"
+        for item in timeline[:8]
+        if isinstance(item, Mapping)
+    )
+    if len(lines) and lines[-1] == "Local-Day Aspect Timeline":
+        lines.append("- No local-day aspect highlights available.")
+
+    lines.extend(["", "Rolling Next-24-Hour Aspect Timeline"])
+    rolling_lines = [
+        f"- {format_aspect_highlight(item)}"
+        for item in rolling[:8]
+        if isinstance(item, Mapping)
+    ]
+    lines.extend(rolling_lines or ["- No rolling-24-hour aspect highlights available."])
+    lines.extend(
+        [
+            "",
+            "Aspectarian",
+            format_aspectarian(snapshot),
+            "",
+            "Moon Condition And Timing",
+            "\n".join(judgment_context_lines(snapshot, "moonCondition")),
+            "",
+            "Planet Condition, Motion, Dignity Availability, And Angularity",
+            rules_note,
+            "\n".join(judgment_context_lines(snapshot, "planetConditionContext")),
+            "",
+            "Houses, Cusps, Rulers, And Angles",
+            "\n".join(angle_testimony_lines(snapshot)),
+            "\n".join(judgment_context_lines(snapshot, "houseRulerContext")) if traditional_enabled else "House ruler judgment unavailable in True 13-Sign mode.",
+            "",
+            "Support, Stress, Readiness, Cleanliness, Volatility, And Confidence",
+            f"- Score explanation: {format_score_breakdown(snapshot)}",
+            "\n".join(diagnostic_lines),
+            "",
+            "Electional Rules, Warnings, And Rejected-Window Reasons",
+            "\n".join(rule_lines(snapshot)) or "- No active rule warnings/support lines.",
+            f"- Search summary: {search_summary or 'Search summary unavailable.'}",
+            f"- Rejections: {dict(rejection_summary)}",
+            "",
+            "Location, Timezone, Zodiac, House System, And Engine Validation",
+            f"- Location: {location_name}",
+            f"- Timezone: {timezone}",
+            f"- Chart time: {snapshot.get('formattedTime', 'time unavailable')}",
+            f"- Zodiac: {snapshot['zodiacSystem'].name}",
+            f"- House system: {snapshot['houseSystem'].name}",
+            f"- Engine: {snapshot.get('engine', 'engine unavailable')}",
+            f"- Candidate windows in current search: {len(windows)}",
+        ]
+    )
+    return "\n".join(str(line) for line in lines if line is not None)
 
 
 def strongest_aspect_analysis_lines(snapshot: dict[str, object]) -> list[str]:
@@ -1546,7 +1669,12 @@ def build_report_text(
         f"Zodiac system: {selected_window['zodiacSystem'].name}\n"
         f"House system: {selected_window['houseSystem'].name}\n"
         f"Ayanamsha: {float(selected_window['ayanamsha']):.3f} deg\n"
-        f"Score: {selected_window['score']}\n"
+        + (
+            "Traditional scoring: disabled in True 13-Sign mode\n"
+            if not selected_window.get("traditionalRulesEnabled", True)
+            else ""
+        )
+        + f"Score: {selected_window['score']}\n"
         f"Lunar phase: {format_lunar_phase(selected_window)}\n"
         f"Aspect timing: {selected_window.get('timingProfile', {}).get('summary', 'Timing profile unavailable.')}\n"
         f"Score explanation: {format_score_breakdown(selected_window)}\n"

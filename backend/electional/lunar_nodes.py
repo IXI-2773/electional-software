@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from math import radians, sin
 
-from .ephemeris import get_zodiac_position, normalize_degrees
+from .ephemeris import get_zodiac_position_for_system, normalize_degrees
 from .houses import closest_angle, house_number, julian_day
 from .systems import apply_zodiac_system
 
@@ -71,7 +71,7 @@ def calculate_lunar_nodes(
                 "shortName": short_name,
                 "longitude": longitude,
                 "tropicalLongitude": tropical_longitude,
-                "zodiac": get_zodiac_position(longitude),
+                "zodiac": get_zodiac_position_for_system(longitude, moment, zodiac_system_id, tropical_longitude=tropical_longitude),
                 "house": house_number(longitude, float(ascendant["longitude"]), house_system_id, house_cusps),
                 "closestAngle": {
                     "id": nearest["id"],

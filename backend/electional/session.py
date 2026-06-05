@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from .locations import home_location_for_app
+from .locations import corrected_known_location_values, home_location_for_app
 from .point_sets import DEFAULT_POINT_SET_ID, get_point_set
 from .presets import ELECTIONAL_PRESETS
 from .search import (
@@ -18,6 +18,7 @@ from .search import (
     DEFAULT_MINIMUM_SCORE,
     DEFAULT_SCAN_HOURS,
     DEFAULT_STEP_MINUTES,
+    SEARCH_PRESET_NAMES,
 )
 from .storage import load_json_dict, save_json
 from .systems import DEFAULT_HOUSE_SYSTEM_ID, DEFAULT_ZODIAC_SYSTEM_ID, get_house_system, get_zodiac_system
@@ -39,6 +40,7 @@ DEFAULT_DISPLAY_OPTIONS = {
     "show_lots": False,
     "show_nodes": False,
     "show_fixed_stars": False,
+    "show_score_overlay": True,
     "compact_wheel": True,
     "wheel_zoom": 0.98,
     "point_set": DEFAULT_POINT_SET_ID,
@@ -60,14 +62,14 @@ def infer_point_set_id(display_options: dict[str, Any]) -> str:
 
 def infer_page_mode_id(display_options: dict[str, Any]) -> str:
     page_mode = str(display_options.get("page_mode") or "").strip().lower()
-    if page_mode in {"wheel", "wheel-aspectarian", "classical-point-data", "medieval-data", "transit-search"}:
+    if page_mode in {"wheel", "wheel-aspectarian", "analysis", "classical-point-data", "medieval-data", "transit-search"}:
         return page_mode
     return "wheel"
 
 
 def infer_right_panel_theme(display_options: dict[str, Any]) -> str:
     theme = str(display_options.get("right_panel_theme") or "").strip().lower()
-    if theme in {"astrolabe"}:
+    if theme in {"astrolabe", "classic-natal"}:
         return theme
     return "astrolabe"
 
@@ -95,6 +97,17 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
         latitude = f"{default_location.latitude:.4f}"
         longitude = f"{default_location.longitude:.4f}"
         timezone = default_location.timezone
+    else:
+        corrected_latitude, corrected_longitude, corrected_timezone, changed = corrected_known_location_values(
+            location_name,
+            float(latitude),
+            float(longitude),
+            timezone,
+        )
+        if changed:
+            latitude = f"{corrected_latitude:.4f}"
+            longitude = f"{corrected_longitude:.4f}"
+            timezone = corrected_timezone
 
     preset_names = {preset.name for preset in ELECTIONAL_PRESETS}
     objective = str(state.get("objective") or OBJECTIVES[0])
@@ -123,6 +136,11 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
         "aspects": {str(key): bool(value) for key, value in aspects.items()},
         "scan_hours": str(state.get("scan_hours") or DEFAULT_SCAN_HOURS),
         "step_minutes": str(state.get("step_minutes") or DEFAULT_STEP_MINUTES),
+        "search_preset": (
+            str(state.get("search_preset") or SEARCH_PRESET_NAMES[0])
+            if str(state.get("search_preset") or SEARCH_PRESET_NAMES[0]) in SEARCH_PRESET_NAMES
+            else SEARCH_PRESET_NAMES[0]
+        ),
         "minimum_score": str(state.get("minimum_score") or DEFAULT_MINIMUM_SCORE),
         "minimum_fit": str(state.get("minimum_fit") or DEFAULT_MINIMUM_FIT),
         "minimum_confidence": str(state.get("minimum_confidence") or DEFAULT_MINIMUM_CONFIDENCE),

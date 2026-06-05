@@ -252,12 +252,17 @@ def get_essential_dignity(planet: Mapping[str, object]) -> dict[str, object]:
 def apply_dignities(
     positions: Sequence[Mapping[str, object]],
     preset: ElectionalPreset,
+    *,
+    enabled: bool = True,
 ) -> list[dict[str, object]]:
     dignified = []
     for position in positions:
         planet = dict(position)
         planet["isPresetPoint"] = uses_point(preset, str(planet["name"]))
-        planet["dignity"] = get_essential_dignity(planet)
+        if enabled:
+            planet["dignity"] = get_essential_dignity(planet)
+        else:
+            planet["dignity"] = {"label": "Unavailable in 13-sign", "score": 0, "boundLord": None, "isOwnBound": False}
         dignified.append(planet)
     return dignified
 

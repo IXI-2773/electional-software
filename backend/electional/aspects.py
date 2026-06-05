@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from math import floor
-from typing import Iterable, Mapping, Sequence
+from typing import Callable, Iterable, Mapping, Sequence
 
 
 @dataclass(frozen=True)
@@ -64,6 +64,8 @@ ASPECTS: tuple[Aspect, ...] = (
 ASPECT_BY_ID = {aspect.id: aspect for aspect in ASPECTS}
 ASPECT_PHASE_EPSILON = 0.02
 MAX_PERFECTION_DAYS = 14.0
+EXACT_TIMING_TOLERANCE = 0.02
+LongitudeResolver = Callable[[str, datetime], float]
 
 
 def angular_distance(first_longitude: float, second_longitude: float) -> float:
@@ -169,6 +171,7 @@ def aspect_timing(aspect: Mapping[str, object], moment: datetime | None = None, 
             "perfectsAt": None,
             "perfectsAtText": "",
             "timingQuality": "not applying",
+            "timingMethod": "not applicable",
         }
     try:
         orb = float(aspect.get("orb", 0))
@@ -180,6 +183,7 @@ def aspect_timing(aspect: Mapping[str, object], moment: datetime | None = None, 
             "perfectsAt": None,
             "perfectsAtText": "",
             "timingQuality": "unknown",
+            "timingMethod": "unavailable",
         }
     estimate = aspect.get("daysToExactEstimate")
     if estimate is not None:
@@ -195,6 +199,7 @@ def aspect_timing(aspect: Mapping[str, object], moment: datetime | None = None, 
                 "perfectsAt": None,
                 "perfectsAtText": "",
                 "timingQuality": timing_quality,
+                "timingMethod": "linear speed",
             }
             if moment is not None and days <= MAX_PERFECTION_DAYS:
                 perfection = moment + timedelta(days=days)
@@ -214,6 +219,7 @@ def aspect_timing(aspect: Mapping[str, object], moment: datetime | None = None, 
             "perfectsAt": None,
             "perfectsAtText": "",
             "timingQuality": "unknown",
+            "timingMethod": "unavailable",
         }
 
     days = orb / abs(change)
@@ -224,6 +230,7 @@ def aspect_timing(aspect: Mapping[str, object], moment: datetime | None = None, 
         "perfectsAt": None,
         "perfectsAtText": "",
         "timingQuality": timing_quality,
+        "timingMethod": "linear speed",
     }
     if moment is not None and days <= MAX_PERFECTION_DAYS:
         perfection = moment + timedelta(days=days)
@@ -237,12 +244,103 @@ def aspect_timing(aspect: Mapping[str, object], moment: datetime | None = None, 
     return payload
 
 
+def refine_aspect_timing(
+    aspect: Mapping[str, object],
+    moment: datetime,
+    timezone_name: str | None,
+    longitude_resolver: LongitudeResolver,
+) -> dict[str, object]:
+    """Refine an applying aspect's linear estimate against real ephemeris positions."""
+    baseline = aspect_timing(aspect, moment, timezone_name)
+    try:
+        initial_days = float(baseline["daysToExact"])
+        body_names = [str(name) for name in aspect["bodies"]]
+        exact_angle = float(aspect["exactAngle"])
+    except (KeyError, TypeError, ValueError):
+        return baseline
+    if len(body_names) != 2 or not 0 <= initial_days <= MAX_PERFECTION_DAYS:
+        return baseline
+
+    def orb_at(days: float) -> float:
+        sample_time = moment + timedelta(days=days)
+        first = longitude_resolver(body_names[0], sample_time)
+        second = longitude_resolver(body_names[1], sample_time)
+        return abs(angular_distance(first, second) - exact_angle)
+
+    radius = max(0.2, min(1.5, initial_days * 0.35))
+    low = max(0.0, initial_days - radius)
+    high = min(MAX_PERFECTION_DAYS, initial_days + radius)
+    sample_count = 8
+    samples = [
+        (low + (high - low) * index / sample_count, 0.0)
+        for index in range(sample_count + 1)
+    ]
+    try:
+        samples = [(days, orb_at(days)) for days, _ in samples]
+    except (KeyError, TypeError, ValueError):
+        return baseline
+    best_index = min(range(len(samples)), key=lambda index: samples[index][1])
+    bracket_low = samples[max(0, best_index - 1)][0]
+    bracket_high = samples[min(len(samples) - 1, best_index + 1)][0]
+
+    # Golden-section minimization is stable at conjunction/opposition wrap points
+    # because it works on absolute orb rather than a discontinuous signed angle.
+    ratio = (5**0.5 - 1) / 2
+    left = bracket_high - ratio * (bracket_high - bracket_low)
+    right = bracket_low + ratio * (bracket_high - bracket_low)
+    left_orb = orb_at(left)
+    right_orb = orb_at(right)
+    for _ in range(24):
+        if left_orb <= right_orb:
+            bracket_high = right
+            right = left
+            right_orb = left_orb
+            left = bracket_high - ratio * (bracket_high - bracket_low)
+            left_orb = orb_at(left)
+        else:
+            bracket_low = left
+            left = right
+            left_orb = right_orb
+            right = bracket_low + ratio * (bracket_high - bracket_low)
+            right_orb = orb_at(right)
+
+    refined_days = (bracket_low + bracket_high) / 2
+    refined_orb = orb_at(refined_days)
+    current_orb = float(aspect.get("orb", 999))
+    if refined_orb > EXACT_TIMING_TOLERANCE or refined_orb >= current_orb:
+        return baseline
+
+    perfection = moment + timedelta(days=refined_days)
+    if timezone_name:
+        from .time_utils import format_in_timezone
+
+        perfection_text = format_in_timezone(perfection, timezone_name)
+    else:
+        perfection_text = perfection.isoformat()
+    return {
+        "daysToExact": refined_days,
+        "timeToExactText": format_duration(refined_days),
+        "perfectsAt": perfection,
+        "perfectsAtText": perfection_text,
+        "timingQuality": "soon" if refined_days <= 1 else "near-term" if refined_days <= 3 else "later",
+        "timingMethod": "ephemeris refined",
+        "perfectionOrb": refined_orb,
+    }
+
+
 def annotate_aspect_timings(
     aspects: Sequence[Mapping[str, object]],
     moment: datetime | None = None,
     timezone_name: str | None = None,
+    longitude_resolver: LongitudeResolver | None = None,
 ) -> list[dict[str, object]]:
-    return [{**dict(aspect), **aspect_timing(aspect, moment, timezone_name)} for aspect in aspects]
+    annotated = []
+    for aspect in aspects:
+        timing = aspect_timing(aspect, moment, timezone_name)
+        if moment is not None and longitude_resolver is not None and aspect.get("isApplying"):
+            timing = refine_aspect_timing(aspect, moment, timezone_name, longitude_resolver)
+        annotated.append({**dict(aspect), **timing})
+    return annotated
 
 
 def detect_aspects(
@@ -251,6 +349,7 @@ def detect_aspects(
     aspect_orbs: Mapping[str, float] | None = None,
     moment: datetime | None = None,
     timezone_name: str | None = None,
+    longitude_resolver: LongitudeResolver | None = None,
 ) -> list[dict[str, object]]:
     selected = [ASPECT_BY_ID[aspect_id] for aspect_id in selected_aspect_ids if aspect_id in ASPECT_BY_ID]
     orb_overrides = aspect_orbs or {}
@@ -283,5 +382,5 @@ def detect_aspects(
                         }
                     )
 
-    timed = annotate_aspect_timings(detected, moment, timezone_name)
+    timed = annotate_aspect_timings(detected, moment, timezone_name, longitude_resolver)
     return sorted(timed, key=lambda aspect: float(aspect["orb"]))

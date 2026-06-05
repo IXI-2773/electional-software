@@ -160,6 +160,7 @@ def evaluate_electional_rules(
     planetary_hour: Mapping[str, object] | None = None,
     constellation_context: Mapping[str, object] | None = None,
     judgment_contexts: Mapping[str, Mapping[str, object]] | None = None,
+    traditional_rules_enabled: bool = True,
 ) -> dict[str, object]:
     by_name = {str(planet.get("name")): planet for planet in positions}
     sun = by_name.get("Sun")
@@ -248,11 +249,17 @@ def evaluate_electional_rules(
                     }
                 )
 
-    if isinstance(judgment_contexts, Mapping):
+    if traditional_rules_enabled and isinstance(judgment_contexts, Mapping):
         rules.extend(judgment_rule_factors(judgment_contexts))
 
     return {
         "zodiacSystemId": zodiac_system_id,
+        "traditionalRulesEnabled": traditional_rules_enabled,
+        "traditionalRulesNote": (
+            "Traditional rulership and dignity rules are disabled in True 13-Sign mode."
+            if not traditional_rules_enabled
+            else ""
+        ),
         "lunarContext": lunar_context,
         "planetaryHour": dict(planetary_hour or {}),
         "constellationContext": dict(constellation_context or {}),

@@ -105,6 +105,28 @@ class ElectionalCoreTest(unittest.TestCase):
         self.assertIsNone(timing["daysToExact"])
         self.assertEqual(timing["timingQuality"], "not applying")
 
+    def test_ephemeris_refinement_replaces_linear_aspect_estimate(self) -> None:
+        start = datetime(2026, 5, 26, 16, tzinfo=timezone.utc)
+
+        def longitude_at(body_name: str, moment: datetime) -> float:
+            elapsed_days = (moment - start).total_seconds() / 86400
+            return 0 if body_name == "Venus" else 118 + 5 * elapsed_days
+
+        detected = detect_aspects(
+            [
+                position("Venus", 0, "Aries", daily_change=0),
+                position("Jupiter", 118, "Cancer", daily_change=4),
+            ],
+            ["trine"],
+            moment=start,
+            timezone_name="America/Los_Angeles",
+            longitude_resolver=longitude_at,
+        )
+
+        self.assertAlmostEqual(float(detected[0]["daysToExact"]), 0.4, delta=0.001)
+        self.assertEqual(detected[0]["timingMethod"], "ephemeris refined")
+        self.assertLess(float(detected[0]["perfectionOrb"]), 0.02)
+
     def test_timing_profile_summarizes_next_support_and_stress(self) -> None:
         profile = timing_profile(
             [
@@ -229,6 +251,39 @@ class ElectionalCoreTest(unittest.TestCase):
         self.assertIn("angle-malefic-pressure", reasons)
         self.assertIn("angles", breakdown["diagnostics"])
         self.assertIn("Jupiter strengthens MC", breakdown["diagnostics"]["angles"]["summary"])
+
+    def test_angle_testimony_weights_applying_angles_above_separating(self) -> None:
+        applying = [
+            {
+                **position("Jupiter", 95, "Cancer", is_angular=True, distance=1),
+                "closestAngle": {
+                    "id": "mc",
+                    "shortName": "MC",
+                    "distance": 1,
+                    "anglePhase": "applying",
+                    "anglePhaseLabel": "Approaching angle",
+                    "timeToAngleExactText": "18m",
+                },
+            }
+        ]
+        separating = [
+            {
+                **position("Jupiter", 95, "Cancer", is_angular=True, distance=1),
+                "closestAngle": {
+                    "id": "mc",
+                    "shortName": "MC",
+                    "distance": 1,
+                    "anglePhase": "separating",
+                    "anglePhaseLabel": "Leaving angle",
+                },
+            }
+        ]
+
+        applying_testimony = angle_testimony(applying)
+        separating_testimony = angle_testimony(separating)
+
+        self.assertGreater(applying_testimony["score"], separating_testimony["score"])
+        self.assertIn("exact in 18m", applying_testimony["factors"][0]["detail"])
 
     def test_score_breakdown_counts_applying_aspect_pressure(self) -> None:
         preset = get_preset("traditional-lilly")

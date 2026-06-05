@@ -8,12 +8,20 @@ from functools import lru_cache
 from typing import Iterable
 
 from .aspects import detect_aspects
+from .angle_timing import annotate_angle_timings
 from .constellations import annotate_points_with_constellations, chart_constellation_context
-from .ephemeris import ENGINE_NAME, format_zodiac_position, get_planet_positions, lunar_phase_from_positions
+from .ephemeris import format_zodiac_position, get_ecliptic_coordinates, get_planet_positions, lunar_phase_from_positions
 from .fixed_stars import detect_fixed_star_contacts, fixed_star_positions
 from .houses import calculate_angles, calculate_house_cusps, enrich_positions_with_houses
 from .judgment import DEFAULT_OBJECTIVE, build_judgment_contexts, fixed_star_context
-from .locations import LocationPreset
+from .locations import (
+    INDIO_LATITUDE,
+    INDIO_LONGITUDE,
+    INDIO_TIMEZONE,
+    LocationPreset,
+    corrected_known_location,
+    is_known_indio_name,
+)
 from .lots import calculate_lots
 from .lunar_nodes import calculate_lunar_nodes
 from .planetary_hours import planetary_hour_context
@@ -22,7 +30,7 @@ from .professional import calculation_backend_status
 from .rules import evaluate_electional_rules
 from .scoring import score_breakdown
 from .search import DEFAULT_SEARCH_CONFIG, SearchConfig, fast_deep_candidates, rank_search_windows, rejection_summary, split_ranked_windows
-from .systems import ayanamsha_for_system, get_house_system, get_zodiac_system
+from .systems import ayanamsha_for_system, get_house_system, get_zodiac_system, zodiac_supports_traditional_rules
 from .time_utils import format_in_timezone, zoned_time_to_utc
 from .timing import timing_profile
 
@@ -45,6 +53,29 @@ def describe_window(detected_aspects: list[dict[str, object]], positions: list[d
     if strongest.get("isApplying") and strongest.get("timeToExactText"):
         return f"Strongest contact: {strongest['label']} with {strongest['orbText']} orb, {phase}; exact in {strongest['timeToExactText']}."
     return f"Strongest contact: {strongest['label']} with {strongest['orbText']} orb, {phase}."
+
+
+def build_location_validation_summary(location: LocationPreset, zodiac_system_id: str) -> dict[str, object]:
+    corrected_location, corrected = corrected_known_location(location)
+    notes: list[str] = []
+    if corrected or is_known_indio_name(location.name):
+        notes.append(
+            f"Using corrected Indio coordinates {INDIO_LATITUDE:.4f}, {INDIO_LONGITUDE:.4f} ({INDIO_TIMEZONE})."
+        )
+    zodiac_system = get_zodiac_system(zodiac_system_id)
+    if zodiac_system.mode == "constellational":
+        notes.append("True 13-Sign zodiac is active; traditional dignity and rulership scoring is disabled.")
+    notes.append("CapricornPROMETHEUS comparison is ready for an external exported chart, but no reference file is attached to this session yet.")
+    return {
+        "locationName": corrected_location.name,
+        "latitude": corrected_location.latitude,
+        "longitude": corrected_location.longitude,
+        "timezone": corrected_location.timezone,
+        "zodiacSystem": zodiac_system.name,
+        "correctedKnownLocation": corrected or is_known_indio_name(location.name),
+        "externalReferenceAvailable": False,
+        "notes": notes,
+    }
 
 
 def build_snapshot_for_moment(
@@ -92,9 +123,11 @@ def _cached_snapshot_for_moment(
 ) -> dict[str, object]:
     moment = datetime.fromisoformat(moment_iso)
     location = LocationPreset(location_id, location_name, latitude, longitude, timezone)
+    location, _known_location_corrected = corrected_known_location(location)
     preset = get_preset(preset_id)
     zodiac_system = get_zodiac_system(zodiac_system_id)
     house_system = get_house_system(house_system_id)
+    traditional_rules_enabled = zodiac_supports_traditional_rules(zodiac_system.id)
     is_fast = calculation_mode == "fast"
     angles = annotate_points_with_constellations(calculate_angles(moment, location.latitude, location.longitude, zodiac_system.id))
     house_cusps = calculate_house_cusps(moment, location.latitude, location.longitude, zodiac_system.id, house_system.id, angles)
@@ -104,18 +137,35 @@ def _cached_snapshot_for_moment(
         house_system.id,
         house_cusps,
     )
-    positions = annotate_points_with_constellations(apply_dignities(base_positions, preset))
+    if not is_fast:
+        base_positions = annotate_angle_timings(base_positions, moment, location, zodiac_system.id)
+    positions = annotate_points_with_constellations(apply_dignities(base_positions, preset, enabled=traditional_rules_enabled))
     lunar_phase = lunar_phase_from_positions(positions)
-    lots = [] if is_fast else calculate_lots(positions, angles, house_cusps, house_system.id)
+    lots = [] if is_fast else calculate_lots(positions, angles, house_cusps, house_system.id, moment, zodiac_system.id)
     lunar_nodes = [] if is_fast else calculate_lunar_nodes(moment, zodiac_system.id, angles, house_cusps, house_system.id)
-    detected = detect_aspects(filter_positions_for_preset(positions, preset), aspects, preset.aspect_orbs, moment, location.timezone)
+    longitude_cache: dict[tuple[str, datetime], float] = {}
+
+    def resolve_longitude(body_name: str, sample_moment: datetime) -> float:
+        key = (body_name, sample_moment)
+        if key not in longitude_cache:
+            longitude_cache[key] = float(get_ecliptic_coordinates(body_name, sample_moment)["longitude"])
+        return longitude_cache[key]
+
+    detected = detect_aspects(
+        filter_positions_for_preset(positions, preset),
+        aspects,
+        preset.aspect_orbs,
+        moment,
+        location.timezone,
+        None if is_fast else resolve_longitude,
+    )
     timing = timing_profile(detected)
     fixed_stars = [] if is_fast else fixed_star_positions(moment, zodiac_system.id)
     fixed_star_contacts = [] if is_fast else detect_fixed_star_contacts([*positions, *angles], fixed_stars)
     fixed_star_judgment = fixed_star_context(fixed_star_contacts)
     planetary_hour = planetary_hour_context(moment, location)
     constellation_context = chart_constellation_context(moment, location, positions, angles)
-    judgment_contexts = build_judgment_contexts(positions, angles, house_cusps, detected, lunar_phase, objective)
+    judgment_contexts = build_judgment_contexts(positions, angles, house_cusps, detected, lunar_phase, objective) if traditional_rules_enabled else {}
     rule_evaluations = evaluate_electional_rules(
         positions,
         lunar_phase,
@@ -123,19 +173,30 @@ def _cached_snapshot_for_moment(
         planetary_hour,
         constellation_context,
         judgment_contexts,
+        traditional_rules_enabled=traditional_rules_enabled,
     )
     breakdown = score_breakdown(detected, positions, preset, fixed_star_contacts, rule_evaluations, objective)
     diagnostics = breakdown.get("diagnostics", {}) if isinstance(breakdown, dict) else {}
     angle_context = diagnostics.get("angles", {}) if isinstance(diagnostics, dict) else {}
     backend_status = calculation_backend_status()
+    location_validation = build_location_validation_summary(location, zodiac_system.id)
 
     return {
         "date": moment,
         "formattedTime": format_in_timezone(moment, location.timezone),
         "calculationMode": calculation_mode,
-        "engine": ENGINE_NAME,
+        "engine": str(backend_status["activeEngine"]),
         "calculationBackend": backend_status,
-        "calculationNotes": calculation_notes(backend_status, house_system.id, house_cusps, location.latitude, planetary_hour),
+        "calculationNotes": calculation_notes(
+            backend_status,
+            house_system.id,
+            house_cusps,
+            location.latitude,
+            planetary_hour,
+            traditional_rules_enabled=traditional_rules_enabled,
+            location_validation=location_validation,
+            zodiac_system_name=zodiac_system.name,
+        ),
         "zodiacSystem": zodiac_system,
         "houseSystem": house_system,
         "houseCusps": house_cusps,
@@ -151,6 +212,8 @@ def _cached_snapshot_for_moment(
         "lunarPhase": lunar_phase,
         "planetaryHour": planetary_hour,
         "constellationContext": constellation_context,
+        "locationValidation": location_validation,
+        "traditionalRulesEnabled": traditional_rules_enabled,
         "objective": objective,
         **judgment_contexts,
         "timingProfile": timing,
@@ -214,6 +277,10 @@ def calculation_notes(
     house_cusps: list[dict[str, object]],
     latitude: float | None = None,
     planetary_hour: dict[str, object] | None = None,
+    *,
+    traditional_rules_enabled: bool = True,
+    location_validation: dict[str, object] | None = None,
+    zodiac_system_name: str = "",
 ) -> list[str]:
     notes = []
     if backend_status.get("fallbackActive"):
@@ -225,6 +292,15 @@ def calculation_notes(
         notes.append("High-latitude chart: sunrise/sunset, quadrant cusps, and planetary-hour timing may need extra review.")
     if planetary_hour and not planetary_hour.get("available"):
         notes.append(f"Planetary hour unavailable: {planetary_hour.get('reason', 'sunrise/sunset could not be resolved')}.")
+    if not traditional_rules_enabled:
+        notes.append(
+            f"{zodiac_system_name or 'True 13-Sign'} is active: traditional dignity, rulership, and classical rule scoring are disabled."
+        )
+    elif backend_status.get("swissPythonAvailable") and "sidereal" in (zodiac_system_name or "").lower():
+        notes.append(f"{zodiac_system_name} ayanamsha is supplied by Swiss Ephemeris.")
+    if isinstance(location_validation, dict):
+        for note in location_validation.get("notes", []):
+            notes.append(str(note))
     return notes
 
 

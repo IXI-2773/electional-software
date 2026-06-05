@@ -12,6 +12,10 @@ from .validation import validate_election_inputs
 DEFAULT_TIMEZONE = "America/Los_Angeles"
 USER_LOCATIONS_PATH = Path.cwd() / ".electional-locations.json"
 LOCATION_SETTINGS_PATH = Path.cwd() / ".electional-location-settings.json"
+INDIO_LATITUDE = 33.7206
+INDIO_LONGITUDE = -116.2156
+INDIO_TIMEZONE = "America/Los_Angeles"
+INDIO_LOCATION_NAMES = {"indio, california", "indio, california d"}
 
 
 @dataclass(frozen=True)
@@ -38,6 +42,44 @@ LOCATION_PRESETS: tuple[LocationPreset, ...] = (
 LOCATION_BY_ID = {location.id: location for location in LOCATION_PRESETS}
 
 
+def is_known_indio_name(name: str | None) -> bool:
+    return str(name or "").strip().lower() in INDIO_LOCATION_NAMES
+
+
+def corrected_known_location(location: LocationPreset) -> tuple[LocationPreset, bool]:
+    if not is_known_indio_name(location.name):
+        return location, False
+    corrected = LocationPreset(
+        location.id,
+        location.name,
+        INDIO_LATITUDE,
+        INDIO_LONGITUDE,
+        INDIO_TIMEZONE,
+    )
+    changed = (
+        abs(corrected.latitude - location.latitude) > 0.0001
+        or abs(corrected.longitude - location.longitude) > 0.0001
+        or corrected.timezone != location.timezone
+    )
+    return corrected, changed
+
+
+def corrected_known_location_values(
+    name: str,
+    latitude: float,
+    longitude: float,
+    timezone: str,
+) -> tuple[float, float, str, bool]:
+    if not is_known_indio_name(name):
+        return latitude, longitude, timezone, False
+    changed = (
+        abs(float(latitude) - INDIO_LATITUDE) > 0.0001
+        or abs(float(longitude) - INDIO_LONGITUDE) > 0.0001
+        or str(timezone).strip() != INDIO_TIMEZONE
+    )
+    return INDIO_LATITUDE, INDIO_LONGITUDE, INDIO_TIMEZONE, changed
+
+
 def get_location(location_id: str | None) -> LocationPreset:
     if location_id and location_id in LOCATION_BY_ID:
         return LOCATION_BY_ID[location_id]
@@ -56,6 +98,7 @@ def build_custom_location(name: str, latitude_text: str, longitude_text: str, ti
 
 def load_user_locations(path: Path = USER_LOCATIONS_PATH) -> list[LocationPreset]:
     locations = []
+    corrected_any = False
     for item in load_json_list(path):
         if not isinstance(item, dict):
             continue
@@ -66,9 +109,14 @@ def load_user_locations(path: Path = USER_LOCATIONS_PATH) -> list[LocationPreset
             timezone = str(item["timezone"]).strip()
             if validate_election_inputs(date.today().isoformat(), "09:00", str(latitude), str(longitude), timezone):
                 continue
-            locations.append(LocationPreset(str(item.get("id") or location_id_from_name(name)), name, latitude, longitude, timezone))
+            location = LocationPreset(str(item.get("id") or location_id_from_name(name)), name, latitude, longitude, timezone)
+            location, corrected = corrected_known_location(location)
+            corrected_any = corrected_any or corrected
+            locations.append(location)
         except (KeyError, TypeError, ValueError):
             continue
+    if corrected_any and path.exists():
+        save_user_locations(locations, path)
     return locations
 
 

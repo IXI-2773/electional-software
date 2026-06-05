@@ -40,6 +40,12 @@ SWISS_HOUSE_CODES = {
     "alcabitius": b"B",
     "topocentric": b"T",
 }
+SWISS_AYANAMSHA_MODES = {
+    "sidereal-fagan-bradley": "SIDM_FAGAN_BRADLEY",
+    "sidereal-lahiri": "SIDM_LAHIRI",
+    "sidereal-krishnamurti": "SIDM_KRISHNAMURTI",
+    "sidereal-raman": "SIDM_RAMAN",
+}
 
 PROFESSIONAL_HOUSE_SYSTEM_IDS = frozenset(SWISS_HOUSE_CODES)
 
@@ -90,7 +96,7 @@ def calculation_backend_status() -> dict[str, object]:
         "ephemerisFileCount": len(files),
         "ephemerisFiles": files,
         "fallbackActive": not has_swisseph(),
-        "fallbackReason": "" if has_swisseph() else "pyswisseph is not installed for this Python runtime.",
+        "fallbackReason": "" if has_swisseph() else "Swiss Ephemeris Python bindings are not installed for this Python runtime.",
     }
 
 
@@ -122,6 +128,21 @@ def swiss_ecliptic_coordinates(body_name: str, moment: datetime) -> dict[str, fl
     }
 
 
+def swiss_ayanamsha(moment: datetime, zodiac_system_id: str) -> float | None:
+    swe = _swisseph_module()
+    mode_name = SWISS_AYANAMSHA_MODES.get(zodiac_system_id)
+    if swe is None or mode_name is None:
+        return None
+    mode = getattr(swe, mode_name, None)
+    if mode is None:
+        return None
+    try:
+        swe.set_sid_mode(mode, 0, 0)
+        return float(swe.get_ayanamsa_ut(julian_day_ut(moment)))
+    except Exception:
+        return None
+
+
 def swiss_house_cusps(moment: datetime, latitude: float, longitude: float, house_system_id: str) -> dict[str, object] | None:
     swe = _swisseph_module()
     house_code = SWISS_HOUSE_CODES.get(house_system_id)
@@ -132,8 +153,18 @@ def swiss_house_cusps(moment: datetime, latitude: float, longitude: float, house
     except Exception:
         return None
 
+    cusp_values = list(cusps)
+    # Swiss bindings differ here: some expose the native 1-based array with a
+    # dummy value at index 0, while others return only the twelve real cusps.
+    if len(cusp_values) >= 13:
+        cusp_values = cusp_values[1:13]
+    else:
+        cusp_values = cusp_values[:12]
+    if len(cusp_values) != 12:
+        return None
+
     return {
-        "cusps": [normalize_degrees(float(value)) for value in list(cusps)[:12]],
+        "cusps": [normalize_degrees(float(value)) for value in cusp_values],
         "ascendant": normalize_degrees(float(ascmc[0])),
         "midheaven": normalize_degrees(float(ascmc[1])),
         "source": "Swiss Ephemeris",

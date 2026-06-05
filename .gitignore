@@ -15,6 +15,7 @@ yarn-error.log*
 reports/
 .electional-session.json
 .electional-locations.json
+.electional-location-settings.json
 
 # Environment files
 .env

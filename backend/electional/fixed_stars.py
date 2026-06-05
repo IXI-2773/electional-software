@@ -11,7 +11,7 @@ from typing import Iterable, Mapping
 import astronomy
 
 from .aspects import angular_distance, format_orb
-from .ephemeris import get_zodiac_position, normalize_degrees
+from .ephemeris import get_zodiac_position_for_system, normalize_degrees
 from .systems import apply_zodiac_system
 from .time_utils import astronomy_time_string
 
@@ -184,7 +184,7 @@ def fixed_star_positions(moment: datetime, zodiac_system_id: str = "tropical") -
                 "latitude": latitude,
                 "longitude": longitude,
                 "tropicalLongitude": tropical_longitude,
-                "zodiac": get_zodiac_position(longitude),
+                "zodiac": get_zodiac_position_for_system(longitude, moment, zodiac_system_id, tropical_longitude=tropical_longitude),
                 "magnitude": star.magnitude,
                 "nature": star.nature,
                 "electionalNote": star.electional_note,

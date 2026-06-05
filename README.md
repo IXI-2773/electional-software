@@ -40,6 +40,7 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Election scoring now splits angular testimony into benefic support, malefic pressure, luminary support, and other angular emphasis.
 - Angle explanations now name the planet, nearest angle, distance, and point impact in diagnostics, reports, Factor Explorer, and the desktop Angles tab.
 - Search presets now include `Strict Launch`, `Clean Negotiation`, `Safe Travel`, and `Conservative Money` to fill those filters quickly.
+- The chosen search preset now persists with the desktop session so strict scan profiles reopen the way you left them.
 - Compare tools can now export a saved decision sheet with the selected brief plus top-window comparison.
 - Decision guidance is now more objective-aware for launch/publish, negotiation, travel, and money/business work.
 - Objective-specific backend ranking weights now make those workflows score differently, not just read differently.
@@ -50,9 +51,14 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Shortlists now store and display confidence, cleanliness, readiness, and volatility, and rank saved picks by quality instead of insertion order.
 - Shortlists now open with batch diagnostics so the cleanest, highest-confidence, and steadiest saved candidates stand out at a glance.
 - The desktop shortlist board now uses color-banded diagnostics cards, direct two-pick compare controls, and persistent custom tags like `Best for launch`, `Backup`, or `Client-safe`.
+- Shortlisted windows now keep saved coordinates and can be reopened directly into the main workspace with `Load Chart`.
 - Classical Point Data now gives planets, angles, cusps, lots, nodes, and fixed-star contacts their own dense reference-style workspace.
 - Medieval Data now summarizes verdict, balance of testimony, score reasons, election flags, and classical judgment sections in one working page.
 - Clean/Full wheel presets make it faster to switch between a readable working chart and a dense inspection chart.
+- A new `Classic Natal` wheel presentation matches the purple reference style more closely, with glyph-first planet markers, a white aspect center, left-side metadata dials, and compact right-side support blocks.
+- Classic mode keeps score as an optional overlay instead of forcing it into the wheel center, while preserving Lots, Nodes, and fixed stars as optional electional layers.
+- The desktop app now supports a true `13-sign` zodiac mode based on unequal constellation spans, and it explicitly disables traditional dignity/rulership scoring there instead of silently pretending the 12-sign rules still fit.
+- Saved `Indio, California` profiles are now corrected to real Indio coordinates and carried through session validation so chart checks stop drifting from the intended location.
 - Fit and zoom controls improve wheel framing, while applying aspects draw solid and separating aspects draw dashed.
 - The chart wheel now uses a cleaner canvas, subtler rings, visible degree ticks, polished angle badges, and better marker depth.
 - Timing and location context is now shown above the wheel with compact search/selected-window cards.
@@ -161,7 +167,7 @@ The app currently detects this local Astrolog/Swiss Ephemeris reference path:
 
 `C:\Users\Drago\Downloads\ast78win64\ephem`
 
-If Python Swiss Ephemeris bindings are available in the runtime, the professional bridge can route supported planetary and house calculations through Swiss Ephemeris. On this machine, `pyswisseph` currently requires Windows C++ Build Tools for Python 3.12, so the app keeps using Astronomy Engine fallback while surfacing clear calculation notes in reports and Chart Data.
+If Python Swiss Ephemeris bindings are available in the runtime, the professional bridge routes supported planetary positions, sidereal ayanamshas, and house calculations through Swiss Ephemeris. This workspace uses `pysweph` for Python 3.12 compatibility, with Astronomy Engine fallback still available when Swiss bindings are missing.
 
 ## Legacy UI
 

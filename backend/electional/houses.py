@@ -7,7 +7,7 @@ from math import atan, atan2, cos, floor, radians, sin, tan
 
 import astronomy
 
-from .ephemeris import get_zodiac_position, normalize_degrees
+from .ephemeris import get_zodiac_position, get_zodiac_position_for_system, normalize_degrees
 from .professional import PROFESSIONAL_HOUSE_SYSTEM_IDS, swiss_house_cusps
 from .systems import apply_zodiac_system
 from .time_utils import astronomy_time_string
@@ -133,7 +133,12 @@ def calculate_angles(
                 **definition,
                 "longitude": apply_zodiac_system(angle_longitude, moment, zodiac_system_id),
                 "tropicalLongitude": angle_longitude,
-                "zodiac": get_zodiac_position(apply_zodiac_system(angle_longitude, moment, zodiac_system_id)),
+                "zodiac": get_zodiac_position_for_system(
+                    apply_zodiac_system(angle_longitude, moment, zodiac_system_id),
+                    moment,
+                    zodiac_system_id,
+                    tropical_longitude=angle_longitude,
+                ),
             }
             for definition, angle_longitude in zip(ANGLE_DEFINITIONS, longitudes)
         ]
@@ -155,7 +160,12 @@ def calculate_angles(
             **definition,
             "longitude": apply_zodiac_system(angle_longitude, moment, zodiac_system_id),
             "tropicalLongitude": angle_longitude,
-            "zodiac": get_zodiac_position(apply_zodiac_system(angle_longitude, moment, zodiac_system_id)),
+            "zodiac": get_zodiac_position_for_system(
+                apply_zodiac_system(angle_longitude, moment, zodiac_system_id),
+                moment,
+                zodiac_system_id,
+                tropical_longitude=angle_longitude,
+            ),
         }
         for definition, angle_longitude in zip(ANGLE_DEFINITIONS, longitudes)
     ]
@@ -286,7 +296,12 @@ def calculate_house_cusps(
                     "house": index + 1,
                     "longitude": apply_zodiac_system(tropical_longitude, moment, zodiac_system_id),
                     "tropicalLongitude": tropical_longitude,
-                    "zodiac": get_zodiac_position(apply_zodiac_system(tropical_longitude, moment, zodiac_system_id)),
+                    "zodiac": get_zodiac_position_for_system(
+                        apply_zodiac_system(tropical_longitude, moment, zodiac_system_id),
+                        moment,
+                        zodiac_system_id,
+                        tropical_longitude=tropical_longitude,
+                    ),
                     "source": professional["source"],
                 }
                 for index, tropical_longitude in enumerate(professional["cusps"])
@@ -298,7 +313,12 @@ def calculate_house_cusps(
                     "house": house,
                     "longitude": apply_zodiac_system(tropical[house], moment, zodiac_system_id),
                     "tropicalLongitude": tropical[house],
-                    "zodiac": get_zodiac_position(apply_zodiac_system(tropical[house], moment, zodiac_system_id)),
+                    "zodiac": get_zodiac_position_for_system(
+                        apply_zodiac_system(tropical[house], moment, zodiac_system_id),
+                        moment,
+                        zodiac_system_id,
+                        tropical_longitude=tropical[house],
+                    ),
                     "source": "Porphyry fallback",
                 }
                 for house in range(1, 13)
@@ -314,21 +334,25 @@ def calculate_house_cusps(
                 float(midheaven["tropicalLongitude"]),
             )
         else:
-            tropical = {
-                10: float(midheaven["tropicalLongitude"]),
-                11: topocentric_cusp_longitude(local_sidereal, obliquity, latitude, 30, 1 / 3),
-                12: topocentric_cusp_longitude(local_sidereal, obliquity, latitude, 60, 2 / 3),
-                1: float(ascendant["tropicalLongitude"]),
-                2: topocentric_cusp_longitude(local_sidereal, obliquity, latitude, 120, 2 / 3),
-                3: topocentric_cusp_longitude(local_sidereal, obliquity, latitude, 150, 1 / 3),
-            }
-            tropical.update({house + 6 if house <= 6 else house - 6: normalize_degrees(value + 180) for house, value in list(tropical.items())})
+            # A precise Topocentric calculation needs Swiss Ephemeris. When the
+            # Python-only fallback is active, keep the quadrant structure ordered
+            # instead of using an approximate pole formula that can scramble
+            # intermediate cusps and make houses unreadable.
+            tropical = quadrant_trisection_cusps(
+                float(ascendant["tropicalLongitude"]),
+                float(midheaven["tropicalLongitude"]),
+            )
         return [
             {
                 "house": house,
                 "longitude": apply_zodiac_system(tropical[house], moment, zodiac_system_id),
                 "tropicalLongitude": tropical[house],
-                "zodiac": get_zodiac_position(apply_zodiac_system(tropical[house], moment, zodiac_system_id)),
+                "zodiac": get_zodiac_position_for_system(
+                    apply_zodiac_system(tropical[house], moment, zodiac_system_id),
+                    moment,
+                    zodiac_system_id,
+                    tropical_longitude=tropical[house],
+                ),
                 "source": "Python fallback",
             }
             for house in range(1, 13)
@@ -340,7 +364,12 @@ def calculate_house_cusps(
                 "house": house,
                 "longitude": apply_zodiac_system(tropical[house], moment, zodiac_system_id),
                 "tropicalLongitude": tropical[house],
-                "zodiac": get_zodiac_position(apply_zodiac_system(tropical[house], moment, zodiac_system_id)),
+                "zodiac": get_zodiac_position_for_system(
+                    apply_zodiac_system(tropical[house], moment, zodiac_system_id),
+                    moment,
+                    zodiac_system_id,
+                    tropical_longitude=tropical[house],
+                ),
                 "source": "Python quadrant trisection",
             }
             for house in range(1, 13)
@@ -354,7 +383,7 @@ def calculate_house_cusps(
             "house": index + 1,
             "longitude": longitude_value,
             "tropicalLongitude": None,
-            "zodiac": get_zodiac_position(longitude_value),
+            "zodiac": get_zodiac_position_for_system(longitude_value, moment, zodiac_system_id),
         }
         for index, longitude_value in enumerate(longitudes)
     ]

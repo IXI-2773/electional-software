@@ -33,7 +33,21 @@ def is_valid_timezone(timezone_name: str | None) -> bool:
 def zoned_time_to_utc(date_text: str, time_text: str, timezone_name: str) -> datetime:
     year, month, day = [int(part) for part in date_text.split("-")]
     parsed_time = parse_local_time(time_text)
-    local = datetime(year, month, day, parsed_time.hour, parsed_time.minute, tzinfo=ZoneInfo(timezone_name or "UTC"))
+    zone = ZoneInfo(timezone_name or "UTC")
+    wall_time = datetime(year, month, day, parsed_time.hour, parsed_time.minute)
+    candidates = []
+    for fold in (0, 1):
+        candidate = wall_time.replace(tzinfo=zone, fold=fold)
+        round_trip = candidate.astimezone(UTC).astimezone(zone)
+        if round_trip.replace(tzinfo=None) == wall_time:
+            candidates.append(candidate)
+    if not candidates:
+        raise ValueError(
+            f"{date_text} {normalize_time_text(time_text)} does not exist in {timezone_name} due to a daylight-saving transition."
+        )
+    # Ambiguous fall-back times use the first occurrence for deterministic
+    # compatibility with existing sessions.
+    local = candidates[0]
     return local.astimezone(UTC)
 
 

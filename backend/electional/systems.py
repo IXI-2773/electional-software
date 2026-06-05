@@ -13,6 +13,7 @@ class ZodiacSystem:
     mode: str
     description: str
     astrolog_offset: float | None = None
+    traditional_compatible: bool = True
 
 
 @dataclass(frozen=True)
@@ -38,21 +39,21 @@ ZODIAC_SYSTEMS: tuple[ZodiacSystem, ...] = (
         id="sidereal-fagan-bradley",
         name="Sidereal Fagan-Bradley",
         mode="sidereal",
-        description="Astrolog's zero-offset sidereal baseline, useful for Western sidereal comparisons.",
+        description="Sidereal zodiac using the Fagan-Bradley ayanamsha.",
         astrolog_offset=0.0,
     ),
     ZodiacSystem(
         id="sidereal-krishnamurti",
         name="Sidereal Krishnamurti",
         mode="sidereal",
-        description="Sidereal zodiac using Astrolog's Krishnamurti ayanamsha offset.",
+        description="Sidereal zodiac using the Krishnamurti ayanamsha.",
         astrolog_offset=0.98006,
     ),
     ZodiacSystem(
         id="sidereal-raman",
         name="Sidereal B.V. Raman",
         mode="sidereal",
-        description="Sidereal zodiac using Astrolog's B.V. Raman ayanamsha offset.",
+        description="Sidereal zodiac using the B.V. Raman ayanamsha.",
         astrolog_offset=2.329509,
     ),
     ZodiacSystem(
@@ -60,6 +61,13 @@ ZODIAC_SYSTEMS: tuple[ZodiacSystem, ...] = (
         name="Tropical",
         mode="tropical",
         description="Standard seasonal zodiac with no ayanamsha offset.",
+    ),
+    ZodiacSystem(
+        id="true-13-sign",
+        name="True 13-Sign",
+        mode="constellational",
+        description="Unequal ecliptic constellation zodiac using the 13-sign IAU-style spans, including Ophiuchus.",
+        traditional_compatible=False,
     ),
 )
 
@@ -139,11 +147,10 @@ def decimal_year(moment: datetime) -> float:
 
 
 def lahiri_ayanamsha(moment: datetime) -> float:
-    """Approximate Lahiri ayanamsha in degrees for UI/system selection.
+    """Approximate Lahiri ayanamsha used when Swiss tables are unavailable.
 
-    This uses a J2000 anchor and mean precession rate. It is suitable for
-    display/sign placement in the current Astronomy Engine build; a future
-    Swiss Ephemeris integration can replace this with exact ayanamsha tables.
+    This uses a J2000 anchor and mean precession rate so the app remains
+    runnable in environments without Swiss Ephemeris Python bindings.
     """
 
     return 23.853055 + (decimal_year(moment) - 2000.0) * (50.290966 / 3600)
@@ -152,10 +159,22 @@ def lahiri_ayanamsha(moment: datetime) -> float:
 def ayanamsha_for_system(moment: datetime, system_id_or_name: str | None) -> float:
     system = get_zodiac_system(system_id_or_name)
     if system.mode == "sidereal":
+        from .professional import swiss_ayanamsha
+
+        professional = swiss_ayanamsha(moment, system.id)
+        if professional is not None:
+            return professional
         fagan_base = lahiri_ayanamsha(moment) - ASTROLOG_LAHIRI_OFFSET_FROM_FAGAN
         return fagan_base + float(system.astrolog_offset or 0.0)
     return 0.0
 
 
 def apply_zodiac_system(longitude: float, moment: datetime, system_id_or_name: str | None) -> float:
+    system = get_zodiac_system(system_id_or_name)
+    if system.mode == "constellational":
+        return longitude % 360
     return (longitude - ayanamsha_for_system(moment, system_id_or_name)) % 360
+
+
+def zodiac_supports_traditional_rules(system_id_or_name: str | None) -> bool:
+    return bool(get_zodiac_system(system_id_or_name).traditional_compatible)

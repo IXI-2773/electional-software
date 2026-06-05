@@ -94,6 +94,8 @@ def build_shortlist_entry(
         "addedAt": added.isoformat(),
         "objective": objective,
         "location": location.name,
+        "latitude": float(location.latitude),
+        "longitude": float(location.longitude),
         "timezone": location.timezone,
         "datetime": snapshot_datetime_key(snapshot),
         "formattedTime": str(snapshot.get("formattedTime", "time unavailable")),
@@ -159,6 +161,16 @@ def clean_shortlist_entries(entries: Sequence[Any]) -> list[dict[str, object]]:
             continue
         normalized = dict(item)
         normalized["tags"] = normalize_shortlist_tags(normalized.get("tags", []))
+        if "latitude" in normalized:
+            try:
+                normalized["latitude"] = float(normalized["latitude"])
+            except (TypeError, ValueError):
+                normalized.pop("latitude", None)
+        if "longitude" in normalized:
+            try:
+                normalized["longitude"] = float(normalized["longitude"])
+            except (TypeError, ValueError):
+                normalized.pop("longitude", None)
         cleaned.append(normalized)
     ranked = sorted(cleaned, key=shortlist_sort_key, reverse=True)
     return ranked[:SHORTLIST_LIMIT]

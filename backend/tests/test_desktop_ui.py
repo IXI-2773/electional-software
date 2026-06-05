@@ -16,20 +16,26 @@ from backend.electional.desktop import (
     _polar,
     aspect_curve_points,
     button_health_lines,
+    classic_dial_labels,
+    classic_planet_degree_text,
     constellation_arc_segments,
     body_marker_offsets,
     fixed_star_contact_count,
+    house_label_screen_angle,
     compact_time_label,
     compact_judgment_lines,
     location_summary,
     planet_abbreviation,
+    planet_glyph,
     planet_marker_offsets,
     star_abbreviation,
+    sign_glyph,
     score_band_label,
     selection_offset_label,
     shift_local_datetime,
     shift_local_datetime_minutes,
     summary_chip_lines,
+    uses_classic_wheel_theme,
     wheel_degrees,
     window_score_color,
 )
@@ -167,11 +173,26 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(planet_abbreviation("Pluto"), "Pl")
         self.assertEqual(star_abbreviation("Galactic Center"), "GC")
 
+    def test_classic_glyph_helpers_and_theme_flag_support_reference_mode(self) -> None:
+        self.assertEqual(planet_glyph("Sun"), "\u2609")
+        self.assertEqual(sign_glyph("Sc"), "\u264f")
+        self.assertEqual(planet_glyph("Unknown"), "Un")
+        self.assertTrue(uses_classic_wheel_theme("Classic Natal"))
+        self.assertFalse(uses_classic_wheel_theme("Astrolabe"))
+        self.assertEqual(classic_dial_labels(), (("10", "4"), ("1", "7"), ("3", "9")))
+        self.assertEqual(classic_planet_degree_text({"zodiac": {"degree": 14, "minute": 7}}), "14\u00b007")
+        self.assertEqual(classic_planet_degree_text({}), "")
+
     def test_wheel_degrees_places_ascendant_on_left_side(self) -> None:
         self.assertEqual(wheel_degrees(110.0, 110.0), 180)
         self.assertEqual(wheel_degrees(290.0, 110.0), 0)
         self.assertEqual(wheel_degrees(20.0, 110.0), 90)
         self.assertEqual(wheel_degrees(200.0, 110.0), 270)
+
+    def test_house_label_screen_angle_follows_rendered_sector_midpoint(self) -> None:
+        self.assertEqual(house_label_screen_angle(90.0, 120.0, 90.0), 195.0)
+        self.assertEqual(house_label_screen_angle(270.0, 300.0, 90.0), 15.0)
+        self.assertEqual(house_label_screen_angle(330.0, 0.0, 90.0), 75.0)
 
     def test_real_chart_angles_render_in_expected_quadrants(self) -> None:
         snapshot = build_snapshot("2026-05-26", "09:00", get_location("los-angeles"), "traditional-lilly")
@@ -1337,6 +1358,7 @@ class DesktopUiHelpersTest(unittest.TestCase):
                 "timezone": "Europe/Paris",
                 "scan_hours": "24",
                 "step_minutes": "30",
+                "search_preset": "Safe Travel",
                 "minimum_score": "70",
                 "minimum_confidence": "72",
                 "minimum_cleanliness": "69",
@@ -1344,7 +1366,13 @@ class DesktopUiHelpersTest(unittest.TestCase):
                 "max_results": "12",
                 "require_angular_benefic": True,
                 "avoid_objective_antipatterns": True,
-                "display_options": {"show_aspects": False, "compact_wheel": True, "wheel_zoom": 0.94},
+                "display_options": {
+                    "show_aspects": False,
+                    "show_score_overlay": False,
+                    "compact_wheel": True,
+                    "wheel_zoom": 0.94,
+                    "right_panel_theme": "classic-natal",
+                },
             }
 
             save_session_state(state, path)
@@ -1355,6 +1383,7 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(loaded["timezone"], "Europe/Paris")
         self.assertEqual(loaded["scan_hours"], "24")
         self.assertEqual(loaded["step_minutes"], "30")
+        self.assertEqual(loaded["search_preset"], "Safe Travel")
         self.assertEqual(loaded["minimum_score"], "70")
         self.assertEqual(loaded["minimum_confidence"], "72")
         self.assertEqual(loaded["minimum_cleanliness"], "69")
@@ -1363,12 +1392,13 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertTrue(loaded["require_angular_benefic"])
         self.assertTrue(loaded["avoid_objective_antipatterns"])
         self.assertFalse(loaded["display_options"]["show_aspects"])
+        self.assertFalse(loaded["display_options"]["show_score_overlay"])
         self.assertTrue(loaded["display_options"]["compact_wheel"])
         self.assertFalse(loaded["display_options"]["show_fixed_stars"])
         self.assertEqual(loaded["display_options"]["wheel_zoom"], 0.94)
         self.assertEqual(loaded["display_options"]["point_set"], "ten-planets")
         self.assertEqual(loaded["display_options"]["page_mode"], "wheel")
-        self.assertEqual(loaded["display_options"]["right_panel_theme"], "astrolabe")
+        self.assertEqual(loaded["display_options"]["right_panel_theme"], "classic-natal")
 
     def test_user_locations_round_trip(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -1724,6 +1754,8 @@ class DesktopUiHelpersTest(unittest.TestCase):
         text = format_shortlist_entries(ranked)
 
         self.assertEqual(ranked[0]["formattedTime"], "Tue, May 26, 2026, 11:00 AM PDT")
+        self.assertEqual(ranked[0]["latitude"], 34.0522)
+        self.assertEqual(ranked[0]["longitude"], -118.2437)
         self.assertIn("Shortlist Diagnostics", text)
         self.assertIn("Best Overall", text)
         self.assertIn("Diagnostics: Conf 84  Clean 79  Read 83  Vol 24", text)

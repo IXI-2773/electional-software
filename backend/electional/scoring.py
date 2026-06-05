@@ -306,28 +306,42 @@ def angle_testimony(positions: Sequence[Mapping[str, object]]) -> dict[str, obje
         angle_weight = ANGLE_WEIGHTS.get(angle_id, 1.0)
         closeness_ratio = max(0.0, (ANGULAR_ORB - distance) / ANGULAR_ORB)
         closeness = max(0.4, 0.65 + closeness_ratio)
+        angle_phase = str(closest_angle.get("anglePhase") or "")
+        if angle_phase == "applying":
+            phase_multiplier = 1.12
+        elif angle_phase == "exact":
+            phase_multiplier = 1.18
+        elif angle_phase == "separating":
+            phase_multiplier = 0.82
+        else:
+            phase_multiplier = 1.0
         name = str(planet["name"])
 
         if name in BENEFIC_BODIES:
-            impact = (5.5 + closeness * 3.0) * angle_weight
+            impact = (5.5 + closeness * 3.0) * angle_weight * phase_multiplier
             benefic_support += impact
             severity = "support"
             title = f"{name} strengthens {angle_name}"
         elif name in CHALLENGING_BODIES:
-            impact = -((4.5 + closeness * 3.2) * angle_weight)
+            impact = -((4.5 + closeness * 3.2) * angle_weight * phase_multiplier)
             malefic_pressure += impact
             severity = "caution"
             title = f"{name} pressures {angle_name}"
         elif name in {"Sun", "Moon"}:
-            impact = (1.8 + closeness * 1.7) * angle_weight
+            impact = (1.8 + closeness * 1.7) * angle_weight * phase_multiplier
             luminary_support += impact
             severity = "support"
             title = f"{name} emphasizes {angle_name}"
         else:
-            impact = (0.8 + closeness * 0.9) * angle_weight
+            impact = (0.8 + closeness * 0.9) * angle_weight * phase_multiplier
             neutral_emphasis += impact
             severity = "info"
             title = f"{name} is angular at {angle_name}"
+        timing_text = ""
+        if closest_angle.get("timeToAngleExactText"):
+            timing_text = f"; exact in {closest_angle.get('timeToAngleExactText')}"
+        elif closest_angle.get("anglePhaseLabel"):
+            timing_text = f"; {str(closest_angle.get('anglePhaseLabel')).lower()}"
         score += impact
         factors.append(
             {
@@ -335,10 +349,14 @@ def angle_testimony(positions: Sequence[Mapping[str, object]]) -> dict[str, obje
                 "angle": angle_name,
                 "angleId": angle_id,
                 "distance": distance,
+                "phase": angle_phase,
+                "phaseLabel": closest_angle.get("anglePhaseLabel"),
+                "timeToExactText": closest_angle.get("timeToAngleExactText"),
+                "exactAtText": closest_angle.get("angleExactAtText"),
                 "scoreImpact": impact,
                 "severity": severity,
                 "title": title,
-                "detail": f"{name} is {distance:.1f} deg from {angle_name}; angular testimony is strongest within {ANGULAR_ORB} deg.",
+                "detail": f"{name} is {distance:.1f} deg from {angle_name}{timing_text}; angular testimony is strongest within {ANGULAR_ORB} deg.",
             }
         )
 

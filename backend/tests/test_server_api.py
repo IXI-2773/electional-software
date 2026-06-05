@@ -4,6 +4,7 @@ import json
 import unittest
 
 from backend.electional.server import build_chart_response, build_report_response, build_search_response, decode_json_object, json_default, search_config_from_payload
+from backend.electional.professional import engine_name
 
 
 class ServerApiTest(unittest.TestCase):
@@ -19,7 +20,7 @@ class ServerApiTest(unittest.TestCase):
 
         encoded = json.dumps(response, default=json_default)
 
-        self.assertIn("Astronomy Engine Python", encoded)
+        self.assertIn(engine_name(), encoded)
         self.assertIn("scoreBreakdown", encoded)
 
     def test_search_response_honors_search_config(self) -> None:

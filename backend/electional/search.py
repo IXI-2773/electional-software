@@ -3,6 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
+
+SEARCH_QUALITY_MODES: dict[str, str] = {
+    "balanced": "Balanced",
+    "highest-score": "Highest Score",
+    "cleanest": "Cleanest",
+    "low-risk": "Low Risk",
+    "moon-safe": "Moon Safe",
+    "angular-support": "Angular Support",
+}
+SEARCH_QUALITY_MODE_NAMES = tuple(SEARCH_QUALITY_MODES.values())
+SEARCH_QUALITY_MODE_IDS_BY_NAME = {name: mode_id for mode_id, name in SEARCH_QUALITY_MODES.items()}
+DEFAULT_SEARCH_QUALITY_MODE = "balanced"
 
 
 @dataclass(frozen=True)
@@ -22,6 +35,10 @@ class SearchConfig:
     avoid_angular_malefics: bool = False
     require_moon_non_void: bool = False
     avoid_objective_antipatterns: bool = False
+    quality_mode: str = DEFAULT_SEARCH_QUALITY_MODE
+    refine_candidates: bool = True
+    refinement_step_minutes: int = 10
+    refinement_seed_count: int = 4
 
     def offsets(self) -> tuple[int, ...]:
         if self.step_minutes <= 0:
@@ -118,6 +135,7 @@ def build_search_config_from_text(
     minimum_confidence_text: str = "",
     minimum_cleanliness_text: str = "",
     maximum_volatility_text: str = "",
+    search_quality_mode_text: str = "",
 ) -> SearchConfig:
     from .validation import validate_search_inputs
 
@@ -141,6 +159,7 @@ def build_search_config_from_text(
     minimum_confidence = int(minimum_confidence_text.strip()) if minimum_confidence_text.strip() else None
     minimum_cleanliness = int(minimum_cleanliness_text.strip()) if minimum_cleanliness_text.strip() else None
     maximum_volatility = int(maximum_volatility_text.strip()) if maximum_volatility_text.strip() else None
+    quality_mode = normalize_search_quality_mode(search_quality_mode_text)
     return SearchConfig(
         end_offset_minutes=scan_hours * 60,
         step_minutes=step_minutes,
@@ -156,7 +175,21 @@ def build_search_config_from_text(
         avoid_angular_malefics=avoid_angular_malefics,
         require_moon_non_void=require_moon_non_void,
         avoid_objective_antipatterns=avoid_objective_antipatterns,
+        quality_mode=quality_mode,
     )
+
+
+def normalize_search_quality_mode(value: str | None) -> str:
+    candidate = str(value or "").strip()
+    if not candidate:
+        return DEFAULT_SEARCH_QUALITY_MODE
+    lowered = candidate.lower()
+    if lowered in SEARCH_QUALITY_MODES:
+        return lowered
+    if candidate in SEARCH_QUALITY_MODE_IDS_BY_NAME:
+        return SEARCH_QUALITY_MODE_IDS_BY_NAME[candidate]
+    safe = lowered.replace("_", "-").replace(" ", "-")
+    return safe if safe in SEARCH_QUALITY_MODES else DEFAULT_SEARCH_QUALITY_MODE
 
 
 def format_search_summary(config: SearchConfig) -> str:
@@ -185,6 +218,10 @@ def format_search_summary(config: SearchConfig) -> str:
         filters.append("Moon non-void")
     if config.avoid_objective_antipatterns:
         filters.append("avoid anti-patterns")
+    mode_label = SEARCH_QUALITY_MODES.get(normalize_search_quality_mode(config.quality_mode), SEARCH_QUALITY_MODES[DEFAULT_SEARCH_QUALITY_MODE])
+    filters.append(f"rank: {mode_label}")
+    if config.refine_candidates and config.step_minutes > config.refinement_step_minutes:
+        filters.append(f"refine leaders to {config.refinement_step_minutes}m")
     if config.max_results is not None:
         filters.append(f"top {config.max_results}")
     filter_text = "; " + ", ".join(filters) if filters else ""
@@ -397,6 +434,7 @@ def rejection_summary(rejections: list[RejectionRecord]) -> dict[str, object]:
     return {
         "count": len(rejections),
         "topReasons": top_reasons[:6],
+        "suggestedRelaxations": rejection_relaxation_suggestions(top_reasons),
         "samples": [
             {
                 "formattedTime": rejected.formatted_time,
@@ -408,18 +446,260 @@ def rejection_summary(rejections: list[RejectionRecord]) -> dict[str, object]:
     }
 
 
-def sort_search_windows(windows: list[dict[str, object]]) -> list[dict[str, object]]:
+def rejection_relaxation_suggestions(top_reasons: list[tuple[str, int]]) -> list[str]:
+    suggestions: list[str] = []
+    for reason, _count in top_reasons:
+        lowered = reason.lower()
+        suggestion = ""
+        if "missing applying support" in lowered:
+            suggestion = "Try disabling Require applying support, or widen the scan until applying support appears."
+        elif "launch windows work better" in lowered:
+            suggestion = "For launch work, widen the scan before dropping objective anti-pattern checks."
+        elif "missing angular benefic" in lowered:
+            suggestion = "Relax Require angular benefic if clean timing matters more than angular Venus/Jupiter."
+        elif "cleanliness" in lowered and "below minimum" in lowered:
+            suggestion = "Lower Min cleanliness by 5-10 points to inspect near-miss candidates."
+        elif "volatility" in lowered and "above maximum" in lowered:
+            suggestion = "Raise Max volatility slightly, then compare the added windows for stress."
+        elif "confidence" in lowered and "below minimum" in lowered:
+            suggestion = "Lower Min confidence if the aspect pattern is otherwise useful."
+        elif "major stress present" in lowered:
+            suggestion = "Keep No major stress for final picks, but temporarily disable it to see nearby tradeoffs."
+        elif "angular malefic" in lowered:
+            suggestion = "Avoid angular malefics for conservative picks; relax it only when the candidate has strong offsetting support."
+        elif "moon is void" in lowered:
+            suggestion = "Keep Moon non-void for important launches; widen the scan past the void period."
+        elif "fit" in lowered and "below minimum" in lowered:
+            suggestion = "Lower Minimum fit or switch objective if the chart is being judged against the wrong goal."
+        elif "score" in lowered and "below minimum" in lowered:
+            suggestion = "Lower Minimum score temporarily, then use confidence/cleanliness to choose."
+        if suggestion and suggestion not in suggestions:
+            suggestions.append(suggestion)
+        if len(suggestions) >= 4:
+            break
+    return suggestions
+
+
+def sort_search_windows(
+    windows: list[dict[str, object]],
+    config: SearchConfig = DEFAULT_SEARCH_CONFIG,
+) -> list[dict[str, object]]:
     return sorted(
         windows,
-        key=lambda item: (
-            int(item["score"]),
-            diagnostic_score(item, "confidence"),
-            diagnostic_score(item, "cleanliness"),
-            diagnostic_score(item, "readiness"),
-            -diagnostic_score(item, "volatility", fallback=99),
-        ),
+        key=lambda item: search_rank_tuple(item, config),
         reverse=True,
     )
+
+
+def search_rank_tuple(window: dict[str, object], config: SearchConfig = DEFAULT_SEARCH_CONFIG) -> tuple[float, ...]:
+    mode = normalize_search_quality_mode(config.quality_mode)
+    score = int(window.get("score", 0))
+    quality = search_quality_index(window, mode)
+    confidence = diagnostic_score(window, "confidence")
+    cleanliness = diagnostic_score(window, "cleanliness")
+    readiness = diagnostic_score(window, "readiness")
+    volatility = diagnostic_score(window, "volatility", fallback=99)
+    support = _aspect_count(window, "support", applying_only=True)
+    stress = _aspect_count(window, "stress", applying_only=True)
+    angular_benefic = 1 if has_angular_benefic(window) else 0
+    angular_malefic = 1 if has_angular_malefic(window) else 0
+    moon_safe = 1 if moon_is_non_void(window) else 0
+    major_stress = 1 if has_major_stress(window) else 0
+    if mode == "highest-score":
+        return (score, quality, confidence, cleanliness, readiness, -volatility, -stress)
+    if mode == "cleanest":
+        return (cleanliness, confidence, -volatility, -major_stress, score, support, -stress)
+    if mode == "low-risk":
+        return (-major_stress, -angular_malefic, -stress, -volatility, cleanliness, confidence, score)
+    if mode == "moon-safe":
+        return (moon_safe, _moon_condition_score(window), cleanliness, confidence, -volatility, score, quality)
+    if mode == "angular-support":
+        return (angular_benefic, -angular_malefic, _angular_support_score(window), support, score, quality)
+    return (score, quality, confidence, cleanliness, readiness, -volatility, support, -stress)
+
+
+def _aspect_count(window: dict[str, object], tone: str, *, applying_only: bool = False) -> int:
+    aspects = window.get("detectedAspects", [])
+    if not isinstance(aspects, list):
+        return 0
+    return sum(
+        1
+        for aspect in aspects
+        if isinstance(aspect, dict)
+        and aspect.get("tone") == tone
+        and (not applying_only or bool(aspect.get("isApplying")))
+    )
+
+
+def _moon_condition_score(window: dict[str, object]) -> int:
+    moon = next((item for item in window.get("positions", []) if isinstance(item, dict) and item.get("name") == "Moon"), None)
+    score = 10 if moon_is_non_void(window) else -10
+    if isinstance(moon, dict):
+        if moon.get("isAngular"):
+            score += 3
+        dignity = moon.get("dignity", {})
+        if isinstance(dignity, dict):
+            try:
+                score += int(float(dignity.get("score", 0)))
+            except (TypeError, ValueError):
+                pass
+    return score
+
+
+def _angular_support_score(window: dict[str, object]) -> int:
+    positions = window.get("positions", [])
+    score = 0
+    if not isinstance(positions, list):
+        return score
+    for planet in positions:
+        if not isinstance(planet, dict) or not planet.get("isAngular"):
+            continue
+        name = str(planet.get("name") or "")
+        if name in {"Venus", "Jupiter", "Sun", "Moon"}:
+            score += 4
+        elif name in {"Mars", "Saturn"}:
+            score -= 5
+        else:
+            score += 1
+    return score
+
+
+def search_quality_index(window: dict[str, object], mode: str | None = None) -> float:
+    mode = normalize_search_quality_mode(mode)
+    breakdown = window.get("scoreBreakdown", {})
+    raw_score = float(breakdown.get("rawScore", window.get("score", 0))) if isinstance(breakdown, dict) else float(window.get("score", 0))
+    confidence = diagnostic_score(window, "confidence")
+    cleanliness = diagnostic_score(window, "cleanliness")
+    readiness = diagnostic_score(window, "readiness")
+    volatility = diagnostic_score(window, "volatility", fallback=99)
+    applying_support = sum(
+        1
+        for aspect in window.get("detectedAspects", [])
+        if isinstance(aspect, dict) and aspect.get("tone") == "support" and aspect.get("isApplying")
+    )
+    applying_stress = sum(
+        1
+        for aspect in window.get("detectedAspects", [])
+        if isinstance(aspect, dict) and aspect.get("tone") == "stress" and aspect.get("isApplying")
+    )
+    quality = (
+        raw_score
+        + confidence * 0.08
+        + cleanliness * 0.06
+        + readiness * 0.04
+        - volatility * 0.05
+        + applying_support * 1.5
+        - applying_stress * 1.5
+    )
+    if mode == "cleanest":
+        quality += cleanliness * 0.16 + confidence * 0.06 - volatility * 0.12
+    elif mode == "low-risk":
+        quality += cleanliness * 0.10 - volatility * 0.20 - applying_stress * 2.0
+        quality -= 6.0 if has_major_stress(window) else 0.0
+        quality -= 5.0 if has_angular_malefic(window) else 0.0
+    elif mode == "moon-safe":
+        quality += _moon_condition_score(window) * 0.75
+    elif mode == "angular-support":
+        quality += _angular_support_score(window) * 0.95
+    elif mode == "highest-score":
+        quality += float(window.get("score", 0)) * 0.08
+    return round(quality, 3)
+
+
+def candidate_explanation_lines(
+    window: dict[str, object],
+    baseline: dict[str, object] | None = None,
+    config: SearchConfig = DEFAULT_SEARCH_CONFIG,
+) -> list[str]:
+    mode = normalize_search_quality_mode(config.quality_mode)
+    breakdown = window.get("scoreBreakdown", {})
+    diagnostics = breakdown.get("diagnostics", {}) if isinstance(breakdown, dict) else {}
+    support = _aspect_count(window, "support")
+    stress = _aspect_count(window, "stress")
+    applying_support = _aspect_count(window, "support", applying_only=True)
+    applying_stress = _aspect_count(window, "stress", applying_only=True)
+    lines = [
+        f"Rank mode: {SEARCH_QUALITY_MODES.get(mode, 'Balanced')}; quality index {search_quality_index(window, mode):.1f}.",
+        f"Aspect balance: {support} support / {stress} stress; applying {applying_support} support / {applying_stress} stress.",
+    ]
+    if isinstance(diagnostics, dict):
+        cleanliness = diagnostic_score(window, "cleanliness")
+        confidence = diagnostic_score(window, "confidence")
+        volatility = diagnostic_score(window, "volatility", fallback=99)
+        readiness = diagnostic_score(window, "readiness")
+        lines.append(f"Diagnostics: confidence {confidence}, cleanliness {cleanliness}, readiness {readiness}, volatility {volatility}.")
+    if baseline and isinstance(baseline.get("score"), int | float):
+        try:
+            delta = int(window.get("score", 0)) - int(baseline.get("score", 0))
+            sign = "+" if delta >= 0 else ""
+            lines.append(f"Compared with search start: {sign}{delta} score points.")
+        except (TypeError, ValueError):
+            pass
+    if has_angular_benefic(window):
+        lines.append("Angular benefic support is present.")
+    if has_angular_malefic(window):
+        lines.append("Angular malefic pressure needs review.")
+    if not moon_is_non_void(window):
+        lines.append("Moon is void or uncertain; timing may lack traction.")
+    elif mode == "moon-safe":
+        lines.append("Moon condition passes the non-void safety check.")
+    note = str(window.get("note") or "").strip()
+    if note:
+        lines.append(note)
+    return lines
+
+
+def explain_candidate_window(
+    window: dict[str, object],
+    baseline: dict[str, object] | None = None,
+    config: SearchConfig = DEFAULT_SEARCH_CONFIG,
+) -> str:
+    return " ".join(candidate_explanation_lines(window, baseline, config))
+
+
+def annotate_candidate_explanations(
+    windows: list[dict[str, object]],
+    baseline: dict[str, object],
+    config: SearchConfig = DEFAULT_SEARCH_CONFIG,
+) -> list[dict[str, object]]:
+    annotated: list[dict[str, object]] = []
+    for window in windows:
+        item = dict(window)
+        lines = candidate_explanation_lines(item, baseline, config)
+        item["searchQuality"] = search_quality_index(item, config.quality_mode)
+        item["rankReasons"] = lines
+        item["whyThisWindow"] = " ".join(lines)
+        annotated.append(item)
+    return annotated
+
+
+def candidate_refinement_offsets(
+    windows: list[dict[str, object]],
+    base_moment: datetime,
+    config: SearchConfig = DEFAULT_SEARCH_CONFIG,
+) -> tuple[int, ...]:
+    if not config.refine_candidates or config.step_minutes <= config.refinement_step_minutes:
+        return ()
+    refinement_step = max(1, min(config.refinement_step_minutes, config.step_minutes))
+    radius = min(30, max(refinement_step, config.step_minutes // 2))
+    seed_count = max(1, config.refinement_seed_count)
+    seeds = sort_search_windows(windows, config)[:seed_count]
+    existing = set(config.offsets())
+    refined: set[int] = set()
+    for seed in seeds:
+        moment = seed.get("date")
+        if not isinstance(moment, datetime):
+            continue
+        seed_offset = round((moment - base_moment).total_seconds() / 60)
+        for delta in range(-radius, radius + 1, refinement_step):
+            candidate = seed_offset + delta
+            if (
+                delta
+                and config.start_offset_minutes <= candidate <= config.end_offset_minutes
+                and candidate not in existing
+            ):
+                refined.add(candidate)
+    return tuple(sorted(refined))
 
 
 def deep_candidate_count(total_count: int, config: SearchConfig = DEFAULT_SEARCH_CONFIG) -> int:
@@ -433,11 +713,11 @@ def fast_deep_candidates(
     config: SearchConfig = DEFAULT_SEARCH_CONFIG,
 ) -> tuple[list[dict[str, object]], list[RejectionRecord]]:
     filtered, rejections = split_ranked_windows(windows, config)
-    ranked = sort_search_windows(filtered)
+    ranked = sort_search_windows(filtered, config)
     return ranked[: deep_candidate_count(len(ranked), config)], rejections
 
 
 def rank_search_windows(windows: list[dict[str, object]], config: SearchConfig = DEFAULT_SEARCH_CONFIG) -> list[dict[str, object]]:
     filtered, _rejections = split_ranked_windows(windows, config)
-    ranked = sort_search_windows(filtered)
+    ranked = sort_search_windows(filtered, config)
     return ranked[: config.max_results] if config.max_results else ranked

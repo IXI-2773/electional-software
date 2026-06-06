@@ -95,7 +95,10 @@ from backend.electional.reporting import (
 from backend.electional.scoring import score_breakdown
 from backend.electional.search import (
     SEARCH_PRESET_NAMES,
+    SEARCH_QUALITY_MODE_NAMES,
     build_search_config_from_text,
+    candidate_refinement_offsets,
+    candidate_explanation_lines,
     fails_objective_antipattern,
     format_search_summary,
     has_angular_benefic,
@@ -138,15 +141,16 @@ class DesktopUiHelpersTest(unittest.TestCase):
     def test_ribbon_groups_keep_primary_actions_visible(self) -> None:
         labels = [label for _group, items in RIBBON_GROUPS for label in items]
 
-        for expected in ("Calculate", "Advisor", "Improve", "Decision", "Compare", "Factors", "Search Page", "Day Report", "Report", "Map"):
+        for expected in ("Show Current", "Find Best", "Advisor", "Improve", "Decision", "Compare", "Factors", "Search Page", "Day Report", "Report", "Map"):
             self.assertIn(expected, labels)
+        self.assertIn("Aspects", labels)
         self.assertIn("Aspect Strength", labels)
         self.assertNotIn("Export Wheel", labels)
         self.assertNotIn("Button Health", labels)
-        self.assertLessEqual(len(labels), 23)
+        self.assertLessEqual(len(labels), 25)
         self.assertNotIn("Transits", labels)
         self.assertNotIn("Electional Search", labels)
-        self.assertLessEqual(RIBBON_COLUMNS, 3)
+        self.assertLessEqual(RIBBON_COLUMNS, 2)
 
     def test_button_health_reports_visible_button_wiring(self) -> None:
         text = "\n".join(button_health_lines(DETAIL_PAGE_TABS))
@@ -281,7 +285,10 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(config.max_results, 8)
         self.assertEqual(config.minimum_fit, 2)
         self.assertTrue(config.avoid_major_stress)
-        self.assertEqual(format_search_summary(config), "Scan 12h from start, every 30m; score >= 60, fit >= 2, no major stress, top 8.")
+        self.assertEqual(
+            format_search_summary(config),
+            "Scan 12h from start, every 30m; score >= 60, fit >= 2, no major stress, rank: Balanced, refine leaders to 10m, top 8.",
+        )
 
     def test_search_config_parses_diagnostic_filters(self) -> None:
         config = build_search_config_from_text(
@@ -306,6 +313,45 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("cleanliness >= 68", format_search_summary(config))
         self.assertIn("volatility <= 35", format_search_summary(config))
         self.assertIn("needs angular benefic", format_search_summary(config))
+        self.assertIn("rank: Balanced", format_search_summary(config))
+
+    def test_search_config_supports_quality_modes_and_candidate_explanations(self) -> None:
+        config = build_search_config_from_text("12", "60", search_quality_mode_text="Low Risk")
+        window = {
+            "score": 88,
+            "note": "Strong support window.",
+            "scoreBreakdown": {
+                "rawScore": 91,
+                "diagnostics": {
+                    "confidence": {"score": 78},
+                    "cleanliness": {"score": 82},
+                    "readiness": {"score": 80},
+                    "volatility": {"score": 22},
+                },
+            },
+            "detectedAspects": [{"tone": "support", "isApplying": True}],
+            "positions": [{"name": "Venus", "isAngular": True, "closestAngle": {"distance": 2.0}}],
+            "moonCondition": {"voidOfCourse": {"isVoid": False}},
+        }
+
+        self.assertEqual(config.quality_mode, "low-risk")
+        self.assertIn("Low Risk", SEARCH_QUALITY_MODE_NAMES)
+        self.assertIn("rank: Low Risk", format_search_summary(config))
+        self.assertIn("Rank mode: Low Risk", candidate_explanation_lines(window, {"score": 80}, config)[0])
+
+    def test_candidate_refinement_offsets_fill_between_coarse_seed_times(self) -> None:
+        base = datetime(2026, 5, 26, 16, 0)
+        config = build_search_config_from_text("4", "60", max_results_text="3")
+        windows = [
+            {"date": base, "score": 70, "scoreBreakdown": {"rawScore": 70, "diagnostics": {}}},
+            {"date": base.replace(hour=18), "score": 95, "scoreBreakdown": {"rawScore": 95, "diagnostics": {}}},
+        ]
+
+        offsets = candidate_refinement_offsets(windows, base, config)
+
+        self.assertIn(110, offsets)
+        self.assertIn(130, offsets)
+        self.assertNotIn(120, offsets)
 
     def test_objective_search_presets_expose_expected_names_and_filters(self) -> None:
         self.assertIn("Strict Launch", SEARCH_PRESET_NAMES)
@@ -527,6 +573,7 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("major stress present", reasons)
         self.assertEqual(summary["count"], 1)
         self.assertTrue(any("major stress present" == reason for reason, _count in summary["topReasons"]))
+        self.assertTrue(summary["suggestedRelaxations"])
 
     def test_has_major_stress_detects_tight_stress_or_angular_malefic(self) -> None:
         self.assertTrue(
@@ -805,6 +852,13 @@ class DesktopUiHelpersTest(unittest.TestCase):
                     },
                 },
             },
+            "accuracyAudit": {
+                "label": "Swiss verified",
+                "summary": "All full-chart values match Swiss verification tolerances.",
+                "maxPositionDeltaDegrees": 0.0,
+                "maxAngleDeltaDegrees": 0.0,
+                "maxHouseDeltaDegrees": 0.0,
+            },
         }
 
         diagnostic_text = "\n".join(score_diagnostic_lines(snapshot))
@@ -815,6 +869,9 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("Signal: angular benefic emphasis is present.", diagnostic_text)
         self.assertIn("Window Diagnostics", page)
         self.assertIn("Confidence: 71", page)
+        self.assertIn("Accuracy Audit", page)
+        self.assertIn("Swiss verified", page)
+        self.assertIn("Maximum planet delta: 0.000000 deg", page)
 
     def test_constellation_lines_explain_rising_size_and_speed(self) -> None:
         snapshot = {
@@ -1359,6 +1416,7 @@ class DesktopUiHelpersTest(unittest.TestCase):
                 "scan_hours": "24",
                 "step_minutes": "30",
                 "search_preset": "Safe Travel",
+                "search_quality_mode": "Moon Safe",
                 "minimum_score": "70",
                 "minimum_confidence": "72",
                 "minimum_cleanliness": "69",
@@ -1384,6 +1442,7 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(loaded["scan_hours"], "24")
         self.assertEqual(loaded["step_minutes"], "30")
         self.assertEqual(loaded["search_preset"], "Safe Travel")
+        self.assertEqual(loaded["search_quality_mode"], "Moon Safe")
         self.assertEqual(loaded["minimum_score"], "70")
         self.assertEqual(loaded["minimum_confidence"], "72")
         self.assertEqual(loaded["minimum_cleanliness"], "69")
@@ -1589,6 +1648,7 @@ class DesktopUiHelpersTest(unittest.TestCase):
         summary = {
             "count": 2,
             "topReasons": [("major stress present", 2)],
+            "suggestedRelaxations": ["Keep No major stress for final picks, but temporarily disable it to see nearby tradeoffs."],
             "samples": [{"formattedTime": "Tue, May 26, 2026, 1:00 PM PDT", "score": 71, "reasons": ["major stress present"]}],
         }
 
@@ -1596,6 +1656,7 @@ class DesktopUiHelpersTest(unittest.TestCase):
 
         self.assertIn("Rejected Windows", text)
         self.assertIn("major stress present: 2", text)
+        self.assertIn("Suggested Relaxations", text)
         self.assertIn("Rejected Samples", text)
 
     def test_decision_brief_page_translates_score_into_guidance(self) -> None:

@@ -45,6 +45,13 @@ def _span_degrees(start: float, end: float) -> float:
     return (end - start) % 360 or 360.0
 
 
+def constellation_span_degrees(constellation_id: str) -> float:
+    for span in ECLIPTIC_CONSTELLATION_SPANS:
+        if span["id"] == constellation_id:
+            return _span_degrees(float(span["start"]), float(span["end"]))
+    raise KeyError(f"Unknown constellation id: {constellation_id}")
+
+
 def _contains_longitude(longitude: float, start: float, end: float) -> bool:
     normalized = normalize_degrees(longitude)
     if start <= end:

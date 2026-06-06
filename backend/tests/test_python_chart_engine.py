@@ -569,6 +569,11 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertEqual(snapshot["houseSystem"].name, "Topocentric")
         self.assertEqual(len(snapshot["houseCusps"]), 12)
         self.assertTrue(all(1 <= planet["house"] <= 12 for planet in snapshot["positions"]))
+        self.assertEqual(snapshot["accuracyAudit"]["status"], "verified")
+        self.assertTrue(snapshot["accuracyAudit"]["verified"])
+        self.assertLessEqual(snapshot["accuracyAudit"]["maxPositionDeltaDegrees"], 0.001)
+        self.assertLessEqual(snapshot["accuracyAudit"]["maxAngleDeltaDegrees"], 0.001)
+        self.assertLessEqual(snapshot["accuracyAudit"]["maxHouseDeltaDegrees"], 0.001)
 
     def test_snapshot_can_use_koch_houses(self) -> None:
         location = get_location("los-angeles")
@@ -587,10 +592,16 @@ class PythonChartEngineTest(unittest.TestCase):
         windows = report["windows"]
 
         self.assertEqual(len(windows), 6)
-        self.assertTrue(any(window["date"] == snapshot["date"] for window in windows))
+        self.assertEqual(report["snapshot"]["date"], snapshot["date"])
         self.assertIn("engine", windows[0])
         self.assertIn("formattedTime", windows[0])
         self.assertIn("preset", windows[0])
+        self.assertIn("searchStage", windows[0])
+        self.assertIn("searchQuality", windows[0])
+        self.assertIn("rankReasons", windows[0])
+        self.assertTrue(windows[0]["rankReasons"])
+        self.assertGreater(report["evaluatedWindowCount"], report["searchedWindowCount"])
+        self.assertGreater(report["refinedWindowCount"], 0)
         self.assertGreaterEqual(windows[0]["score"], windows[-1]["score"])
 
     def test_configurable_search_controls_range_step_and_limit(self) -> None:
@@ -609,7 +620,7 @@ class PythonChartEngineTest(unittest.TestCase):
 
         report = build_election_report("2026-05-26", "09:00", location, "traditional-lilly", search_config=config)
 
-        self.assertEqual(report["searchMode"], "full")
+        self.assertEqual(report["searchMode"], "full + refined")
         self.assertEqual(report["windows"], [])
         self.assertGreater(report["rejectionSummary"]["count"], 0)
 
@@ -639,8 +650,10 @@ class PythonChartEngineTest(unittest.TestCase):
         config = SearchConfig(end_offset_minutes=24 * 60, step_minutes=60, max_results=5)
         report = build_election_report("2026-05-26", "09:00", location, "traditional-lilly", search_config=config)
 
-        self.assertEqual(report["searchMode"], "fast/deep")
+        self.assertEqual(report["searchMode"], "fast/deep + refined")
         self.assertEqual(report["searchedWindowCount"], 25)
+        self.assertGreater(report["evaluatedWindowCount"], report["searchedWindowCount"])
+        self.assertGreater(report["refinedWindowCount"], 0)
         self.assertLess(report["deepWindowCount"], report["searchedWindowCount"])
         self.assertTrue(all(window["calculationMode"] == "full" for window in report["windows"]))
 

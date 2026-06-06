@@ -95,6 +95,22 @@ def angle_testimony_lines(snapshot: dict[str, object]) -> list[str]:
 def build_diagnostics_page(snapshot: dict[str, object]) -> str:
     breakdown = snapshot.get("scoreBreakdown", {})
     evaluation = breakdown.get("evaluation", {}) if isinstance(breakdown, dict) else {}
+    accuracy = snapshot.get("accuracyAudit", {})
+    if isinstance(accuracy, Mapping):
+        accuracy_lines = [
+            f"- Status: {accuracy.get('label', 'Unavailable')}",
+            f"- {accuracy.get('summary', 'No accuracy summary available.')}",
+        ]
+        for key, label in (
+            ("maxPositionDeltaDegrees", "Maximum planet delta"),
+            ("maxAngleDeltaDegrees", "Maximum angle delta"),
+            ("maxHouseDeltaDegrees", "Maximum cusp delta"),
+        ):
+            value = accuracy.get(key)
+            if value is not None:
+                accuracy_lines.append(f"- {label}: {float(value):.6f} deg")
+    else:
+        accuracy_lines = ["- Accuracy audit unavailable."]
     return (
         "Window Diagnostics\n"
         f"Score: {snapshot.get('score', 'n/a')}  "
@@ -102,6 +118,10 @@ def build_diagnostics_page(snapshot: dict[str, object]) -> str:
         f"Grade: {evaluation.get('grade', 'n/a')}\n\n"
         "Backend Metrics\n"
         + "\n".join(score_diagnostic_lines(snapshot))
+        + "\n\nAccuracy Audit\n"
+        + "\n".join(accuracy_lines)
+        + "\n\nValidation Summary\n"
+        + "\n".join(validation_summary_lines(snapshot))
         + "\n\nAngles\n"
         + "\n".join(angle_testimony_lines(snapshot))
         + "\n\nScore Evaluation\n"
@@ -401,11 +421,16 @@ def build_transit_search_page(
     ranked_lines = []
     for index, window in enumerate(windows[:8], start=1):
         aspect_labels = ", ".join(str(aspect.get("label")) for aspect in window.get("detectedAspects", [])[:2] if isinstance(aspect, dict))
+        rank_reasons = window.get("rankReasons", [])
+        reason_text = ""
+        if isinstance(rank_reasons, list) and rank_reasons:
+            reason_text = "  Why: " + " ".join(str(reason) for reason in rank_reasons[:2])
         ranked_lines.append(
             f"#{index}  {window.get('formattedTime', 'time n/a')}  "
             f"score {window.get('score', '?')}  "
             f"{window.get('note', 'No note available.')}"
             + (f"  [{aspect_labels}]" if aspect_labels else "")
+            + reason_text
         )
 
     aspect_patterns: dict[str, dict[str, object]] = {}
@@ -451,6 +476,7 @@ def build_transit_search_page(
     if isinstance(rejection_summary, dict) and rejection_summary.get("count"):
         top_reasons = rejection_summary.get("topReasons", [])
         samples = rejection_summary.get("samples", [])
+        suggestions = rejection_summary.get("suggestedRelaxations", [])
         rejection_lines.extend(
             [
                 "Rejected Windows",
@@ -460,6 +486,11 @@ def build_transit_search_page(
         if isinstance(top_reasons, list) and top_reasons:
             for reason, count in top_reasons[:4]:
                 rejection_lines.append(f"- {reason}: {count}")
+        if isinstance(suggestions, list) and suggestions:
+            rejection_lines.append("")
+            rejection_lines.append("Suggested Relaxations")
+            for suggestion in suggestions[:4]:
+                rejection_lines.append(f"- {suggestion}")
         if isinstance(samples, list) and samples:
             rejection_lines.append("")
             rejection_lines.append("Rejected Samples")
@@ -1303,12 +1334,86 @@ def format_aspect_highlight_dashboard(highlights: Mapping[str, object] | None) -
         ("Local Day", highlights.get("localDay")),
         ("Next 24h", highlights.get("rolling24Hours")),
     )
+
+
+def validation_summary_lines(snapshot: Mapping[str, object], location: object | None = None) -> list[str]:
+    accuracy = snapshot.get("accuracyAudit", {})
+    location_validation = snapshot.get("locationValidation", {})
+    zodiac = snapshot.get("zodiacSystem")
+    house = snapshot.get("houseSystem")
+    lines: list[str] = []
+    if isinstance(accuracy, Mapping):
+        lines.append(f"- Accuracy: {accuracy.get('label', 'Unavailable')}.")
+        if accuracy.get("summary"):
+            lines.append(f"- {accuracy.get('summary')}")
+        deltas = []
+        for key, label in (
+            ("maxPositionDeltaDegrees", "planet"),
+            ("maxAngleDeltaDegrees", "angle"),
+            ("maxHouseDeltaDegrees", "cusp"),
+        ):
+            value = accuracy.get(key)
+            if value is not None:
+                deltas.append(f"{label} {float(value):.6f} deg")
+        if deltas:
+            lines.append("- Max deltas: " + ", ".join(deltas) + ".")
+    else:
+        lines.append("- Accuracy: unavailable.")
+
+    if isinstance(location_validation, Mapping):
+        location_name = location_validation.get("locationName") or getattr(location, "name", "Location unavailable")
+        lines.append(
+            f"- Location: {location_name} "
+            f"({float(location_validation.get('latitude', getattr(location, 'latitude', 0.0))):.4f}, "
+            f"{float(location_validation.get('longitude', getattr(location, 'longitude', 0.0))):.4f}); "
+            f"timezone {location_validation.get('timezone', getattr(location, 'timezone', 'n/a'))}."
+        )
+        if location_validation.get("correctedKnownLocation"):
+            lines.append("- Known location correction applied.")
+    elif location:
+        lines.append(f"- Location: {getattr(location, 'name', 'Location')} / {getattr(location, 'timezone', 'timezone n/a')}.")
+
+    lines.append(f"- Zodiac: {getattr(zodiac, 'name', 'zodiac n/a')}; house system: {getattr(house, 'name', 'house n/a')}.")
+    lines.append(f"- Engine: {snapshot.get('engine', 'engine unavailable')}; ayanamsha {float(snapshot.get('ayanamsha', 0.0)):.3f} deg.")
+    if not snapshot.get("traditionalRulesEnabled", True):
+        lines.append("- True 13-Sign mode: traditional dignity/rulership scoring is disabled.")
+    return lines
     lines: list[str] = []
     for title, result in sections:
         lines.append(title)
         lines.append(format_aspect_highlight(result if isinstance(result, Mapping) else None))
         lines.append("")
     return "\n".join(lines).strip()
+
+
+def format_aspect_timeline(
+    highlights: Mapping[str, object] | None,
+    *,
+    key: str = "timelineByTime",
+    limit: int = 10,
+) -> list[str]:
+    if not highlights:
+        return ["- Aspect timeline unavailable."]
+    items = highlights.get(key)
+    if not isinstance(items, list) or not items:
+        return ["- No aspect timeline entries available."]
+    lines: list[str] = []
+    for index, item in enumerate(items[:limit], start=1):
+        if not isinstance(item, Mapping):
+            continue
+        moment = item.get("moment")
+        time_text = str(item.get("formattedTime") or "")
+        if hasattr(moment, "strftime"):
+            time_text = str(getattr(item, "formattedTime", "") or item.get("formattedTime") or moment.strftime("%a %I:%M %p"))
+        tone_marker = "+" if item.get("tone") == "support" else "!" if item.get("tone") == "stress" else "*"
+        phase = "applying" if item.get("isApplying") else str(item.get("phaseLabel") or "phase unknown").lower()
+        orb_text = str(item.get("orbText") or f"{_float_value(item.get('orb')):.2f} deg")
+        lines.append(
+            f"- {index}. {time_text}: {tone_marker} {_aspect_label(item)} "
+            f"orb {orb_text}; "
+            f"{phase}; strength {_float_value(item.get('strength')):.1f}."
+        )
+    return lines or ["- No readable aspect timeline entries available."]
 
 
 def _analysis_score_band(score: int) -> str:
@@ -1338,8 +1443,6 @@ def build_analysis_page(
     breakdown = snapshot.get("scoreBreakdown", {})
     diagnostics = breakdown.get("diagnostics", {}) if isinstance(breakdown, Mapping) else {}
     strongest = strongest_aspect_result(snapshot)
-    timeline = highlights.get("timeline", []) if isinstance(highlights, Mapping) else []
-    rolling = highlights.get("rollingTimeline", []) if isinstance(highlights, Mapping) else []
     location_name = getattr(location, "name", "Location unavailable")
     timezone = getattr(location, "timezone", "Timezone unavailable")
     score = int(snapshot.get("score", 0) or 0)
@@ -1369,21 +1472,10 @@ def build_analysis_page(
         "",
         "Local-Day Aspect Timeline",
     ]
-    lines.extend(
-        f"- {format_aspect_highlight(item)}"
-        for item in timeline[:8]
-        if isinstance(item, Mapping)
-    )
-    if len(lines) and lines[-1] == "Local-Day Aspect Timeline":
-        lines.append("- No local-day aspect highlights available.")
+    lines.extend(format_aspect_timeline(highlights, key="timelineByTime", limit=10))
 
     lines.extend(["", "Rolling Next-24-Hour Aspect Timeline"])
-    rolling_lines = [
-        f"- {format_aspect_highlight(item)}"
-        for item in rolling[:8]
-        if isinstance(item, Mapping)
-    ]
-    lines.extend(rolling_lines or ["- No rolling-24-hour aspect highlights available."])
+    lines.extend(format_aspect_timeline(highlights, key="rollingTimelineByTime", limit=10))
     lines.extend(
         [
             "",
@@ -1411,12 +1503,8 @@ def build_analysis_page(
             f"- Rejections: {dict(rejection_summary)}",
             "",
             "Location, Timezone, Zodiac, House System, And Engine Validation",
-            f"- Location: {location_name}",
-            f"- Timezone: {timezone}",
             f"- Chart time: {snapshot.get('formattedTime', 'time unavailable')}",
-            f"- Zodiac: {snapshot['zodiacSystem'].name}",
-            f"- House system: {snapshot['houseSystem'].name}",
-            f"- Engine: {snapshot.get('engine', 'engine unavailable')}",
+            "\n".join(validation_summary_lines(snapshot, location)),
             f"- Candidate windows in current search: {len(windows)}",
         ]
     )

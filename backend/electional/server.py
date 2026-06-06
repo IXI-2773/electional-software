@@ -76,6 +76,17 @@ def search_config_from_payload(payload: dict[str, Any]) -> SearchConfig:
         step_minutes=120 if step_minutes is None else step_minutes,
         max_results=optional_int(payload, "maxResults"),
         minimum_score=optional_int(payload, "minimumScore"),
+        minimum_fit=optional_int(payload, "minimumFit"),
+        minimum_confidence=optional_int(payload, "minimumConfidence"),
+        minimum_cleanliness=optional_int(payload, "minimumCleanliness"),
+        maximum_volatility=optional_int(payload, "maximumVolatility"),
+        avoid_major_stress=bool(payload.get("avoidMajorStress", False)),
+        require_applying_support=bool(payload.get("requireApplyingSupport", False)),
+        require_angular_benefic=bool(payload.get("requireAngularBenefic", False)),
+        avoid_angular_malefics=bool(payload.get("avoidAngularMalefics", False)),
+        require_moon_non_void=bool(payload.get("requireMoonNonVoid", False)),
+        avoid_objective_antipatterns=bool(payload.get("avoidObjectiveAntipatterns", False)),
+        quality_mode=str(payload.get("qualityMode") or payload.get("searchQualityMode") or "balanced"),
     )
     config.offsets()
     if config.minimum_score is not None and not 10 <= config.minimum_score <= 99:

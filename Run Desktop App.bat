@@ -35,5 +35,5 @@ if errorlevel 1 (
   copy /y "%PROJECT_DIR%requirements.txt" "%REQ_MARKER%" >nul
 )
 
-"%PYTHON%" "%PROJECT_DIR%desktop_app.py"
-if errorlevel 1 pause
+start "" "%PYTHONW%" "%PROJECT_DIR%desktop_app.py"
+exit /b 0

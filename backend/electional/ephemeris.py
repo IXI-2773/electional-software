@@ -93,7 +93,7 @@ def get_zodiac_position_for_system(
     if system.mode != "constellational":
         return get_zodiac_position(longitude)
 
-    from .constellations import ECLIPTIC_CONSTELLATION_SPANS, constellation_for_longitude
+    from .constellations import constellation_for_longitude, constellation_span_degrees
 
     reference_longitude = normalize_degrees(tropical_longitude if tropical_longitude is not None else longitude)
     constellation = constellation_for_longitude(reference_longitude)
@@ -108,7 +108,7 @@ def get_zodiac_position_for_system(
                 "degree": 0,
                 "minute": 0,
                 "kind": "constellation",
-                "spanDegrees": float(next(item["end"] - item["start"]) % 360 or 360 for item in ECLIPTIC_CONSTELLATION_SPANS if item["id"] == next_span.get("id")),
+                "spanDegrees": constellation_span_degrees(str(next_span.get("id"))),
             }
         total_minutes = max(0, span_minutes - 1)
     degree, minute = divmod(total_minutes, 60)

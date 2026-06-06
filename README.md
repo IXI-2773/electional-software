@@ -125,7 +125,11 @@ Run the native desktop application:
 
 Or double-click:
 
-`Run Desktop App.bat`
+For a normal no-console launch, double-click:
+
+`Run Desktop App.vbs`
+
+`Run Desktop App.bat` remains available for setup troubleshooting. Once dependencies are ready, it starts the desktop application with `pythonw.exe` and closes the Command Prompt immediately.
 
 Open the project Python runner:
 

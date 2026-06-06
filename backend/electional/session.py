@@ -19,6 +19,7 @@ from .search import (
     DEFAULT_SCAN_HOURS,
     DEFAULT_STEP_MINUTES,
     SEARCH_PRESET_NAMES,
+    SEARCH_QUALITY_MODE_NAMES,
 )
 from .storage import load_json_dict, save_json
 from .systems import DEFAULT_HOUSE_SYSTEM_ID, DEFAULT_ZODIAC_SYSTEM_ID, get_house_system, get_zodiac_system
@@ -140,6 +141,11 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
             str(state.get("search_preset") or SEARCH_PRESET_NAMES[0])
             if str(state.get("search_preset") or SEARCH_PRESET_NAMES[0]) in SEARCH_PRESET_NAMES
             else SEARCH_PRESET_NAMES[0]
+        ),
+        "search_quality_mode": (
+            str(state.get("search_quality_mode") or SEARCH_QUALITY_MODE_NAMES[0])
+            if str(state.get("search_quality_mode") or SEARCH_QUALITY_MODE_NAMES[0]) in SEARCH_QUALITY_MODE_NAMES
+            else SEARCH_QUALITY_MODE_NAMES[0]
         ),
         "minimum_score": str(state.get("minimum_score") or DEFAULT_MINIMUM_SCORE),
         "minimum_fit": str(state.get("minimum_fit") or DEFAULT_MINIMUM_FIT),

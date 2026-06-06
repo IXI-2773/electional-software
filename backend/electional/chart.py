@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Iterable
 
+from .accuracy import build_accuracy_audit
 from .aspects import detect_aspects
 from .angle_timing import annotate_angle_timings
 from .constellations import annotate_points_with_constellations, chart_constellation_context
@@ -29,7 +30,18 @@ from .presets import apply_dignities, filter_positions_for_preset, get_preset
 from .professional import calculation_backend_status
 from .rules import evaluate_electional_rules
 from .scoring import score_breakdown
-from .search import DEFAULT_SEARCH_CONFIG, SearchConfig, fast_deep_candidates, rank_search_windows, rejection_summary, split_ranked_windows
+from .search import (
+    DEFAULT_SEARCH_CONFIG,
+    SearchConfig,
+    annotate_candidate_explanations,
+    candidate_refinement_offsets,
+    deep_candidate_count,
+    fast_deep_candidates,
+    rank_search_windows,
+    rejection_summary,
+    sort_search_windows,
+    split_ranked_windows,
+)
 from .systems import ayanamsha_for_system, get_house_system, get_zodiac_system, zodiac_supports_traditional_rules
 from .time_utils import format_in_timezone, zoned_time_to_utc
 from .timing import timing_profile
@@ -180,6 +192,17 @@ def _cached_snapshot_for_moment(
     angle_context = diagnostics.get("angles", {}) if isinstance(diagnostics, dict) else {}
     backend_status = calculation_backend_status()
     location_validation = build_location_validation_summary(location, zodiac_system.id)
+    accuracy_audit = (
+        {
+            "status": "not-run",
+            "label": "Fast search estimate",
+            "verified": False,
+            "summary": "Accuracy audit is deferred until the candidate is deep-built.",
+            "checks": [],
+        }
+        if is_fast
+        else build_accuracy_audit(moment, location, positions, angles, house_cusps, house_system.id)
+    )
 
     return {
         "date": moment,
@@ -187,6 +210,7 @@ def _cached_snapshot_for_moment(
         "calculationMode": calculation_mode,
         "engine": str(backend_status["activeEngine"]),
         "calculationBackend": backend_status,
+        "accuracyAudit": accuracy_audit,
         "calculationNotes": calculation_notes(
             backend_status,
             house_system.id,
@@ -239,7 +263,13 @@ def clear_snapshot_cache() -> None:
     _cached_snapshot_for_moment.cache_clear()
 
 
-def snapshot_to_window(snapshot: dict[str, object], location: LocationPreset) -> dict[str, object]:
+def snapshot_to_window(
+    snapshot: dict[str, object],
+    location: LocationPreset,
+    *,
+    search_stage: str = "full",
+    search_resolution_minutes: int | None = None,
+) -> dict[str, object]:
     detected = snapshot["detectedAspects"]
     positions = snapshot["positions"]
     preset = snapshot["preset"]
@@ -250,6 +280,8 @@ def snapshot_to_window(snapshot: dict[str, object], location: LocationPreset) ->
             "time": format_in_timezone(snapshot["date"], location.timezone).split(", ", 1)[-1],
             "title": "High-priority election" if score >= 76 else "Workable election" if score >= 60 else "Use with caution",
             "note": describe_window(detected, positions, preset),
+            "searchStage": search_stage,
+            "searchResolutionMinutes": search_resolution_minutes,
         }
     )
     return window
@@ -315,54 +347,19 @@ def build_transit_windows(
     search_config: SearchConfig = DEFAULT_SEARCH_CONFIG,
     objective: str = DEFAULT_OBJECTIVE,
 ) -> list[dict[str, object]]:
-    base_moment = zoned_time_to_utc(date_text, time_text, location.timezone)
-    preset = get_preset(preset_id)
-    aspects = tuple(selected_aspects or preset.aspect_ids)
-    offsets = search_config.offsets()
-    if search_config.max_results and len(offsets) > search_config.max_results:
-        fast_windows = [
-            snapshot_to_window(
-                build_snapshot_for_moment(
-                    base_moment + timedelta(minutes=offset_minutes),
-                    location,
-                    preset,
-                    aspects,
-                    zodiac_system_id,
-                    house_system_id,
-                    objective,
-                    "fast",
-                ),
-                location,
-            )
-            for offset_minutes in offsets
-        ]
-        candidates, _rejections = fast_deep_candidates(fast_windows, search_config)
-        deep_windows = [
-            snapshot_to_window(
-                build_snapshot_for_moment(
-                    window["date"],
-                    location,
-                    preset,
-                    aspects,
-                    zodiac_system_id,
-                    house_system_id,
-                    objective,
-                    "full",
-                ),
-                location,
-            )
-            for window in candidates
-        ]
-        return rank_search_windows(deep_windows, search_config)
-
-    windows = []
-
-    for offset_minutes in offsets:
-        moment = base_moment + timedelta(minutes=offset_minutes)
-        snapshot = build_snapshot_for_moment(moment, location, preset, aspects, zodiac_system_id, house_system_id, objective)
-        windows.append(snapshot_to_window(snapshot, location))
-
-    return rank_search_windows(windows, search_config)
+    return list(
+        build_election_report(
+            date_text,
+            time_text,
+            location,
+            preset_id,
+            selected_aspects,
+            zodiac_system_id,
+            house_system_id,
+            search_config,
+            objective,
+        )["windows"]
+    )
 
 
 def build_election_report(
@@ -384,13 +381,42 @@ def build_election_report(
     snapshot = build_snapshot_for_moment(base_moment, location, preset, aspects, zodiac_system_id, house_system_id, objective)
     offsets = search_config.offsets()
     fast_deep_enabled = bool(search_config.max_results and len(offsets) > search_config.max_results)
-    if fast_deep_enabled:
-        fast_windows = []
-        for offset_minutes in offsets:
-            if offset_minutes == 0:
-                fast_windows.append(snapshot_to_window(snapshot, location))
-                continue
-            fast_snapshot = build_snapshot_for_moment(
+    coarse_windows = []
+    for offset_minutes in offsets:
+        if offset_minutes == 0:
+            coarse_windows.append(
+                snapshot_to_window(
+                    snapshot,
+                    location,
+                    search_stage="input",
+                    search_resolution_minutes=search_config.step_minutes,
+                )
+            )
+            continue
+        calculation_mode = "fast" if fast_deep_enabled else "full"
+        window_snapshot = build_snapshot_for_moment(
+            base_moment + timedelta(minutes=offset_minutes),
+            location,
+            preset,
+            aspects,
+            zodiac_system_id,
+            house_system_id,
+            objective,
+            calculation_mode,
+        )
+        coarse_windows.append(
+            snapshot_to_window(
+                window_snapshot,
+                location,
+                search_stage="coarse",
+                search_resolution_minutes=search_config.step_minutes,
+            )
+        )
+
+    refinement_offsets = candidate_refinement_offsets(coarse_windows, base_moment, search_config)
+    refined_fast_windows = [
+        snapshot_to_window(
+            build_snapshot_for_moment(
                 base_moment + timedelta(minutes=offset_minutes),
                 location,
                 preset,
@@ -399,16 +425,46 @@ def build_election_report(
                 house_system_id,
                 objective,
                 "fast",
+            ),
+            location,
+            search_stage="refined",
+            search_resolution_minutes=search_config.refinement_step_minutes,
+        )
+        for offset_minutes in refinement_offsets
+    ]
+
+    if fast_deep_enabled:
+        candidates, _preliminary_rejections = fast_deep_candidates(
+            [*coarse_windows, *refined_fast_windows],
+            search_config,
+        )
+    else:
+        refinement_limit = max(
+            8,
+            (search_config.max_results or 0) * 2,
+        )
+        candidates = [
+            *coarse_windows,
+            *sort_search_windows(refined_fast_windows, search_config)[:refinement_limit],
+        ]
+
+    windows_by_date: dict[datetime, dict[str, object]] = {}
+    for window in candidates:
+        moment = window["date"]
+        if moment in windows_by_date:
+            continue
+        if moment == snapshot["date"]:
+            deep_window = snapshot_to_window(
+                snapshot,
+                location,
+                search_stage=str(window.get("searchStage") or "input"),
+                search_resolution_minutes=window.get("searchResolutionMinutes"),
             )
-            fast_windows.append(snapshot_to_window(fast_snapshot, location))
-        candidates, rejections = fast_deep_candidates(fast_windows, search_config)
-        windows = []
-        for window in candidates:
-            if window["date"] == snapshot["date"]:
-                windows.append(snapshot_to_window(snapshot, location))
-                continue
+        elif window.get("calculationMode") == "full":
+            deep_window = window
+        else:
             deep_snapshot = build_snapshot_for_moment(
-                window["date"],
+                moment,
                 location,
                 preset,
                 aspects,
@@ -417,26 +473,24 @@ def build_election_report(
                 objective,
                 "full",
             )
-            windows.append(snapshot_to_window(deep_snapshot, location))
-        ranked = rank_search_windows(windows, search_config)
-    else:
-        windows = []
-        for offset_minutes in offsets:
-            if offset_minutes == 0:
-                windows.append(snapshot_to_window(snapshot, location))
-                continue
-            window_snapshot = build_snapshot_for_moment(
-                base_moment + timedelta(minutes=offset_minutes),
+            deep_window = snapshot_to_window(
+                deep_snapshot,
                 location,
-                preset,
-                aspects,
-                zodiac_system_id,
-                house_system_id,
-                objective,
+                search_stage=str(window.get("searchStage") or "refined"),
+                search_resolution_minutes=window.get("searchResolutionMinutes"),
             )
-            windows.append(snapshot_to_window(window_snapshot, location))
-        ranked, rejections = split_ranked_windows(windows, search_config)
-        ranked = rank_search_windows(ranked, search_config)
+        windows_by_date[moment] = deep_window
+
+    windows = list(windows_by_date.values())
+    kept, rejections = split_ranked_windows(windows, search_config)
+    ranked = rank_search_windows(kept, search_config)
+    if search_config.max_results is None:
+        ranked = ranked[: len(offsets)]
+    ranked = annotate_candidate_explanations(ranked, snapshot, search_config)
+    refined_enabled = bool(refinement_offsets)
+    search_mode = "fast/deep" if fast_deep_enabled else "full"
+    if refined_enabled:
+        search_mode += " + refined"
 
     return {
         "snapshot": snapshot,
@@ -444,9 +498,17 @@ def build_election_report(
         "rejections": rejections,
         "rejectionSummary": rejection_summary(rejections),
         "searchedWindowCount": len(offsets),
+        "evaluatedWindowCount": len(offsets) + len(refinement_offsets),
+        "refinedWindowCount": len(refinement_offsets),
         "deepWindowCount": len(windows),
         "matchedWindowCount": len(ranked),
-        "searchMode": "fast/deep" if fast_deep_enabled else "full",
+        "searchMode": search_mode,
+        "refinement": {
+            "enabled": refined_enabled,
+            "stepMinutes": search_config.refinement_step_minutes if refined_enabled else None,
+            "seedCount": search_config.refinement_seed_count if refined_enabled else 0,
+            "evaluatedOffsets": list(refinement_offsets),
+        },
         "snapshotCache": snapshot_cache_info(),
     }
 

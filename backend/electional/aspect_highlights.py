@@ -183,6 +183,8 @@ def build_aspect_highlights(
         "rolling24Hours": rolling_best,
         "timeline": day_timeline,
         "rollingTimeline": rolling_timeline,
+        "timelineByTime": sorted(day_timeline, key=lambda item: item.get("moment") or datetime.min.replace(tzinfo=displayed_moment.tzinfo)),
+        "rollingTimelineByTime": sorted(rolling_timeline, key=lambda item: item.get("moment") or datetime.min.replace(tzinfo=displayed_moment.tzinfo)),
         "localDayStart": local_start,
         "localDayEnd": local_end,
     }

@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
+import traceback
 from typing import Any, Callable, Mapping
 from zoneinfo import ZoneInfo
 
@@ -53,6 +54,7 @@ from .reporting import (
     format_aspectarian,
     format_aspect_highlight,
     format_aspect_highlight_dashboard,
+    format_aspect_timeline,
     format_dignity_summary,
     format_aspect_summary,
     format_fixed_star_contact,
@@ -70,6 +72,7 @@ from .reporting import (
     score_evaluation_lines,
     score_reason_lines,
     strongest_aspect_analysis_lines,
+    validation_summary_lines,
 )
 from .screening import moon_void_course_summary, solar_elongation_summary
 from .search import (
@@ -82,6 +85,7 @@ from .search import (
     DEFAULT_SCAN_HOURS,
     DEFAULT_STEP_MINUTES,
     SEARCH_PRESET_NAMES,
+    SEARCH_QUALITY_MODE_NAMES,
     SearchConfig,
     build_search_config_from_text,
     format_search_summary,
@@ -101,6 +105,20 @@ from .shortlist import (
 from .systems import DEFAULT_HOUSE_SYSTEM_ID, DEFAULT_ZODIAC_SYSTEM_ID, HOUSE_SYSTEMS, ZODIAC_SYSTEMS, get_house_system, get_zodiac_system
 from .time_utils import normalize_time_text
 from .validation import validate_election_inputs, validate_search_inputs
+
+DEBUG_LOG_PATH = Path(__file__).resolve().parents[2] / "reports" / "electional-debug.log"
+
+
+def record_desktop_exception(context: str) -> Path | None:
+    try:
+        DEBUG_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as log:
+            log.write(f"\n[{datetime.now().isoformat(timespec='seconds')}] {context}\n")
+            log.write(traceback.format_exc())
+        return DEBUG_LOG_PATH
+    except OSError:
+        return None
+
 
 PLANET_LABELS = {
     "Sun": "Su",
@@ -204,6 +222,7 @@ DETAIL_PAGE_TABS = (
     "Lots",
     "Nodes",
     "Timing",
+    "Timeline",
     "Planets",
     "Aspects",
     "Aspectarian",
@@ -249,12 +268,15 @@ RIBBON_PAGE_TARGETS = {
     "Compare": "Compare",
     "Factors": "Factor Explorer",
     "Diagnostics": "Diagnostics",
+    "Aspects": "Aspects",
     "Aspect Strength": "Aspect Strength",
     "Declination": "Declination",
     "Button Health": "Button Health",
 }
 RIBBON_SPECIAL_ACTIONS = {
     "New Chart",
+    "Show Current",
+    "Find Best",
     "Save",
     "Save Report",
     "Copy",
@@ -293,6 +315,7 @@ VIEW_PAGE_TARGETS = {
     "Compare": "Compare",
     "Search": "Search",
     "Timing": "Timing",
+    "Timeline": "Timeline",
     "Angles": "Angles",
     "Aspects": "Aspects",
     "Aspectarian": "Aspectarian",
@@ -313,6 +336,7 @@ VIEW_PAGE_STRIP_ACTIONS = (
     "Compare",
     "Search",
     "Timing",
+    "Timeline",
     "Angles",
     "Aspects",
     "Aspectarian",
@@ -326,12 +350,12 @@ VIEW_PAGE_STRIP_ACTIONS = (
     "Save Wheel",
 )
 RIBBON_GROUPS = (
-    ("Chart", ("Calculate", "Day Report", "Report", "Save Report", "Copy", "Shortlist")),
+    ("Chart", ("Show Current", "Find Best", "Day Report", "Report", "Save Report", "Copy", "Shortlist")),
     ("Navigate", ("Advisor", "Improve", "Decision", "Compare", "Search Page", "Factors")),
-    ("Inspect", ("Chart Data", "Aspect Strength", "Diagnostics", "Preferences", "Focus Wheel", "Clear Cache")),
-    ("Reference", ("Systems", "Bounds", "Lots", "Fixed Stars", "Map")),
+    ("Inspect", ("Chart Data", "Aspects", "Aspect Strength", "Diagnostics", "Preferences", "Focus Wheel")),
+    ("Reference", ("Systems", "Bounds", "Lots", "Fixed Stars", "Map", "Clear Cache")),
 )
-RIBBON_COLUMNS = 3
+RIBBON_COLUMNS = 2
 VIEW_PAGE_QUICK_ACTIONS = ("Interpretation", "Search", "Aspect Strength", "Chart Data", "Save Wheel")
 
 PALETTE = {
@@ -463,6 +487,9 @@ CLASSIC_HOUSE_TEXT = "#071b56"
 CLASSIC_HOUSE_HALO = "#f4f1e4"
 CLASSIC_PLANET_DEGREE = "#071b56"
 CLASSIC_PLANET_RETROGRADE = "#c02020"
+CLASSIC_ASPECT_SUPPORT = "#2d7fa0"
+CLASSIC_ASPECT_STRESS = "#c74358"
+CLASSIC_ASPECT_NEUTRAL = "#6f756b"
 CLASSIC_LEFT_PANEL_WIDTH = 112
 CLASSIC_RIGHT_PANEL_WIDTH = 360
 CLASSIC_LEFT_WRAP = 84
@@ -1037,7 +1064,7 @@ class ElectionalDesktopApp:
         self.root.bind("<Alt-Left>", lambda _event: self._select_relative_window(-1))
         self.root.bind("<Alt-Right>", lambda _event: self._select_relative_window(1))
         self.root.bind("<F11>", lambda _event: self._toggle_focus_mode())
-        self.calculate()
+        self.calculate(show_input_chart=True)
         self._apply_page_mode(self._current_page_mode_id(), save=False)
 
     def _configure_style(self) -> None:
@@ -1231,7 +1258,7 @@ class ElectionalDesktopApp:
         ribbon = tk.Frame(self.root, bg=PALETTE["ribbon"], padx=12, pady=5)
         ribbon.pack(fill=tk.X)
         for group_title, items in RIBBON_GROUPS:
-            self._ribbon_group(ribbon, group_title, items).pack(side=tk.LEFT, fill=tk.Y, padx=(0, 7))
+            self._ribbon_group(ribbon, group_title, items).pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10), pady=(1, 2))
 
     def _top_nav_button(self, parent: tk.Widget, label: str) -> tk.Button:
         button = tk.Button(
@@ -1284,18 +1311,18 @@ class ElectionalDesktopApp:
             bg=PALETTE["ribbon_panel"],
             highlightbackground=PALETTE["panel_line"],
             highlightthickness=1,
-            padx=7,
-            pady=5,
+            padx=9,
+            pady=7,
         )
-        tk.Frame(group, bg=PALETTE["accent"], height=2).pack(fill=tk.X, pady=(0, 4))
+        tk.Frame(group, bg=PALETTE["accent"], height=2).pack(fill=tk.X, pady=(0, 5))
         tk.Label(
             group,
             text=title.upper(),
             bg=PALETTE["ribbon_panel"],
             fg=PALETTE["accent_dark"],
-            font=("Georgia", 7, "bold"),
+            font=("Georgia", 8, "bold"),
             anchor="w",
-        ).pack(fill=tk.X, pady=(0, 4))
+        ).pack(fill=tk.X, pady=(0, 6))
         grid = tk.Frame(group, bg=PALETTE["ribbon_panel"])
         grid.pack(fill=tk.X)
         for column in range(RIBBON_COLUMNS):
@@ -1316,6 +1343,8 @@ class ElectionalDesktopApp:
             "Wheel": "Wheel",
             "Export Wheel": "Export",
             "Calculate": "Calc",
+            "Show Current": "Current",
+            "Find Best": "Find Best",
             "Search Page": "Search",
             "Advisor": "Advisor",
             "Improve": "Improve",
@@ -1324,7 +1353,8 @@ class ElectionalDesktopApp:
             "Factors": "Factors",
             "Chart Data": "Data",
             "Diagnostics": "Diag",
-            "Aspect Strength": "Aspect",
+            "Aspects": "Aspects",
+            "Aspect Strength": "Strength",
             "Declination": "Parallels",
             "Button Health": "Buttons",
             "Score Audit": "Audit",
@@ -1342,19 +1372,19 @@ class ElectionalDesktopApp:
             bg=PALETTE["button"],
             highlightbackground=PALETTE["button_line"],
             highlightthickness=1,
-            width=76,
-            height=28,
+            width=108,
+            height=32,
         )
         button.pack_propagate(False)
-        tk.Frame(button, bg=PALETTE["accent"], height=1).pack(fill=tk.X, pady=(0, 3))
+        tk.Frame(button, bg=PALETTE["accent"], height=1).pack(fill=tk.X, pady=(0, 4))
         tk.Label(
             button,
             text=title,
             bg=PALETTE["button"],
             fg=PALETTE["text"],
-            font=("Georgia", 7, "bold"),
+            font=("Georgia", 8, "bold"),
             justify=tk.CENTER,
-            wraplength=72,
+            wraplength=100,
         ).pack(fill=tk.X)
         self._bind_clickable(button, lambda: self._run_ribbon_action(label))
         return button
@@ -1437,6 +1467,8 @@ class ElectionalDesktopApp:
             "Calendar": self._save_selected_calendar_event,
             "Ask": self._show_quick_help,
             "Calculate": self.calculate,
+            "Show Current": lambda: self.calculate(show_input_chart=True),
+            "Find Best": self.calculate,
             "Transits": self.calculate,
             "Electional Search": self.calculate,
             "Search Page": lambda: self._focus_detail_page("Search"),
@@ -1448,6 +1480,7 @@ class ElectionalDesktopApp:
             "Factors": lambda: self._focus_detail_page("Factor Explorer"),
             "Chart Data": self._show_chart_inspector,
             "Diagnostics": lambda: self._focus_detail_page("Diagnostics"),
+            "Aspects": self._show_wheel_aspects,
             "Aspect Strength": lambda: self._focus_detail_page("Aspect Strength"),
             "Declination": lambda: self._focus_detail_page("Declination"),
             "Button Health": self._show_button_health,
@@ -1467,6 +1500,13 @@ class ElectionalDesktopApp:
             "Map": self._show_astro_mapping_dialog,
         }
         actions.get(label, lambda: self._show_unknown_action(label))()
+
+    def _show_wheel_aspects(self) -> None:
+        self.show_aspects_var.set(True)
+        self.compact_wheel_var.set(False)
+        self._display_option_changed()
+        self._focus_detail_page("Aspects")
+        self.status_var.set("Wheel aspects enabled and aspect list opened.")
 
     def _new_chart(self) -> None:
         try:
@@ -1491,7 +1531,7 @@ class ElectionalDesktopApp:
         self.preset_var.set(ELECTIONAL_PRESETS[1].name)
         for var in self.aspect_vars.values():
             var.set(True)
-        self.calculate()
+        self.calculate(show_input_chart=True)
 
     def _save_current_report(self) -> None:
         if not self.selected_window or not self.current_location:
@@ -1570,6 +1610,9 @@ class ElectionalDesktopApp:
             return
         windows = list(daily_report.get("windows", []))
         selected = windows[0] if windows else daily_report.get("snapshot", self.selected_window)
+        daily_searched = int(daily_report.get("searchedWindowCount", len(windows)) or len(windows))
+        daily_evaluated = int(daily_report.get("evaluatedWindowCount", daily_searched) or daily_searched)
+        daily_refined = int(daily_report.get("refinedWindowCount", 0) or 0)
         body = build_transit_search_page(
             daily_report.get("snapshot", self.input_snapshot or self.selected_window),
             selected,
@@ -1577,7 +1620,8 @@ class ElectionalDesktopApp:
             self.current_location,
             format_search_summary(daily_config)
             + " Mode: 24-hour best-overall aspect report; hard filters are omitted for ranking visibility; "
-            + f"deep-built {daily_report.get('deepWindowCount', len(windows))}/{daily_report.get('searchedWindowCount', len(windows))}.",
+            + f"evaluated {daily_evaluated} ({daily_searched} coarse + {daily_refined} refined); "
+            + f"deep-built {daily_report.get('deepWindowCount', len(windows))}.",
             dict(daily_report.get("rejectionSummary") or {}),
         )
         report_text = (
@@ -1814,7 +1858,7 @@ class ElectionalDesktopApp:
         else:
             self.location_var.set("Custom")
 
-        self.calculate()
+        self.calculate(show_input_chart=True)
         target_time = str(entry.get("formattedTime", "")).strip()
         matched_window = next((window for window in self.current_windows if str(window.get("formattedTime", "")).strip() == target_time), None)
         if matched_window:
@@ -2095,6 +2139,7 @@ class ElectionalDesktopApp:
         minimum_cleanliness_var = tk.StringVar(value=self.minimum_cleanliness_var.get())
         maximum_volatility_var = tk.StringVar(value=self.maximum_volatility_var.get())
         max_results_var = tk.StringVar(value=self.max_results_var.get())
+        search_quality_mode_var = tk.StringVar(value=self.search_quality_mode_var.get())
         avoid_major_stress_var = tk.BooleanVar(value=self.avoid_major_stress_var.get())
         require_applying_support_var = tk.BooleanVar(value=self.require_applying_support_var.get())
         require_angular_benefic_var = tk.BooleanVar(value=self.require_angular_benefic_var.get())
@@ -2120,20 +2165,24 @@ class ElectionalDesktopApp:
         search.pack(fill=tk.X, pady=(10, 0))
         search.columnconfigure(0, weight=1)
         search.columnconfigure(1, weight=1)
-        self._dialog_entry_row(search, "Scan hours", scan_var, 0, 0)
-        self._dialog_entry_row(search, "Step minutes", step_var, 0, 1)
-        self._dialog_entry_row(search, "Minimum score", minimum_var, 1, 0)
-        self._dialog_entry_row(search, "Minimum fit", minimum_fit_var, 1, 1)
-        self._dialog_entry_row(search, "Minimum confidence", minimum_confidence_var, 2, 0)
-        self._dialog_entry_row(search, "Minimum cleanliness", minimum_cleanliness_var, 2, 1)
-        self._dialog_entry_row(search, "Maximum volatility", maximum_volatility_var, 3, 0)
-        self._dialog_entry_row(search, "Max results", max_results_var, 3, 1)
-        ttk.Checkbutton(search, text="Avoid major stress", variable=avoid_major_stress_var).grid(row=4, column=0, sticky="w", padx=(0, 6), pady=(0, 8))
-        ttk.Checkbutton(search, text="Require applying support", variable=require_applying_support_var).grid(row=4, column=1, sticky="w", padx=(6, 0), pady=(0, 8))
-        ttk.Checkbutton(search, text="Require angular benefic", variable=require_angular_benefic_var).grid(row=5, column=0, sticky="w", padx=(0, 6), pady=(0, 8))
-        ttk.Checkbutton(search, text="Avoid angular malefics", variable=avoid_angular_malefics_var).grid(row=5, column=1, sticky="w", padx=(6, 0), pady=(0, 8))
-        ttk.Checkbutton(search, text="Keep Moon non-void", variable=require_moon_non_void_var).grid(row=6, column=0, sticky="w", padx=(0, 6), pady=(0, 8))
-        ttk.Checkbutton(search, text="Avoid objective anti-patterns", variable=avoid_objective_antipatterns_var).grid(row=6, column=1, sticky="w", padx=(6, 0), pady=(0, 8))
+        mode_frame = ttk.Frame(search, style="Panel.TFrame")
+        mode_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        ttk.Label(mode_frame, text="Search mode", style="Small.TLabel").pack(anchor="w", pady=(0, 3))
+        ttk.Combobox(mode_frame, textvariable=search_quality_mode_var, values=list(SEARCH_QUALITY_MODE_NAMES), state="readonly").pack(fill=tk.X, ipady=5)
+        self._dialog_entry_row(search, "Scan hours", scan_var, 1, 0)
+        self._dialog_entry_row(search, "Step minutes", step_var, 1, 1)
+        self._dialog_entry_row(search, "Minimum score", minimum_var, 2, 0)
+        self._dialog_entry_row(search, "Minimum fit", minimum_fit_var, 2, 1)
+        self._dialog_entry_row(search, "Minimum confidence", minimum_confidence_var, 3, 0)
+        self._dialog_entry_row(search, "Minimum cleanliness", minimum_cleanliness_var, 3, 1)
+        self._dialog_entry_row(search, "Maximum volatility", maximum_volatility_var, 4, 0)
+        self._dialog_entry_row(search, "Max results", max_results_var, 4, 1)
+        ttk.Checkbutton(search, text="Avoid major stress", variable=avoid_major_stress_var).grid(row=5, column=0, sticky="w", padx=(0, 6), pady=(0, 8))
+        ttk.Checkbutton(search, text="Require applying support", variable=require_applying_support_var).grid(row=5, column=1, sticky="w", padx=(6, 0), pady=(0, 8))
+        ttk.Checkbutton(search, text="Require angular benefic", variable=require_angular_benefic_var).grid(row=6, column=0, sticky="w", padx=(0, 6), pady=(0, 8))
+        ttk.Checkbutton(search, text="Avoid angular malefics", variable=avoid_angular_malefics_var).grid(row=6, column=1, sticky="w", padx=(6, 0), pady=(0, 8))
+        ttk.Checkbutton(search, text="Keep Moon non-void", variable=require_moon_non_void_var).grid(row=7, column=0, sticky="w", padx=(0, 6), pady=(0, 8))
+        ttk.Checkbutton(search, text="Avoid objective anti-patterns", variable=avoid_objective_antipatterns_var).grid(row=7, column=1, sticky="w", padx=(6, 0), pady=(0, 8))
 
         actions = tk.Frame(dialog, bg=PALETTE["app_bg"], padx=12, pady=10)
         actions.pack(fill=tk.X)
@@ -2158,6 +2207,7 @@ class ElectionalDesktopApp:
                 minimum_cleanliness_var.get(),
                 maximum_volatility_var.get(),
                 max_results_var.get(),
+                search_quality_mode_var.get(),
                 avoid_major_stress_var.get(),
                 require_applying_support_var.get(),
                 require_angular_benefic_var.get(),
@@ -2188,6 +2238,7 @@ class ElectionalDesktopApp:
                 minimum_cleanliness_var.get(),
                 maximum_volatility_var.get(),
                 max_results_var.get(),
+                search_quality_mode_var.get(),
                 avoid_major_stress_var.get(),
                 require_applying_support_var.get(),
                 require_angular_benefic_var.get(),
@@ -2228,6 +2279,7 @@ class ElectionalDesktopApp:
         minimum_cleanliness: str,
         maximum_volatility: str,
         max_results: str,
+        search_quality_mode: str,
         avoid_major_stress: bool,
         require_applying_support: bool,
         require_angular_benefic: bool,
@@ -2273,6 +2325,7 @@ class ElectionalDesktopApp:
         self.minimum_cleanliness_var.set(minimum_cleanliness)
         self.maximum_volatility_var.set(maximum_volatility)
         self.max_results_var.set(max_results)
+        self.search_quality_mode_var.set(search_quality_mode if search_quality_mode in SEARCH_QUALITY_MODE_NAMES else SEARCH_QUALITY_MODE_NAMES[0])
         self.avoid_major_stress_var.set(avoid_major_stress)
         self.require_applying_support_var.set(require_applying_support)
         self.require_angular_benefic_var.set(require_angular_benefic)
@@ -2286,7 +2339,7 @@ class ElectionalDesktopApp:
         self._apply_page_mode(self._current_page_mode_id(), save=False)
         dialog.destroy()
         self.status_var.set("Preferences applied.")
-        self.calculate()
+        self.calculate(show_input_chart=True)
 
     def _selected_aspect_ids(self) -> list[str]:
         return [aspect for aspect, var in self.aspect_vars.items() if var.get()]
@@ -2465,7 +2518,7 @@ class ElectionalDesktopApp:
             "",
             "Current Search",
             f"- Summary: {self.current_search_summary or 'No search calculated yet.'}",
-            f"- Scanned windows: {self.current_searched_window_count}",
+            f"- Evaluated windows: {self.current_searched_window_count}",
             "",
             "Actions",
             "- Use Tools > Clear Cache to reset stored chart snapshots before comparing fresh calculation speed.",
@@ -2650,6 +2703,7 @@ class ElectionalDesktopApp:
         self.minimum_cleanliness_var = tk.StringVar(value=str(state.get("minimum_cleanliness") or DEFAULT_MINIMUM_CLEANLINESS))
         self.maximum_volatility_var = tk.StringVar(value=str(state.get("maximum_volatility") or DEFAULT_MAXIMUM_VOLATILITY))
         self.max_results_var = tk.StringVar(value=str(state.get("max_results") or DEFAULT_MAX_RESULTS))
+        self.search_quality_mode_var = tk.StringVar(value=str(state.get("search_quality_mode") or SEARCH_QUALITY_MODE_NAMES[0]))
         self.avoid_major_stress_var = tk.BooleanVar(value=bool(state.get("avoid_major_stress", False)))
         self.require_applying_support_var = tk.BooleanVar(value=bool(state.get("require_applying_support", False)))
         self.require_angular_benefic_var = tk.BooleanVar(value=bool(state.get("require_angular_benefic", False)))
@@ -2742,6 +2796,7 @@ class ElectionalDesktopApp:
         search_box = ttk.LabelFrame(search_tab, text="Search Quality", style="Panel.TLabelframe", padding=10)
         search_box.pack(fill=tk.X)
         self._labeled_combo(search_box, "Search preset", self.search_preset_var, list(SEARCH_PRESET_NAMES)).bind("<<ComboboxSelected>>", self._apply_selected_search_preset)
+        self._labeled_combo(search_box, "Search mode", self.search_quality_mode_var, list(SEARCH_QUALITY_MODE_NAMES)).bind("<<ComboboxSelected>>", lambda _event: self._update_search_summary())
         search_row = ttk.Frame(search_box, style="Panel.TFrame")
         search_row.pack(fill=tk.X)
         search_row.columnconfigure(0, weight=1)
@@ -2888,7 +2943,13 @@ class ElectionalDesktopApp:
 
         action_box = tk.Frame(parent, bg=PALETTE["panel_alt"], highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=10, pady=10)
         action_box.pack(fill=tk.X, pady=(0, 10))
-        ttk.Button(action_box, text="Calculate Election", command=self.calculate).pack(fill=tk.X)
+        self._button_row(
+            action_box,
+            (
+                ("Show Current", lambda: self.calculate(show_input_chart=True)),
+                ("Find Best", self.calculate),
+            ),
+        )
         self._button_row(
             action_box,
             (
@@ -3017,7 +3078,7 @@ class ElectionalDesktopApp:
         self.location_var.set(location.name)
         self.status_var.set(f"Saved custom location: {location.name}.")
         self._log_event(f"Saved location preset: {location.name}")
-        self.calculate()
+        self.calculate(show_input_chart=True)
 
     def _set_home_location(self) -> None:
         errors = validate_election_inputs(
@@ -3046,7 +3107,7 @@ class ElectionalDesktopApp:
         self.location_var.set(location.name)
         self.status_var.set(f"Home location set: {location.name}.")
         self._log_event(f"Home location set: {location.name}")
-        self.calculate()
+        self.calculate(show_input_chart=True)
 
     def _use_home_location(self) -> None:
         location = resolve_location_by_name(self.home_location_name, self.user_locations) if self.home_location_name else None
@@ -3060,7 +3121,7 @@ class ElectionalDesktopApp:
         label = "saved home" if self.home_location_name else "local default"
         self.status_var.set(f"Loaded {label} location: {location.name}.")
         self._log_event(f"Loaded {label} location: {location.name}")
-        self.calculate()
+        self.calculate(show_input_chart=True)
 
     def _use_default_location(self) -> None:
         location = default_location_for_timezone()
@@ -3071,7 +3132,7 @@ class ElectionalDesktopApp:
         self.timezone_var.set(location.timezone)
         self.status_var.set(f"Loaded local default location: {location.name}.")
         self._log_event(f"Loaded local default location: {location.name}")
-        self.calculate()
+        self.calculate(show_input_chart=True)
 
     def _selected_builtin_location(self) -> LocationPreset | None:
         selected_name = self.location_var.get().strip() or self.location_name_var.get().strip()
@@ -3098,7 +3159,7 @@ class ElectionalDesktopApp:
         self.timezone_var.set(fallback.timezone)
         self.status_var.set(f"Hid built-in location: {location.name}. Use Reset Locations to restore it.")
         self._log_event(f"Hid built-in location: {location.name}")
-        self.calculate()
+        self.calculate(show_input_chart=True)
 
     def _reset_locations(self) -> None:
         self.hidden_builtin_location_ids = set()
@@ -3113,7 +3174,7 @@ class ElectionalDesktopApp:
         self.timezone_var.set(location.timezone)
         self.status_var.set("Location defaults reset: built-ins restored and home location cleared.")
         self._log_event("Location defaults reset")
-        self.calculate()
+        self.calculate(show_input_chart=True)
 
     def _forget_location_preset(self) -> None:
         selected_name = self.location_name_var.get().strip() or self.location_var.get().strip()
@@ -3139,7 +3200,7 @@ class ElectionalDesktopApp:
         self.timezone_var.set(fallback.timezone)
         self.status_var.set(f"Forgot saved location: {selected_name}.")
         self._log_event(f"Forgot location preset: {selected_name}")
-        self.calculate()
+        self.calculate(show_input_chart=True)
 
     def _sync_aspects_to_preset(self, _event: object | None = None) -> None:
         preset = self.presets_by_name.get(self.preset_var.get(), ELECTIONAL_PRESETS[1])
@@ -3205,6 +3266,7 @@ class ElectionalDesktopApp:
                 minimum_confidence_text=self.minimum_confidence_var.get(),
                 minimum_cleanliness_text=self.minimum_cleanliness_var.get(),
                 maximum_volatility_text=self.maximum_volatility_var.get(),
+                search_quality_mode_text=self.search_quality_mode_var.get(),
             )
         except ValueError:
             self.search_summary_var.set("Search settings need attention.")
@@ -3543,7 +3605,7 @@ class ElectionalDesktopApp:
             status = "Page mode: Medieval Data."
         elif mode_id == "classical-point-data":
             self.page_mode_var.set(PAGE_MODE_LABELS[mode_id])
-            self.show_aspects_var.set(False)
+            self.show_aspects_var.set(True)
             self.show_lots_var.set(True)
             self.show_nodes_var.set(True)
             self.show_fixed_stars_var.set(False)
@@ -3950,6 +4012,7 @@ class ElectionalDesktopApp:
         self.lots_text = self._text_tab("Lots")
         self.nodes_text = self._text_tab("Nodes")
         self.timing_text = self._text_tab("Timing")
+        self.timeline_text = self._text_tab("Timeline")
         self.planets_text = self._text_tab("Planets")
         self.aspects_text = self._text_tab("Aspects")
         self.aspectarian_text = self._text_tab("Aspectarian")
@@ -4033,6 +4096,35 @@ class ElectionalDesktopApp:
                 justify=tk.LEFT,
                 anchor="w",
             ).pack(fill=tk.X, pady=(2, 0))
+        self.validation_panel_vars = [tk.StringVar(value="") for _index in range(4)]
+        validation_block = tk.Frame(frame, bg=PALETTE["panel"], highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=7, pady=5)
+        validation_block.pack(fill=tk.X, pady=(7, 0))
+        tk.Label(validation_block, text="Calculation Health", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 8, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in self.validation_panel_vars:
+            tk.Label(
+                validation_block,
+                textvariable=variable,
+                bg=PALETTE["panel"],
+                fg=PALETTE["text"],
+                font=("Segoe UI", 7),
+                wraplength=330,
+                justify=tk.LEFT,
+                anchor="w",
+            ).pack(fill=tk.X, pady=(2, 0))
+        self.aspect_dashboard_var = tk.StringVar(value="")
+        aspect_block = tk.Frame(frame, bg=PALETTE["panel"], highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=7, pady=5)
+        aspect_block.pack(fill=tk.X, pady=(7, 0))
+        tk.Label(aspect_block, text="Aspect Dashboard", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 8, "bold"), anchor="w").pack(fill=tk.X)
+        tk.Label(
+            aspect_block,
+            textvariable=self.aspect_dashboard_var,
+            bg=PALETTE["panel"],
+            fg=PALETTE["text"],
+            font=("Segoe UI", 7),
+            wraplength=330,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(3, 0))
         action_row = tk.Frame(frame, bg=PALETTE["astrolabe_panel"])
         action_row.pack(fill=tk.X, pady=(7, 0))
         self._astrolabe_button(action_row, "Day Report", self._show_daily_aspect_report_dialog).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
@@ -4103,6 +4195,18 @@ class ElectionalDesktopApp:
         self.judgment_grade_var.set(f"{band} / Grade {grade}")
         for variable, line in zip(self.judgment_line_vars, compact_judgment_lines(snapshot)):
             variable.set(line)
+        if hasattr(self, "validation_panel_vars"):
+            validation_lines = [str(line).lstrip("- ") for line in validation_summary_lines(snapshot, self.current_location)[:4]]
+            for index, variable in enumerate(self.validation_panel_vars):
+                variable.set(validation_lines[index] if index < len(validation_lines) else "")
+        if hasattr(self, "aspect_dashboard_var"):
+            dashboard_lines = []
+            highlights = self.current_aspect_highlights if isinstance(self.current_aspect_highlights, dict) else {}
+            for label, key in (("Now", "current"), ("Day", "localDay"), ("24h", "rolling24Hours")):
+                result = highlights.get(key)
+                if isinstance(result, Mapping):
+                    dashboard_lines.append(f"{label}: {format_aspect_highlight(result).splitlines()[0]}")
+            self.aspect_dashboard_var.set("\n".join(dashboard_lines) if dashboard_lines else "No selected major aspect in orb.")
 
     def _build_window_list_panel(self) -> None:
         frame = tk.Frame(self.right_panel, bg=PALETTE["astrolabe_panel"], highlightbackground=PALETTE["astrolabe_line"], highlightthickness=1, padx=7, pady=6)
@@ -4237,6 +4341,7 @@ class ElectionalDesktopApp:
             minimum_confidence_text=self.minimum_confidence_var.get(),
             minimum_cleanliness_text=self.minimum_cleanliness_var.get(),
             maximum_volatility_text=self.maximum_volatility_var.get(),
+            search_quality_mode_text=self.search_quality_mode_var.get(),
         )
         self._update_search_summary()
 
@@ -4253,7 +4358,10 @@ class ElectionalDesktopApp:
                 self.objective_var.get(),
             )
         except Exception as exc:  # pragma: no cover - exercised manually through the desktop UI.
-            messagebox.showerror("Electional calculation failed", str(exc))
+            debug_path = record_desktop_exception("Electional calculation failed")
+            self._log_event(f"Calculation failed: {exc}")
+            detail = f"\n\nDebug trace: {debug_path}" if debug_path else ""
+            messagebox.showerror("Electional calculation failed", f"{exc}{detail}")
             return
 
         snapshot = report["snapshot"]
@@ -4266,15 +4374,18 @@ class ElectionalDesktopApp:
         search_mode = str(report.get("searchMode") or "full")
         deep_count = int(report.get("deepWindowCount") or len(windows))
         searched_count = int(report.get("searchedWindowCount") or len(windows))
+        evaluated_count = int(report.get("evaluatedWindowCount") or searched_count)
+        refined_count = int(report.get("refinedWindowCount") or 0)
         cache = report.get("snapshotCache", {})
         cache_text = ""
         if isinstance(cache, dict):
             cache_text = f" Cache hits {cache.get('hits', 0)}, stored {cache.get('currsize', 0)}."
         self.current_search_summary = (
-            f"{format_search_summary(search_config)} Mode: {search_mode}; deep-built {deep_count}/{searched_count}.{cache_text}"
+            f"{format_search_summary(search_config)} Mode: {search_mode}; evaluated {evaluated_count} "
+            f"({searched_count} coarse + {refined_count} refined); deep-built {deep_count}.{cache_text}"
         )
         self.current_rejection_summary = dict(report.get("rejectionSummary") or {})
-        self.current_searched_window_count = searched_count
+        self.current_searched_window_count = evaluated_count
         self.selected_window = selected_window
         self.selected_window_index = selected_index
         self.displayed_chart_source = "input chart" if show_input_chart or not windows else "selected candidate"
@@ -4298,7 +4409,8 @@ class ElectionalDesktopApp:
             validation_suffix = " | Indio corrected"
         if not selected_window.get("traditionalRulesEnabled", True):
             validation_suffix += " | 13-sign rules off"
-        self.validation_var.set(f"Validation: Pass{validation_suffix}")
+        accuracy_label = self._accuracy_status_label(selected_window)
+        self.validation_var.set(f"Validation: {accuracy_label}{validation_suffix}")
         result_note = f"{len(windows)} matching window{'s' if len(windows) != 1 else ''}"
         if not windows:
             result_note = "No matching windows; showing the input chart"
@@ -4306,8 +4418,8 @@ class ElectionalDesktopApp:
             (
                 f"Location: {location.name}    Chart time: {selected_window['formattedTime']}    "
                 f"Search: {search_config.end_offset_minutes // 60}h/{search_config.step_minutes}m    "
-                f"Results: {result_note} of {self.current_searched_window_count} scanned    "
-                f"System: {zodiac_system.name} / {house_system.name}    Validation: Pass"
+                f"Results: {result_note} of {evaluated_count} evaluated    "
+                f"System: {zodiac_system.name} / {house_system.name}    Validation: {accuracy_label}"
             )
         )
         self._log_event(
@@ -4350,6 +4462,32 @@ class ElectionalDesktopApp:
                 wraplength=280,
                 justify=tk.LEFT,
             ).pack(fill=tk.X)
+            summary = self.current_rejection_summary if isinstance(self.current_rejection_summary, dict) else {}
+            top_reasons = summary.get("topReasons", [])
+            suggestions = summary.get("suggestedRelaxations", [])
+            if isinstance(top_reasons, list) and top_reasons:
+                reason_text = "Top blockers:\n" + "\n".join(f"- {reason} ({count})" for reason, count in top_reasons[:3])
+                tk.Label(
+                    empty_card,
+                    text=reason_text,
+                    bg=PALETTE["astrolabe_panel"],
+                    fg=PALETTE["astrolabe_ink"],
+                    font=("Segoe UI", 7),
+                    wraplength=280,
+                    justify=tk.LEFT,
+                    anchor="w",
+                ).pack(fill=tk.X, pady=(6, 0))
+            if isinstance(suggestions, list) and suggestions:
+                tk.Label(
+                    empty_card,
+                    text="Try next:\n" + "\n".join(f"- {suggestion}" for suggestion in suggestions[:2]),
+                    bg=PALETTE["astrolabe_panel"],
+                    fg=PALETTE["accent_dark"],
+                    font=("Segoe UI", 7, "bold"),
+                    wraplength=280,
+                    justify=tk.LEFT,
+                    anchor="w",
+                ).pack(fill=tk.X, pady=(6, 0))
             self.selected_window_index = -1
             return
         for index, window in enumerate(windows, start=1):
@@ -4412,6 +4550,18 @@ class ElectionalDesktopApp:
             wraplength=280,
             justify=tk.LEFT,
         ).pack(fill=tk.X)
+        rank_reasons = window.get("rankReasons", [])
+        if isinstance(rank_reasons, list) and rank_reasons:
+            tk.Label(
+                card,
+                text=str(rank_reasons[0]),
+                bg=card["bg"],
+                fg=PALETTE["accent_dark"],
+                font=("Segoe UI", 7, "bold"),
+                anchor="w",
+                wraplength=280,
+                justify=tk.LEFT,
+            ).pack(fill=tk.X, pady=(3, 0))
         support = sum(1 for aspect in window["detectedAspects"] if aspect["tone"] == "support")
         stress = sum(1 for aspect in window["detectedAspects"] if aspect["tone"] == "stress")
         fixed_stars = fixed_star_contact_count(window)
@@ -4422,15 +4572,19 @@ class ElectionalDesktopApp:
         volatility = diagnostics.get("volatility", {}) if isinstance(diagnostics, dict) else {}
         fit_matches = int(breakdown.get("objectiveMatches", 0)) if isinstance(breakdown, dict) else 0
         offset_text = selection_offset_label(self.input_snapshot or window, window)
+        stage_text = self._search_stage_label(window)
         tag_row = tk.Frame(card, bg=card["bg"])
         tag_row.pack(fill=tk.X, pady=(6, 0))
-        for text, fg, bg in (
+        tag_specs = [
             (f"Conf {confidence.get('score', '--')}", PALETTE["astrolabe_gold"], PALETTE["button"]),
             (f"{fit_matches} fit", "#5b8f57", PALETTE["button"]),
             (f"+{support}", "#5b8f57", PALETTE["button"]),
             (f"!{stress}", "#a34e57", PALETTE["button"]),
             (offset_text, PALETTE["astrolabe_muted"], PALETTE["button"]),
-        ):
+        ]
+        if stage_text:
+            tag_specs.append((stage_text, PALETTE["astrolabe_gold"], "#efe6c7"))
+        for text, fg, bg in tag_specs:
             tk.Label(
                 tag_row,
                 text=text,
@@ -4462,8 +4616,9 @@ class ElectionalDesktopApp:
         self.current_aspect_highlights = self._build_displayed_aspect_highlights(selected, self.current_location)
         self.score_var.set(str(selected["score"]))
         self.score_band_var.set(f"{score_band_label(int(selected['score']))} window")
+        accuracy_label = self._accuracy_status_label(selected)
         self.status_var.set(
-            f"Location: {self.current_location.name}    Chart time: {selected['formattedTime']}    System: {selected['zodiacSystem'].name} / {selected['houseSystem'].name}    Validation: Pass"
+            f"Location: {self.current_location.name}    Chart time: {selected['formattedTime']}    System: {selected['zodiacSystem'].name} / {selected['houseSystem'].name}    Validation: {accuracy_label}"
         )
         self._log_event(f"Selected window #{index + 1}: {selected['formattedTime']} score {selected['score']}")
         self._set_timing_context(self.input_snapshot or selected, selected, self.current_location)
@@ -4492,6 +4647,26 @@ class ElectionalDesktopApp:
             selected = index == self.selected_window_index
             card.configure(highlightbackground=PALETTE["astrolabe_gold"] if selected else PALETTE["panel_line"], highlightthickness=2 if selected else 1)
 
+    def _accuracy_status_label(self, snapshot: dict[str, object]) -> str:
+        accuracy = snapshot.get("accuracyAudit", {})
+        if isinstance(accuracy, dict):
+            label = str(accuracy.get("label") or "").strip()
+            if label:
+                return label
+            status = str(accuracy.get("status") or "").strip()
+            if status:
+                return status.title()
+        return "Pass"
+
+    def _search_stage_label(self, window: dict[str, object]) -> str:
+        stage = str(window.get("searchStage") or "").strip().lower()
+        resolution = window.get("searchResolutionMinutes")
+        if stage == "refined":
+            return f"{resolution}m refined" if resolution else "refined"
+        if stage == "input":
+            return "input"
+        return ""
+
     def _set_timing_context(
         self,
         input_snapshot: dict[str, object],
@@ -4503,6 +4678,10 @@ class ElectionalDesktopApp:
         self.timing_context_var.set(
             f"{location_summary(location)}    Displayed: {source} at {selected_window['formattedTime']}    Search start: {input_snapshot['formattedTime']}    {offset}"
         )
+        self.location_state_var.set(location_summary(location))
+        self.input_state_var.set(compact_time_label(input_snapshot))
+        self.selected_state_var.set(compact_time_label(selected_window))
+        self.offset_state_var.set(offset)
 
     def _build_displayed_aspect_highlights(
         self,
@@ -4533,10 +4712,6 @@ class ElectionalDesktopApp:
         except Exception as exc:  # pragma: no cover - UI resilience path.
             self._log_event(f"Aspect highlight scan failed: {exc}")
             return {}
-        self.location_state_var.set(location_summary(location))
-        self.input_state_var.set(compact_time_label(input_snapshot))
-        self.selected_state_var.set(compact_time_label(selected_window))
-        self.offset_state_var.set(offset)
 
     def _use_selected_window_time(self) -> None:
         if not self.selected_window or not self.current_location:
@@ -4545,7 +4720,7 @@ class ElectionalDesktopApp:
         self.date_var.set(local.strftime("%Y-%m-%d"))
         self.time_var.set(local.strftime("%H:%M"))
         self._log_event(f"Applied selected window to input time: {self.date_var.get()} {self.time_var.get()}")
-        self.calculate()
+        self.calculate(show_input_chart=True)
 
     def _schedule_redraw(self, _event: object | None = None) -> None:
         if not self.selected_window:
@@ -4781,7 +4956,7 @@ class ElectionalDesktopApp:
             house_labels.append((lx, ly, str(cusp["house"])))
 
         if self.show_aspects_var.get():
-            self._draw_aspects(snapshot, cx, cy, aspect_radius, asc_lon)
+            self._draw_classic_aspects(snapshot, cx, cy, aspect_radius * 0.94, asc_lon)
         self._draw_angles(snapshot, cx, cy, outer, asc_lon)
         point_set = get_point_set(self.point_set_var.get())
         if self.show_fixed_stars_var.get() and point_set.show_fixed_stars:
@@ -4816,6 +4991,46 @@ class ElectionalDesktopApp:
             font=("Georgia", 11 if self.compact_wheel_var.get() else 13, "bold"),
             tags=("house-label",),
         )
+
+    def _draw_classic_aspects(self, snapshot: dict[str, object], cx: float, cy: float, radius: float, asc_lon: float) -> None:
+        positions = {planet["name"]: planet for planet in self._visible_planets(snapshot)}
+        ranked_aspects = sorted(
+            [
+                aspect
+                for aspect in snapshot.get("detectedAspects", [])
+                if isinstance(aspect, dict)
+                and isinstance(aspect.get("bodies"), list)
+                and len(aspect.get("bodies", [])) == 2
+            ],
+            key=lambda aspect: (
+                bool(aspect.get("isApplying")),
+                float(aspect.get("strength", 0) or 0),
+                -float(aspect.get("orb", 99) or 99),
+            ),
+            reverse=True,
+        )
+        for aspect in ranked_aspects[:14]:
+            body_a, body_b = aspect["bodies"]
+            if body_a not in positions or body_b not in positions:
+                continue
+            angle_a = wheel_degrees(float(positions[body_a]["longitude"]), asc_lon)
+            angle_b = wheel_degrees(float(positions[body_b]["longitude"]), asc_lon)
+            x1, y1 = _polar(cx, cy, radius, angle_a)
+            x2, y2 = _polar(cx, cy, radius, angle_b)
+            tone = str(aspect.get("tone") or "")
+            color = CLASSIC_ASPECT_SUPPORT if tone == "support" else CLASSIC_ASPECT_STRESS if tone == "stress" else CLASSIC_ASPECT_NEUTRAL
+            width = 2 if aspect.get("isApplying") else 1
+            dash = () if aspect.get("isApplying") else (5, 5)
+            self.canvas.create_line(
+                x1,
+                y1,
+                x2,
+                y2,
+                fill=color,
+                width=width,
+                dash=dash,
+                tags=("classic-aspect",),
+            )
 
     def _draw_ophiuchus_symbol(self, x: float, y: float, size: float) -> None:
         color = CLASSIC_SIGN_TEXT
@@ -5552,6 +5767,16 @@ class ElectionalDesktopApp:
                 f"{aspect_labels}"
             ),
         )
+        timeline_lines = [
+            "Aspect Timeline",
+            "",
+            "Local Day",
+            *format_aspect_timeline(self.current_aspect_highlights, key="timelineByTime", limit=12),
+            "",
+            "Rolling Next 24 Hours",
+            *format_aspect_timeline(self.current_aspect_highlights, key="rollingTimelineByTime", limit=12),
+        ]
+        self._set_text(self.timeline_text, "\n".join(timeline_lines))
         self._set_text(
             self.analysis_text,
             build_analysis_page(
@@ -5975,6 +6200,7 @@ class ElectionalDesktopApp:
             "scan_hours": self.scan_hours_var.get(),
             "step_minutes": self.step_minutes_var.get(),
             "search_preset": self.search_preset_var.get(),
+            "search_quality_mode": self.search_quality_mode_var.get(),
             "minimum_score": self.minimum_score_var.get(),
             "minimum_fit": self.minimum_fit_var.get(),
             "minimum_confidence": self.minimum_confidence_var.get(),

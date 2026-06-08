@@ -3,11 +3,50 @@ from __future__ import annotations
 import json
 import unittest
 
-from backend.electional.server import build_chart_response, build_report_response, build_search_response, decode_json_object, json_default, search_config_from_payload
+from backend.electional.server import build_chart_response, build_report_response, build_score_response, build_search_response, decode_json_object, json_default, search_config_from_payload
 from backend.electional.professional import engine_name
 
 
 class ServerApiTest(unittest.TestCase):
+    def test_score_response_accepts_explicit_custom_aspect_definitions(self) -> None:
+        response = build_score_response(
+            {
+                "presetId": "traditional-lilly",
+                "positions": [
+                    {
+                        "name": "Sun",
+                        "longitude": 10,
+                        "zodiac": {"sign": "Aries", "degree": 10, "minute": 0},
+                        "isAngular": False,
+                        "closestAngle": {"shortName": "ASC", "distance": 12},
+                    },
+                    {
+                        "name": "Moon",
+                        "longitude": 55,
+                        "zodiac": {"sign": "Taurus", "degree": 25, "minute": 0},
+                        "isAngular": False,
+                        "closestAngle": {"shortName": "ASC", "distance": 20},
+                    },
+                ],
+                "aspects": ["semisquare"],
+                "aspectDefinitions": [
+                    {
+                        "id": "semisquare",
+                        "name": "Semisquare",
+                        "abbreviation": "Sem",
+                        "glyph": "SS",
+                        "angle": 45,
+                        "orb": 1,
+                        "tone": "stress",
+                        "enabled": True,
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(response["detectedAspects"][0]["aspectId"], "semisquare")
+        self.assertEqual(response["detectedAspects"][0]["aspectAbbreviation"], "Sem")
+
     def test_chart_response_is_json_serializable(self) -> None:
         response = build_chart_response(
             {

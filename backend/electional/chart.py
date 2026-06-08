@@ -5,10 +5,10 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timedelta
 from functools import lru_cache
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from .accuracy import build_accuracy_audit
-from .aspects import detect_aspects
+from .aspects import Aspect, aspect_definition_signature, aspect_definitions_from_signature, detect_aspects
 from .angle_timing import annotate_angle_timings
 from .constellations import annotate_points_with_constellations, chart_constellation_context
 from .ephemeris import format_zodiac_position, get_ecliptic_coordinates, get_planet_positions, lunar_phase_from_positions
@@ -99,7 +99,9 @@ def build_snapshot_for_moment(
     house_system_id: str = "whole-sign",
     objective: str = DEFAULT_OBJECTIVE,
     calculation_mode: str = "full",
+    aspect_definitions: Iterable[Aspect | Mapping[str, object]] | None = None,
 ) -> dict[str, object]:
+    signature = aspect_definition_signature(aspect_definitions)
     return deepcopy(
         _cached_snapshot_for_moment(
             moment.isoformat(),
@@ -114,6 +116,7 @@ def build_snapshot_for_moment(
             house_system_id,
             objective,
             calculation_mode,
+            signature,
         )
     )
 
@@ -132,11 +135,13 @@ def _cached_snapshot_for_moment(
     house_system_id: str,
     objective: str,
     calculation_mode: str,
+    aspect_signature: tuple[tuple[object, ...], ...],
 ) -> dict[str, object]:
     moment = datetime.fromisoformat(moment_iso)
     location = LocationPreset(location_id, location_name, latitude, longitude, timezone)
     location, _known_location_corrected = corrected_known_location(location)
     preset = get_preset(preset_id)
+    aspect_definitions = aspect_definitions_from_signature(aspect_signature)
     zodiac_system = get_zodiac_system(zodiac_system_id)
     house_system = get_house_system(house_system_id)
     traditional_rules_enabled = zodiac_supports_traditional_rules(zodiac_system.id)
@@ -170,6 +175,7 @@ def _cached_snapshot_for_moment(
         moment,
         location.timezone,
         None if is_fast else resolve_longitude,
+        aspect_definitions,
     )
     timing = timing_profile(detected)
     fixed_stars = [] if is_fast else fixed_star_positions(moment, zodiac_system.id)
@@ -296,11 +302,12 @@ def build_snapshot(
     zodiac_system_id: str = "tropical",
     house_system_id: str = "whole-sign",
     objective: str = DEFAULT_OBJECTIVE,
+    aspect_definitions: Iterable[Aspect | Mapping[str, object]] | None = None,
 ) -> dict[str, object]:
     preset = get_preset(preset_id)
     aspects = tuple(selected_aspects or preset.aspect_ids)
     moment = zoned_time_to_utc(date_text, time_text, location.timezone)
-    return build_snapshot_for_moment(moment, location, preset, aspects, zodiac_system_id, house_system_id, objective)
+    return build_snapshot_for_moment(moment, location, preset, aspects, zodiac_system_id, house_system_id, objective, aspect_definitions=aspect_definitions)
 
 
 def calculation_notes(
@@ -346,6 +353,7 @@ def build_transit_windows(
     house_system_id: str = "whole-sign",
     search_config: SearchConfig = DEFAULT_SEARCH_CONFIG,
     objective: str = DEFAULT_OBJECTIVE,
+    aspect_definitions: Iterable[Aspect | Mapping[str, object]] | None = None,
 ) -> list[dict[str, object]]:
     return list(
         build_election_report(
@@ -358,6 +366,7 @@ def build_transit_windows(
             house_system_id,
             search_config,
             objective,
+            aspect_definitions,
         )["windows"]
     )
 
@@ -372,13 +381,14 @@ def build_election_report(
     house_system_id: str = "whole-sign",
     search_config: SearchConfig = DEFAULT_SEARCH_CONFIG,
     objective: str = DEFAULT_OBJECTIVE,
+    aspect_definitions: Iterable[Aspect | Mapping[str, object]] | None = None,
 ) -> dict[str, object]:
     """Build the input chart and ranked windows without recalculating the base moment twice."""
 
     base_moment = zoned_time_to_utc(date_text, time_text, location.timezone)
     preset = get_preset(preset_id)
     aspects = tuple(selected_aspects or preset.aspect_ids)
-    snapshot = build_snapshot_for_moment(base_moment, location, preset, aspects, zodiac_system_id, house_system_id, objective)
+    snapshot = build_snapshot_for_moment(base_moment, location, preset, aspects, zodiac_system_id, house_system_id, objective, aspect_definitions=aspect_definitions)
     offsets = search_config.offsets()
     fast_deep_enabled = bool(search_config.max_results and len(offsets) > search_config.max_results)
     coarse_windows = []
@@ -403,6 +413,7 @@ def build_election_report(
             house_system_id,
             objective,
             calculation_mode,
+            aspect_definitions,
         )
         coarse_windows.append(
             snapshot_to_window(
@@ -425,6 +436,7 @@ def build_election_report(
                 house_system_id,
                 objective,
                 "fast",
+                aspect_definitions,
             ),
             location,
             search_stage="refined",
@@ -472,6 +484,7 @@ def build_election_report(
                 house_system_id,
                 objective,
                 "full",
+                aspect_definitions,
             )
             deep_window = snapshot_to_window(
                 deep_snapshot,

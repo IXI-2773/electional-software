@@ -1,9 +1,21 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
-from backend.electional.aspects import aspect_timing, detect_aspects
+from backend.electional.aspects import (
+    Aspect,
+    AspectProfile,
+    aspect_profile_by_id,
+    aspect_timing,
+    default_aspect_profile,
+    detect_aspects,
+    load_aspect_profiles,
+    save_aspect_profiles,
+    validate_aspect_profile,
+)
 from backend.electional.lots import calculate_lots, lot_longitude
 from backend.electional.presets import (
     apply_dignities,
@@ -40,6 +52,89 @@ def position(
 
 
 class ElectionalCoreTest(unittest.TestCase):
+    def test_default_aspect_profile_contains_major_five(self) -> None:
+        profile = default_aspect_profile()
+
+        self.assertEqual(profile.id, "major-five")
+        self.assertEqual(
+            [aspect.id for aspect in profile.aspects],
+            ["conjunction", "trine", "square", "opposition", "sextile"],
+        )
+        self.assertTrue(all(aspect.glyph for aspect in profile.aspects))
+
+    def test_custom_aspect_profile_saves_and_loads(self) -> None:
+        custom = Aspect(
+            id="quincunx",
+            name="Quincunx",
+            angle=150,
+            default_orb=2,
+            tone="mixed",
+            meaning="Adjustment and mismatch contact.",
+            abbreviation="Qnx",
+            glyph="Qx",
+            color="#7755aa",
+            enabled=True,
+            built_in=False,
+        )
+        profile = AspectProfile("custom-test", "Custom Test", "test profile", (*default_aspect_profile().aspects, custom))
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "profiles.json"
+
+            save_aspect_profiles([default_aspect_profile(), profile], path)
+            loaded = load_aspect_profiles(path)
+
+        loaded_profile = aspect_profile_by_id("custom-test", loaded)
+        self.assertEqual(loaded_profile.name, "Custom Test")
+        self.assertIn("quincunx", [aspect.id for aspect in loaded_profile.aspects])
+
+    def test_aspect_profile_validation_rejects_bad_values(self) -> None:
+        profile = AspectProfile(
+            "bad",
+            "",
+            "",
+            (
+                Aspect("semi", "", -1, 2, "support", "bad"),
+                Aspect("semi", "Duplicate", 45, 31, "wild", "bad"),
+            ),
+        )
+
+        errors = validate_aspect_profile(profile)
+
+        self.assertTrue(any("Profile name" in error for error in errors))
+        self.assertTrue(any("Duplicate aspect id" in error for error in errors))
+        self.assertTrue(any("exact angle" in error for error in errors))
+        self.assertTrue(any("orb" in error for error in errors))
+        self.assertTrue(any("tone" in error for error in errors))
+
+    def test_detect_aspects_uses_custom_aspect_definitions(self) -> None:
+        semisquare = Aspect(
+            id="semisquare",
+            name="Semisquare",
+            angle=45,
+            default_orb=1,
+            tone="stress",
+            meaning="Minor friction.",
+            abbreviation="Sem",
+            glyph="SS",
+            color="#aa4455",
+            enabled=True,
+            built_in=False,
+        )
+        detected = detect_aspects(
+            [
+                position("Sun", 10, "Aries", daily_change=0),
+                position("Moon", 55.5, "Taurus", daily_change=0),
+            ],
+            ["semisquare"],
+            aspect_definitions=(*default_aspect_profile().aspects, semisquare),
+        )
+
+        self.assertEqual(len(detected), 1)
+        self.assertEqual(detected[0]["aspectId"], "semisquare")
+        self.assertEqual(detected[0]["aspectAbbreviation"], "Sem")
+        self.assertEqual(detected[0]["aspectGlyph"], "SS")
+        self.assertEqual(detected[0]["tone"], "stress")
+
     def test_transit_one_degree_detects_only_tight_contacts(self) -> None:
         preset = get_preset("transit-1-degree")
         tight = [

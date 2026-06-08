@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from .aspects import ASPECT_BY_ID, angular_distance, format_orb
+from .aspects import Aspect, angular_distance, aspect_map_from_definitions, format_orb
 from .chart import build_snapshot_for_moment, format_position
 from .judgment import solar_visibility_diagnostic
 from .locations import LocationPreset
@@ -44,7 +44,9 @@ def moon_void_course_summary(
     start_snapshot: dict[str, object],
     location: LocationPreset,
     selected_aspects: list[str],
+    aspect_definitions: list[Aspect] | tuple[Aspect, ...] | None = None,
 ) -> list[str]:
+    aspect_map = aspect_map_from_definitions(aspect_definitions)
     preset = start_snapshot["preset"]
     start = start_snapshot["date"]
     current_moon = next(planet for planet in start_snapshot["positions"] if planet["name"] == "Moon")
@@ -60,6 +62,7 @@ def moon_void_course_summary(
             selected_aspects,
             start_snapshot["zodiacSystem"].id,
             start_snapshot["houseSystem"].id,
+            aspect_definitions=aspect_definitions,
         )
         moon = next(planet for planet in snapshot["positions"] if planet["name"] == "Moon")
         if moon["zodiac"]["sign"] != current_sign:
@@ -84,7 +87,7 @@ def moon_void_course_summary(
                 continue
             distance = angular_distance(moon_longitude, float(planet["longitude"]))
             for aspect_id in selected_aspects:
-                aspect = ASPECT_BY_ID.get(aspect_id)
+                aspect = aspect_map.get(aspect_id)
                 if not aspect:
                     continue
                 orb = abs(distance - aspect.angle)

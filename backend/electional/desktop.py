@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 import math
 from pathlib import Path
+import re
 import tkinter as tk
 from tkinter import messagebox, ttk
 import traceback
@@ -13,6 +14,22 @@ from zoneinfo import ZoneInfo
 
 from .calendar_export import calendar_from_entries
 from .aspect_highlights import build_aspect_highlights
+from .aspects import (
+    Aspect,
+    AspectProfile,
+    DEFAULT_ASPECT_PROFILE_ID,
+    aspect_profile_by_id,
+    load_aspect_profiles,
+    sanitize_aspect_id,
+    save_aspect_profiles,
+    validate_aspect_profile,
+)
+from .capricorn_assets import (
+    format_capricorn_asset_audit,
+    format_capricorn_aspect_import_result,
+    import_capricorn_aspect_profiles,
+    inventory_capricorn_assets,
+)
 from .chart import build_election_report, build_snapshot_for_moment, clear_snapshot_cache, format_angle, format_position, snapshot_cache_info
 from .constellations import ECLIPTIC_CONSTELLATION_SPANS
 from .locations import (
@@ -107,6 +124,7 @@ from .time_utils import normalize_time_text
 from .validation import validate_election_inputs, validate_search_inputs
 
 DEBUG_LOG_PATH = Path(__file__).resolve().parents[2] / "reports" / "electional-debug.log"
+APP_BUILD_LABEL = "Search Workbench Repair 2026-06-07"
 
 
 def record_desktop_exception(context: str) -> Path | None:
@@ -184,17 +202,24 @@ PAGE_MODE_LABELS = {
     "classical-point-data": "Classical Point Data",
     "medieval-data": "Medieval Data",
     "transit-search": "Transit Search",
+    "validation": "Validation",
+    "reports": "Reports",
 }
 PAGE_MODE_NAMES = tuple(PAGE_MODE_LABELS.values())
 PAGE_MODE_IDS_BY_NAME = {name: mode_id for mode_id, name in PAGE_MODE_LABELS.items()}
 RIGHT_PANEL_THEME_LABELS = {"astrolabe": "Astrolabe", "classic-natal": "Classic Natal"}
 RIGHT_PANEL_THEME_IDS_BY_NAME = {name: theme_id for theme_id, name in RIGHT_PANEL_THEME_LABELS.items()}
 RIGHT_PANEL_THEME_NAMES = tuple(RIGHT_PANEL_THEME_LABELS.values())
+WHEEL_VIEW_PRESET_LABELS = {"clean": "Clean", "full-classic": "Full Classic", "diagnostic": "Diagnostic"}
+WHEEL_VIEW_PRESET_IDS_BY_NAME = {name: preset_id for preset_id, name in WHEEL_VIEW_PRESET_LABELS.items()}
+WHEEL_VIEW_PRESET_NAMES = tuple(WHEEL_VIEW_PRESET_LABELS.values())
 HOME_LOCATION_DEFAULT_LABEL = "Local timezone default"
 DETAIL_PAGE_TABS = (
     "Summary",
     "Window",
     "Analysis",
+    "Validation",
+    "Reports",
     "Advisor",
     "Improve",
     "Decision",
@@ -237,27 +262,21 @@ DETAIL_PAGE_TABS = (
 )
 TOP_NAV_PAGE_TARGETS = {
     "Wheel": "Window",
-    "Analysis": "Analysis",
-    "Advisor": "Advisor",
-    "Improve": "Improve",
-    "Decision": "Decision",
-    "Compare": "Compare",
     "Search": "Search",
-    "Factors": "Factor Explorer",
+    "Analysis": "Analysis",
+    "Timeline": "Timeline",
+    "Validation": "Validation",
+    "Reports": "Reports",
 }
-TOP_NAV_SPECIAL_ACTIONS = {"Settings", "Map"}
-TOP_NAV_ITEMS = ("Wheel", "Advisor", "Improve", "Decision", "Compare", "Search", "Factors", "Settings", "Map")
+TOP_NAV_SPECIAL_ACTIONS: set[str] = set()
+TOP_NAV_ITEMS = ("Wheel", "Search", "Analysis", "Timeline", "Validation", "Reports")
 TOP_NAV_WORKSPACE_SUMMARIES = {
     "Wheel": "Main chart wheel with selected window and right-side judgment summary.",
+    "Search": "Election search workbench with filters, candidates, rejection reasons, and relax suggestions.",
     "Analysis": "Deep electional review with aspect highlights, Moon condition, rules, and validation.",
-    "Advisor": "Decision support, cautions, and next best actions for the selected election.",
-    "Improve": "Concrete ways to raise score quality from the current window.",
-    "Decision": "Readable go/no-go brief for the selected candidate window.",
-    "Compare": "Selected window compared against the original search-start chart.",
-    "Search": "Search filters, scan mode, candidate counts, and rejected-window diagnostics.",
-    "Factors": "Grouped scoring factors explaining why the election is strong or weak.",
-    "Settings": "Calculation, display, search, and location defaults.",
-    "Map": "Astro mapping and angular-location tools.",
+    "Timeline": "Current, local-day, and rolling next-24-hour aspect peaks.",
+    "Validation": "Accuracy audit, chart settings, and manual CapricornPROMETHEUS comparison.",
+    "Reports": "Readable summaries, decision sheets, shortlist tools, and export actions.",
 }
 RIBBON_PAGE_TARGETS = {
     "Analysis": "Analysis",
@@ -288,7 +307,11 @@ RIBBON_SPECIAL_ACTIONS = {
     "Ask",
     "Calculate",
     "Transits",
+    "Transits/Timeline",
     "Electional Search",
+    "Out of Bounds",
+    "Aspect Config",
+    "Assets",
     "Shortlist",
     "Chart Data",
     "Score Audit",
@@ -309,6 +332,8 @@ RIBBON_SPECIAL_ACTIONS = {
 VIEW_PAGE_TARGETS = {
     "Interpretation": "Window",
     "Analysis": "Analysis",
+    "Validation": "Validation",
+    "Reports": "Reports",
     "Advisor": "Advisor",
     "Improve": "Improve",
     "Decision": "Decision",
@@ -329,14 +354,16 @@ VIEW_PAGE_TARGETS = {
 VIEW_PAGE_SPECIAL_ACTIONS = {"Chart Data", "Save Wheel"}
 VIEW_PAGE_STRIP_ACTIONS = (
     "Interpretation",
+    "Search",
     "Analysis",
+    "Timeline",
+    "Validation",
+    "Reports",
     "Advisor",
     "Improve",
     "Decision",
     "Compare",
-    "Search",
     "Timing",
-    "Timeline",
     "Angles",
     "Aspects",
     "Aspectarian",
@@ -350,31 +377,31 @@ VIEW_PAGE_STRIP_ACTIONS = (
     "Save Wheel",
 )
 RIBBON_GROUPS = (
-    ("Chart", ("Show Current", "Find Best", "Day Report", "Report", "Save Report", "Copy", "Shortlist")),
-    ("Navigate", ("Advisor", "Improve", "Decision", "Compare", "Search Page", "Factors")),
-    ("Inspect", ("Chart Data", "Aspects", "Aspect Strength", "Diagnostics", "Preferences", "Focus Wheel")),
-    ("Reference", ("Systems", "Bounds", "Lots", "Fixed Stars", "Map", "Clear Cache")),
+    ("Transits", ("Transits/Timeline", "Search Page", "Aspects", "Aspect Strength", "Day Report", "Report")),
+    ("Electional", ("Electional Search", "Void Course", "Heliacal Search", "Out of Bounds", "Find Best", "Show Current")),
+    ("Utility", ("Chart Data", "Diagnostics", "Map", "Fixed Stars", "Lots", "Shortlist")),
+    ("Configuration", ("Aspect Config", "Assets", "Systems", "Bounds", "Preferences", "Focus Wheel", "Clear Cache")),
 )
 RIBBON_COLUMNS = 2
-VIEW_PAGE_QUICK_ACTIONS = ("Interpretation", "Search", "Aspect Strength", "Chart Data", "Save Wheel")
+VIEW_PAGE_QUICK_ACTIONS = ("Interpretation", "Search", "Analysis", "Timeline", "Validation")
 
 PALETTE = {
-    "app_bg": "#eef1ed",
-    "title_bar": "#26312f",
-    "top_bar": "#536763",
-    "top_bar_dark": "#34423f",
-    "top_nav": "#536763",
-    "top_nav_hover": "#687d78",
-    "top_nav_active": "#7f9690",
-    "ribbon": "#e7ebe6",
-    "ribbon_panel": "#f7f8f4",
-    "ribbon_panel_soft": "#fbfcf8",
-    "panel": "#f1f3ef",
-    "panel_alt": "#fffefa",
-    "panel_line": "#c8d0ca",
-    "panel_line_strong": "#9eada6",
-    "canvas": "#f8f9f5",
-    "canvas_grid": "#e7ebe6",
+    "app_bg": "#f3f4ee",
+    "title_bar": "#26332f",
+    "top_bar": "#596d66",
+    "top_bar_dark": "#374842",
+    "top_nav": "#596d66",
+    "top_nav_hover": "#71847d",
+    "top_nav_active": "#8ba09a",
+    "ribbon": "#eceee6",
+    "ribbon_panel": "#fbfaf1",
+    "ribbon_panel_soft": "#fffdf6",
+    "panel": "#f6f5ec",
+    "panel_alt": "#fffdf4",
+    "panel_line": "#d2d1bf",
+    "panel_line_strong": "#a9ac98",
+    "canvas": "#fbfaf3",
+    "canvas_grid": "#eceee6",
     "chart_disc": "#f0f2ed",
     "chart_inner": "#fffefa",
     "chart_line": "#3a3a36",
@@ -387,24 +414,24 @@ PALETTE = {
     "chart_tick_major": "#2d2a28",
     "chart_tick_medium": "#6a665d",
     "chart_tick_minor": "#b6ae99",
-    "text": "#202826",
-    "muted": "#66716d",
-    "accent": "#56766f",
-    "accent_dark": "#395951",
-    "score": "#3e6d63",
-    "support": "#5b8f57",
-    "stress": "#a34e57",
-    "warning": "#a66c31",
-    "button": "#fffefa",
-    "button_hover": "#edf2ed",
-    "button_line": "#b8c4be",
-    "button_active": "#dfe8e2",
-    "selected": "#dfe8e2",
-    "metric_bg": "#f3f5f1",
+    "text": "#202823",
+    "muted": "#68736c",
+    "accent": "#4f7c72",
+    "accent_dark": "#355d53",
+    "score": "#2f7568",
+    "support": "#5f925e",
+    "stress": "#a85261",
+    "warning": "#b07832",
+    "button": "#fffdf4",
+    "button_hover": "#f1f4ea",
+    "button_line": "#c5c8b7",
+    "button_active": "#e5ebdf",
+    "selected": "#e7ede2",
+    "metric_bg": "#f7f6ed",
     "center_hub": "#ffffff",
-    "chip": "#e8efea",
-    "chip_line": "#bdc9c2",
-    "surface_shadow": "#d8ded9",
+    "chip": "#e9efe4",
+    "chip_line": "#c8d0bd",
+    "surface_shadow": "#dfe3d8",
     "sign_badge_fill": "#fffefa",
     "sign_badge_line": "#aebdb6",
     "planet_fill": "#fffefa",
@@ -413,12 +440,20 @@ PALETTE = {
     "node_fill": "#edf1ee",
     "star_fill": "#fafbf8",
     "aspect_ring": "#aab6b0",
-    "astrolabe_bg": "#f1f3ef",
-    "astrolabe_panel": "#fffefa",
-    "astrolabe_line": "#a9b7b0",
-    "astrolabe_gold": "#56766f",
-    "astrolabe_ink": "#202826",
-    "astrolabe_muted": "#66716d",
+    "astrolabe_bg": "#f6f5ec",
+    "astrolabe_panel": "#fffdf4",
+    "astrolabe_line": "#b4bda8",
+    "astrolabe_gold": "#4f7c72",
+    "astrolabe_ink": "#202823",
+    "astrolabe_muted": "#68736c",
+    "surface": "#fffdf4",
+    "surface_soft": "#faf8ec",
+    "surface_sage": "#eef4e8",
+    "surface_gold": "#fbf0d5",
+    "surface_stress": "#f8e7ea",
+    "surface_support": "#e8f4eb",
+    "teal": "#2e7f78",
+    "gold": "#b88635",
 }
 
 SIGN_COLORS = (
@@ -485,17 +520,17 @@ CLASSIC_SIGN_TEXT = "#152033"
 CLASSIC_SIGN_HALO = "#f5f0da"
 CLASSIC_HOUSE_TEXT = "#071b56"
 CLASSIC_HOUSE_HALO = "#f4f1e4"
+CLASSIC_HOUSE_SPAN_TEXT = "#273268"
+CLASSIC_HOUSE_SPAN_HALO = "#f8f5e8"
 CLASSIC_PLANET_DEGREE = "#071b56"
 CLASSIC_PLANET_RETROGRADE = "#c02020"
 CLASSIC_ASPECT_SUPPORT = "#2d7fa0"
 CLASSIC_ASPECT_STRESS = "#c74358"
 CLASSIC_ASPECT_NEUTRAL = "#6f756b"
-CLASSIC_LEFT_PANEL_WIDTH = 112
+CLASSIC_LEFT_PANEL_WIDTH = 132
 CLASSIC_RIGHT_PANEL_WIDTH = 360
-CLASSIC_LEFT_WRAP = 84
+CLASSIC_LEFT_WRAP = 112
 CLASSIC_RIGHT_WRAP = 326
-CLASSIC_DIAL_SIZE = 66
-CLASSIC_DIAL_HOUSES = ((10, 4), (1, 7), (3, 9))
 CLASSIC_PLANET_COLORS = {
     "Sun": "#e0a400",
     "Moon": "#d5d7db",
@@ -553,10 +588,6 @@ def uses_classic_wheel_theme(theme_name: str) -> bool:
     return RIGHT_PANEL_THEME_IDS_BY_NAME.get(theme_name, "astrolabe") == "classic-natal"
 
 
-def classic_dial_labels() -> tuple[tuple[str, str], ...]:
-    return tuple((str(top), str(bottom)) for top, bottom in CLASSIC_DIAL_HOUSES)
-
-
 def classic_planet_degree_text(planet: Mapping[str, object]) -> str:
     zodiac = planet.get("zodiac", {})
     if not isinstance(zodiac, Mapping) or "degree" not in zodiac or "minute" not in zodiac:
@@ -579,7 +610,27 @@ def classic_position_table_text(point: Mapping[str, object]) -> str:
     return f"{sign} {degree:02d}\N{DEGREE SIGN}{minute:02d}"
 
 
+def classic_dignity_table_text(point: Mapping[str, object]) -> str:
+    dignity = point.get("dignity")
+    if not isinstance(dignity, Mapping):
+        return "n/a"
+    label = str(dignity.get("label") or "").strip()
+    if not label:
+        return "n/a"
+    normalized = label.lower()
+    if normalized.startswith("unavail"):
+        return "n/a"
+    if normalized.startswith("detriment"):
+        return "Detr."
+    return label[:7]
+
+
 def aspect_glyph(aspect_name: object) -> str:
+    if isinstance(aspect_name, Mapping):
+        explicit = str(aspect_name.get("aspectGlyph") or aspect_name.get("aspectAbbreviation") or "").strip()
+        if explicit:
+            return explicit
+        aspect_name = aspect_name.get("aspectName")
     return {
         "Conjunction": "\u260c",
         "Opposition": "\u260d",
@@ -629,6 +680,12 @@ def wheel_degrees(longitude: float, ascendant_longitude: float) -> float:
     return (180 + ((longitude - ascendant_longitude) % 360)) % 360
 
 
+def wheel_degrees_from_xy(center_x: float, center_y: float, x: float, y: float) -> float:
+    """Convert a canvas point into the same screen-degree system used by the wheel."""
+
+    return math.degrees(math.atan2(center_y - y, x - center_x)) % 360
+
+
 def midpoint_longitude(start: float, end: float) -> float:
     return (start + ((end - start) % 360) / 2) % 360
 
@@ -638,6 +695,105 @@ def house_label_screen_angle(cusp_longitude: float, next_cusp_longitude: float, 
         wheel_degrees(cusp_longitude, ascendant_longitude),
         wheel_degrees(next_cusp_longitude, ascendant_longitude),
     )
+
+
+def house_span_rows(snapshot: Mapping[str, object]) -> list[dict[str, object]]:
+    cusps = snapshot.get("houseCusps", [])
+    if not isinstance(cusps, list):
+        return []
+    ordered = sorted(
+        [cusp for cusp in cusps if isinstance(cusp, Mapping) and "house" in cusp and "longitude" in cusp],
+        key=lambda cusp: int(cusp["house"]),
+    )
+    rows: list[dict[str, object]] = []
+    for index, cusp in enumerate(ordered):
+        next_cusp = ordered[(index + 1) % len(ordered)] if ordered else None
+        if next_cusp is None:
+            continue
+        longitude = float(cusp["longitude"])
+        next_longitude = float(next_cusp["longitude"])
+        span = (next_longitude - longitude) % 360
+        rows.append(
+            {
+                "house": int(cusp["house"]),
+                "longitude": longitude,
+                "nextLongitude": next_longitude,
+                "span": span,
+                "source": str(cusp.get("source") or "native"),
+            }
+        )
+    return rows
+
+
+def house_geometry_summary(snapshot: Mapping[str, object]) -> str:
+    rows = house_span_rows(snapshot)
+    if not rows:
+        return "House geometry: cusps unavailable."
+    house_system = snapshot.get("houseSystem")
+    house_name = getattr(house_system, "name", "House system")
+    sources = sorted({str(row["source"]) for row in rows})
+    spans = [float(row["span"]) for row in rows]
+    min_span = min(spans)
+    max_span = max(spans)
+    spread = max_span - min_span
+    mode = "unequal quadrant/accounted houses" if spread >= 1.0 else "near-equal house spans"
+    return f"{house_name}: {mode}; spans {min_span:.1f}-{max_span:.1f} deg; source {', '.join(sources)}."
+
+
+def house_span_label(span: object) -> str:
+    try:
+        return f"{float(span):.1f}deg"
+    except (TypeError, ValueError):
+        return ""
+
+
+def house_geometry_lines(snapshot: Mapping[str, object]) -> list[str]:
+    rows = house_span_rows(snapshot)
+    if not rows:
+        return ["House Geometry", "- House cusps are unavailable."]
+    return [
+        "House Geometry",
+        f"- {house_geometry_summary(snapshot)}",
+        "- Wide and narrow houses come from the selected house system, latitude, time, and ASC/MC geometry.",
+        "",
+        "House  Cusp longitude  Span to next  Source",
+        *[
+            f"H{int(row['house']):02d}    {float(row['longitude']):7.2f} deg      {float(row['span']):5.2f} deg    {row['source']}"
+            for row in rows
+        ],
+    ]
+
+
+def house_geometry_insight_lines(snapshot: Mapping[str, object]) -> list[str]:
+    rows = house_span_rows(snapshot)
+    if not rows:
+        return [
+            "House geometry unavailable.",
+            "Calculate a chart with house cusps before reviewing house width.",
+        ]
+    house_system = snapshot.get("houseSystem")
+    house_name = getattr(house_system, "name", "House system")
+    spans = [float(row["span"]) for row in rows]
+    min_span = min(spans)
+    max_span = max(spans)
+    spread = max_span - min_span
+
+    def _house_pair(row: Mapping[str, object]) -> str:
+        return f"H{int(row['house']):02d} {house_span_label(row['span'])}"
+
+    widest = ", ".join(_house_pair(row) for row in sorted(rows, key=lambda row: float(row["span"]), reverse=True)[:2])
+    narrowest = ", ".join(_house_pair(row) for row in sorted(rows, key=lambda row: float(row["span"]))[:2])
+    lines = [
+        f"{house_name}: {min_span:.1f}-{max_span:.1f}deg house spans.",
+        f"Widest: {widest}.",
+        f"Narrowest: {narrowest}.",
+    ]
+    if spread >= 1.0:
+        lines.append("Uneven houses are expected here: ASC/MC, latitude, and time project the local sky onto the ecliptic.")
+        lines.append("Signs are the zodiac ring; houses are sky sectors. They do not have to match sign sizes.")
+    else:
+        lines.append("This chart is near equal-house visually; house widths are not strongly distorted.")
+    return lines
 
 
 def button_health_lines(available_pages: tuple[str, ...] | list[str] | None = None) -> list[str]:
@@ -1004,12 +1160,538 @@ def compact_judgment_lines(snapshot: dict[str, object]) -> list[str]:
     ]
 
 
+def diagnostic_metric_value(window: Mapping[str, object], metric: str, fallback: object = "--") -> object:
+    breakdown = window.get("scoreBreakdown", {})
+    diagnostics = breakdown.get("diagnostics", {}) if isinstance(breakdown, Mapping) else {}
+    value = diagnostics.get(metric, {}) if isinstance(diagnostics, Mapping) else {}
+    if isinstance(value, Mapping):
+        return value.get("score", fallback)
+    return fallback
+
+
+def candidate_metric_badges(window: Mapping[str, object]) -> list[tuple[str, str]]:
+    aspects_value = window.get("detectedAspects", [])
+    aspects = aspects_value if isinstance(aspects_value, list) else []
+    support = sum(1 for aspect in aspects if isinstance(aspect, Mapping) and aspect.get("tone") == "support")
+    stress = sum(1 for aspect in aspects if isinstance(aspect, Mapping) and aspect.get("tone") == "stress")
+    breakdown = window.get("scoreBreakdown", {})
+    fit_matches = int(breakdown.get("objectiveMatches", 0)) if isinstance(breakdown, Mapping) else 0
+    moon_condition = window.get("moonCondition", {})
+    void_state = {}
+    if isinstance(moon_condition, Mapping):
+        void_state = moon_condition.get("voidOfCourse", {}) if isinstance(moon_condition.get("voidOfCourse"), Mapping) else {}
+    moon_label = "Moon OK"
+    moon_tone = "support"
+    if void_state.get("isVoid") is True:
+        moon_label = "Moon Void"
+        moon_tone = "stress"
+    elif not void_state:
+        moon_label = "Moon ?"
+        moon_tone = "neutral"
+    positions_value = window.get("positions", [])
+    positions = positions_value if isinstance(positions_value, list) else []
+    angular_names = {
+        str(position.get("name"))
+        for position in positions
+        if isinstance(position, Mapping) and position.get("isAngular")
+    }
+    benefic_label = "Ang+ Yes" if angular_names.intersection({"Venus", "Jupiter"}) else "Ang+ No"
+    malefic_label = "Malefic Ang" if angular_names.intersection({"Mars", "Saturn"}) else "Malefic Clear"
+    badges = [
+        (f"Conf {diagnostic_metric_value(window, 'confidence')}", "confidence"),
+        (f"Clean {diagnostic_metric_value(window, 'cleanliness')}", "cleanliness"),
+        (f"Vol {diagnostic_metric_value(window, 'volatility')}", "volatility"),
+        (f"Fit {fit_matches}", "fit"),
+        (f"+{support} / !{stress}", "balance"),
+        (moon_label, moon_tone),
+        (benefic_label, "support" if "Yes" in benefic_label else "neutral"),
+        (malefic_label, "stress" if "Ang" in malefic_label and "Clear" not in malefic_label else "support"),
+    ]
+    stage = str(window.get("searchStage") or "").strip()
+    resolution = window.get("searchResolutionMinutes")
+    if stage:
+        stage_label = f"{resolution}m refined" if stage.lower() == "refined" and resolution else stage.title()
+        badges.append((stage_label, "stage"))
+    return badges
+
+
+def candidate_board_summary(
+    windows: list[dict[str, object]],
+    *,
+    evaluated_count: int = 0,
+    search_mode: str = "",
+    selected_index: int = -1,
+    displayed_source: str = "",
+) -> str:
+    count = len(windows)
+    result_label = f"{count} candidate{'s' if count != 1 else ''}"
+    evaluated_label = f"{evaluated_count or count} evaluated"
+    mode_label = (search_mode or "balanced").replace("-", " ").title()
+    if selected_index >= 0 and count:
+        selected_label = f"Selected #{selected_index + 1}"
+    else:
+        selected_label = "Input chart" if displayed_source == "input chart" else "No selection"
+    return f"{result_label} | {evaluated_label} | {mode_label} | {selected_label}"
+
+
+def left_status_chip_lines(
+    date_text: str,
+    time_text: str,
+    location_name: str,
+    timezone_name: str,
+    zodiac_system: str,
+    house_system: str,
+    search_mode: str,
+    validation_text: str,
+) -> tuple[str, str, str, str, str]:
+    date_value = date_text.strip() or "Date waiting"
+    time_value = time_text.strip() or "Time waiting"
+    location = location_name.strip() or "Location waiting"
+    timezone = timezone_name.strip() or "Timezone waiting"
+    zodiac = zodiac_system.strip() or "Zodiac waiting"
+    houses = house_system.strip() or "Houses waiting"
+    mode = search_mode.strip() or "Balanced"
+    validation = validation_text.strip() or "Validation: waiting"
+    return (
+        f"Time: {date_value} {time_value}",
+        f"{location} | {timezone}",
+        f"{zodiac} / {houses}",
+        f"Search: {mode}",
+        validation,
+    )
+
+
+def workflow_next_step_lines(
+    *,
+    has_chart: bool,
+    candidate_count: int,
+    selected_index: int,
+    displayed_source: str,
+    has_rejections: bool = False,
+) -> tuple[str, str, str]:
+    if not has_chart:
+        return (
+            "Next: show the current chart",
+            "Confirm date, time, location, zodiac, and houses, then press Show Current.",
+            "This gives you a stable baseline before searching.",
+        )
+    if candidate_count <= 0:
+        if has_rejections:
+            return (
+                "Next: loosen blocked filters",
+                "Open Search Page to review rejection reasons, then relax the tightest blocker.",
+                "The current chart stays visible while you tune the search.",
+            )
+        return (
+            "Next: find candidate windows",
+            "Press Find Best or Electional Search to scan the selected time range.",
+            "Candidates will appear on the right board for explicit selection.",
+        )
+    if selected_index < 0 or displayed_source == "input chart":
+        return (
+            "Next: pick a candidate",
+            f"{candidate_count} candidate window{'s' if candidate_count != 1 else ''} ready. Click a card to draw it on the wheel.",
+            "Double-click a card when you want to use that exact time.",
+        )
+    return (
+        f"Next: decide on window #{selected_index + 1}",
+        "Review Analysis, Timeline, and House Geometry, then Shortlist or Use Selected Time.",
+        "Shortlisted windows become easier to compare and export.",
+    )
+
+
+STANDARD_SIGN_STARTS = {
+    "aries": 0.0,
+    "ari": 0.0,
+    "ar": 0.0,
+    "taurus": 30.0,
+    "tau": 30.0,
+    "ta": 30.0,
+    "gemini": 60.0,
+    "gem": 60.0,
+    "ge": 60.0,
+    "cancer": 90.0,
+    "can": 90.0,
+    "cnc": 90.0,
+    "ca": 90.0,
+    "leo": 120.0,
+    "le": 120.0,
+    "virgo": 150.0,
+    "vir": 150.0,
+    "vi": 150.0,
+    "libra": 180.0,
+    "lib": 180.0,
+    "li": 180.0,
+    "scorpio": 210.0,
+    "scorpius": 210.0,
+    "sco": 210.0,
+    "sc": 210.0,
+    "sagittarius": 240.0,
+    "sag": 240.0,
+    "sgr": 240.0,
+    "sg": 240.0,
+    "capricorn": 270.0,
+    "capricornus": 270.0,
+    "cap": 270.0,
+    "cp": 270.0,
+    "aquarius": 300.0,
+    "aqu": 300.0,
+    "aqr": 300.0,
+    "aq": 300.0,
+    "pisces": 330.0,
+    "pis": 330.0,
+    "psc": 330.0,
+    "pi": 330.0,
+}
+
+
+def manual_validation_sign_starts(zodiac_system_id: str = "") -> dict[str, float]:
+    if str(zodiac_system_id).lower() != "true-13-sign":
+        return dict(STANDARD_SIGN_STARTS)
+    starts: dict[str, float] = {}
+    for span in ECLIPTIC_CONSTELLATION_SPANS:
+        start = float(span["start"])
+        for key in (span["id"], span["name"], span["abbreviation"]):
+            starts[str(key).lower()] = start
+        short = CONSTELLATION_SIGN_LABELS.get(str(span["id"]))
+        if short:
+            starts[str(short).lower()] = start
+        if str(span["id"]) == "scorpius":
+            starts["scorpio"] = start
+            starts["sc"] = start
+        if str(span["id"]) == "capricornus":
+            starts["capricorn"] = start
+            starts["cp"] = start
+        if str(span["id"]) == "sagittarius":
+            starts["sag"] = start
+            starts["sg"] = start
+    return starts
+
+
+MANUAL_VALIDATION_TARGETS = (
+    ("part of fortune", "Part of Fortune", "part of fortune"),
+    ("part of spirit", "Part of Spirit", "part of spirit"),
+    ("true north node", "True North Node", "true north node"),
+    ("mean north node", "Mean North Node", "mean north node"),
+    ("north node", "North Node", "north node"),
+    ("sun", "Sun", "sun"),
+    ("moon", "Moon", "moon"),
+    ("mercury", "Mercury", "mercury"),
+    ("venus", "Venus", "venus"),
+    ("mars", "Mars", "mars"),
+    ("jupiter", "Jupiter", "jupiter"),
+    ("saturn", "Saturn", "saturn"),
+    ("uranus", "Uranus", "uranus"),
+    ("neptune", "Neptune", "neptune"),
+    ("pluto", "Pluto", "pluto"),
+    ("ascendant", "ASC", "asc"),
+    ("asc", "ASC", "asc"),
+    ("as", "ASC", "asc"),
+    ("descendant", "DSC", "dsc"),
+    ("dsc", "DSC", "dsc"),
+    ("ds", "DSC", "dsc"),
+    ("midheaven", "MC", "mc"),
+    ("mc", "MC", "mc"),
+    ("imum coeli", "IC", "ic"),
+    ("ic", "IC", "ic"),
+)
+
+
+def _manual_validation_target_from_line(line: str) -> tuple[str, str] | None:
+    house_match = re.search(r"\b(?:house|h)\s*0?([1-9]|1[0-2])\b", line, re.IGNORECASE)
+    if house_match:
+        house_no = int(house_match.group(1))
+        return (f"House {house_no}", f"h{house_no}")
+    lowered = line.lower()
+    for alias, label, key in MANUAL_VALIDATION_TARGETS:
+        if re.search(rf"\b{re.escape(alias)}\b", lowered):
+            return (label, key)
+    return None
+
+
+def parse_manual_validation_values(text: str, *, zodiac_system_id: str = "") -> list[dict[str, object]]:
+    starts = manual_validation_sign_starts(zodiac_system_id)
+    sign_pattern = "|".join(sorted((re.escape(key) for key in starts), key=len, reverse=True))
+    value_pattern = re.compile(rf"\b(?P<sign>{sign_pattern})\b\s*(?P<degree>\d{{1,2}})(?:\s*(?:deg|d|°|:|'|\s)\s*(?P<minute>\d{{1,2}}))?", re.IGNORECASE)
+    rows: list[dict[str, object]] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        target = _manual_validation_target_from_line(line)
+        value_match = value_pattern.search(line)
+        if not target or not value_match:
+            rows.append({"line": line, "status": "unparsed"})
+            continue
+        sign_key = value_match.group("sign").lower()
+        degree = int(value_match.group("degree"))
+        minute = int(value_match.group("minute") or 0)
+        longitude = (starts[sign_key] + degree + minute / 60.0) % 360
+        label, target_key = target
+        rows.append(
+            {
+                "line": line,
+                "label": label,
+                "targetKey": target_key,
+                "referenceLongitude": longitude,
+                "referenceText": f"{value_match.group('sign')} {degree:02d}deg{minute:02d}",
+                "status": "parsed",
+            }
+        )
+    return rows
+
+
+def _manual_target_key(label: object) -> str:
+    text = str(label or "").lower()
+    house_match = re.search(r"\b(?:house|h)\s*0?([1-9]|1[0-2])\b", text)
+    if house_match:
+        return f"h{int(house_match.group(1))}"
+    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+
+def _snapshot_validation_targets(snapshot: Mapping[str, object]) -> dict[str, dict[str, object]]:
+    targets: dict[str, dict[str, object]] = {}
+    for collection_name in ("positions", "lots", "lunarNodes"):
+        collection = snapshot.get(collection_name, [])
+        if not isinstance(collection, list):
+            continue
+        for item in collection:
+            if isinstance(item, Mapping) and item.get("longitude") is not None:
+                label = str(item.get("name") or item.get("shortName") or "")
+                targets[_manual_target_key(label)] = {"label": label, "longitude": float(item["longitude"])}
+    angles = snapshot.get("angles", [])
+    if isinstance(angles, list):
+        for angle in angles:
+            if isinstance(angle, Mapping) and angle.get("longitude") is not None:
+                angle_id = str(angle.get("id") or angle.get("shortName") or "").lower()
+                label = str(angle.get("shortName") or angle_id.upper())
+                targets[angle_id] = {"label": label, "longitude": float(angle["longitude"])}
+    cusps = snapshot.get("houseCusps", [])
+    if isinstance(cusps, list):
+        for cusp in cusps:
+            if isinstance(cusp, Mapping) and cusp.get("longitude") is not None and cusp.get("house") is not None:
+                house_no = int(cusp["house"])
+                targets[f"h{house_no}"] = {"label": f"House {house_no}", "longitude": float(cusp["longitude"])}
+    return targets
+
+
+def _manual_validation_cause(target_key: str, delta: float | None) -> str:
+    if delta is None:
+        return "No app target found."
+    if delta <= 0.05:
+        return "Match."
+    if target_key.startswith("h") or target_key in {"asc", "dsc", "mc", "ic"}:
+        return "Check location, timezone, and house system."
+    return "Check zodiac, ayanamsha, time, and source settings."
+
+
+def build_manual_validation_comparison(snapshot: Mapping[str, object], text: str, *, source: str = "CapricornPROMETHEUS") -> dict[str, object]:
+    zodiac_system = snapshot.get("zodiacSystem")
+    zodiac_id = str(getattr(zodiac_system, "id", "") or "").lower()
+    parsed = parse_manual_validation_values(text, zodiac_system_id=zodiac_id)
+    targets = _snapshot_validation_targets(snapshot)
+    rows: list[dict[str, object]] = []
+    deltas: list[float] = []
+    for row in parsed:
+        if row.get("status") != "parsed":
+            rows.append({**row, "result": "unparsed", "cause": "Line did not contain a recognized target plus sign-degree value."})
+            continue
+        target_key = str(row["targetKey"])
+        target = targets.get(target_key)
+        delta = None
+        app_longitude = None
+        result = "missing target"
+        if target:
+            app_longitude = float(target["longitude"])
+            delta = abs((app_longitude - float(row["referenceLongitude"]) + 180) % 360 - 180)
+            deltas.append(delta)
+            result = "match" if delta <= 0.05 else "review"
+        rows.append(
+            {
+                **row,
+                "appLongitude": app_longitude,
+                "deltaDegrees": delta,
+                "result": result,
+                "cause": _manual_validation_cause(target_key, delta),
+            }
+        )
+    max_delta = max(deltas) if deltas else None
+    status = "No parsed values" if not deltas else "Pass" if max_delta <= 0.05 else "Review"
+    return {
+        "source": source.strip() or "CapricornPROMETHEUS",
+        "inputText": text,
+        "rows": rows,
+        "parsedCount": len(deltas),
+        "maxDeltaDegrees": max_delta,
+        "status": status,
+    }
+
+
+def format_manual_validation_comparison(result: Mapping[str, object] | None) -> list[str]:
+    if not isinstance(result, Mapping) or not result:
+        return ["Manual comparison not run yet.", "Paste CapricornPROMETHEUS values on the Validation page and press Compare."]
+    max_delta = result.get("maxDeltaDegrees")
+    lines = [
+        f"Source: {result.get('source', 'CapricornPROMETHEUS')}",
+        f"Status: {result.get('status', 'n/a')}",
+        f"Parsed rows: {int(result.get('parsedCount', 0) or 0)}",
+    ]
+    if max_delta is not None:
+        lines.append(f"Max delta: {float(max_delta):.4f} deg")
+    rows = result.get("rows", [])
+    if isinstance(rows, list):
+        for row in rows[:10]:
+            if not isinstance(row, Mapping):
+                continue
+            if row.get("status") != "parsed":
+                lines.append(f"- Unparsed: {row.get('line', '')}")
+                continue
+            delta = row.get("deltaDegrees")
+            delta_text = "delta n/a" if delta is None else f"delta {float(delta):.4f} deg"
+            app = row.get("appLongitude")
+            app_text = "app n/a" if app is None else f"app {float(app):.3f}"
+            lines.append(f"- {row.get('label')}: ref {row.get('referenceText')} | {app_text} | {delta_text} | {row.get('cause')}")
+    return lines
+
+
+def validation_workbench_lines(snapshot: Mapping[str, object], location: object | None, manual_result: Mapping[str, object] | None = None) -> list[str]:
+    accuracy = snapshot.get("accuracyAudit", {})
+    lines = ["Accuracy Validation"]
+    if isinstance(accuracy, Mapping):
+        lines.extend(
+            [
+                f"Status: {accuracy.get('label', 'Accuracy unavailable')}",
+                str(accuracy.get("summary", "No accuracy summary available.")),
+                f"Planet max delta: {float(accuracy.get('maxPositionDeltaDegrees', 0) or 0):.6f} deg",
+                f"Angle max delta: {float(accuracy.get('maxAngleDeltaDegrees', 0) or 0):.6f} deg",
+                f"House max delta: {float(accuracy.get('maxHouseDeltaDegrees', 0) or 0):.6f} deg",
+            ]
+        )
+        speed = accuracy.get("maxSpeedDeltaDegreesPerDay")
+        if speed is not None:
+            lines.append(f"Speed max delta: {float(speed):.6f} deg/day")
+    else:
+        lines.append("Accuracy audit unavailable.")
+    lines.extend(
+        [
+            "",
+            "Chart Settings",
+            f"Location: {getattr(location, 'name', 'Location unavailable')} / {getattr(location, 'timezone', 'timezone n/a')}",
+            f"Zodiac: {getattr(snapshot.get('zodiacSystem'), 'name', 'zodiac n/a')}",
+            f"House system: {getattr(snapshot.get('houseSystem'), 'name', 'house n/a')}",
+            f"Ayanamsha: {float(snapshot.get('ayanamsha', 0) or 0):.3f} deg",
+            f"Engine: {snapshot.get('engine', 'engine n/a')}",
+            "",
+            "Manual Comparison",
+            *format_manual_validation_comparison(manual_result),
+        ]
+    )
+    return lines
+
+
+def timeline_item_display(item: Mapping[str, object]) -> dict[str, object]:
+    label = str(item.get("label") or "Aspect")
+    bodies = item.get("bodies", [])
+    body_names = [str(body) for body in bodies] if isinstance(bodies, list) else []
+    tone = str(item.get("tone") or "mixed")
+    tone_label = "Support" if tone == "support" else "Stress" if tone == "stress" else "Mixed"
+    phase = str(item.get("phaseLabel") or ("Applying" if item.get("isApplying") else "Separating"))
+    orb = str(item.get("orbText") or "orb n/a")
+    peak = str(item.get("perfectsAtText") or item.get("timeToExactText") or "exact time n/a")
+    time_text = str(item.get("formattedTime") or "")
+    strength = item.get("strength")
+    try:
+        strength_text = f"{float(strength):.1f}"
+    except (TypeError, ValueError):
+        strength_text = "--"
+    return {
+        "time": time_text or "time n/a",
+        "label": label,
+        "tone": tone,
+        "toneLabel": tone_label,
+        "orb": orb,
+        "phase": phase,
+        "peak": peak,
+        "strength": strength_text,
+        "bodies": body_names,
+    }
+
+
+def timeline_visual_rows(
+    highlights: Mapping[str, object] | None,
+    *,
+    key: str = "timelineByTime",
+    limit: int = 12,
+) -> list[dict[str, object]]:
+    if not highlights:
+        return []
+    items = highlights.get(key)
+    if not isinstance(items, list):
+        return []
+    rows: list[dict[str, object]] = []
+    for item in items[:limit]:
+        if isinstance(item, Mapping):
+            rows.append(timeline_item_display(item))
+    return rows
+
+
+def analysis_metric_cards(snapshot: Mapping[str, object], windows: list[dict[str, object]] | None = None) -> list[tuple[str, str, str, str]]:
+    breakdown = snapshot.get("scoreBreakdown", {})
+    diagnostics = breakdown.get("diagnostics", {}) if isinstance(breakdown, Mapping) else {}
+    aspects = snapshot.get("detectedAspects", [])
+    positions = snapshot.get("positions", [])
+    rule_evaluations = snapshot.get("ruleEvaluations", {})
+    rules = rule_evaluations.get("rules", []) if isinstance(rule_evaluations, Mapping) else []
+    support = sum(1 for aspect in aspects if isinstance(aspect, Mapping) and aspect.get("tone") == "support")
+    stress = sum(1 for aspect in aspects if isinstance(aspect, Mapping) and aspect.get("tone") == "stress")
+    angular = sum(1 for planet in positions if isinstance(planet, Mapping) and planet.get("isAngular"))
+
+    def diagnostic_card(key: str, label: str, tone: str) -> tuple[str, str, str, str]:
+        value = diagnostics.get(key, {}) if isinstance(diagnostics, Mapping) else {}
+        if isinstance(value, Mapping):
+            score = str(value.get("score", "--"))
+            note = str(value.get("summary") or value.get("band") or "No diagnostic summary.")
+        else:
+            score = "--"
+            note = "Diagnostic unavailable."
+        return (label, score, note, tone)
+
+    return [
+        ("Score", str(snapshot.get("score", "--")), str(snapshot.get("note") or snapshot.get("title") or "Current electional score."), "score"),
+        diagnostic_card("confidence", "Confidence", "support"),
+        diagnostic_card("cleanliness", "Cleanliness", "support"),
+        diagnostic_card("volatility", "Volatility", "warning"),
+        ("Support", str(support), "Selected supportive aspects in orb.", "support"),
+        ("Stress", str(stress), "Selected stressful aspects in orb.", "stress"),
+        ("Angular", str(angular), "Visible bodies near chart angles.", "neutral"),
+        ("Rules", str(len(rules) if isinstance(rules, list) else 0), f"{len(windows or [])} candidate windows in the current search.", "neutral"),
+    ]
+
+
+def analysis_notice_lines(
+    snapshot: Mapping[str, object],
+    rejection_summary: Mapping[str, object] | None,
+    location: object | None = None,
+) -> list[str]:
+    lines = [line.lstrip("- ") for line in validation_summary_lines(snapshot, location)]
+    if not snapshot.get("traditionalRulesEnabled", True):
+        lines.append("True 13-Sign mode: traditional dignity/rulership scoring is unavailable.")
+    summary = rejection_summary or {}
+    top_reasons = summary.get("topReasons", [])
+    if isinstance(top_reasons, list) and top_reasons:
+        lines.append("Top rejected-window reasons: " + "; ".join(f"{reason} ({count})" for reason, count in top_reasons[:3]) + ".")
+    suggestions = summary.get("suggestedRelaxations", [])
+    if isinstance(suggestions, list) and suggestions:
+        lines.append("Suggested relaxation: " + str(suggestions[0]))
+    return lines
+
+
 class ElectionalDesktopApp:
     """Tkinter desktop UI that talks directly to the Python electional engine."""
 
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("Electional Software")
+        self.root.title(f"Electional Software - {APP_BUILD_LABEL}")
         self.root.geometry("1920x1080")
         self.root.minsize(1280, 800)
 
@@ -1039,12 +1721,30 @@ class ElectionalDesktopApp:
         self.event_log: list[str] = []
         self.session_state = clean_session_state(load_session_state())
         self.metric_vars: dict[str, tk.StringVar] = {}
+        self.left_status_chip_vars: list[tk.StringVar] = []
         self.shortlist_board_cards: list[tk.Frame] = []
         self.focused_body_name: str | None = None
         self.focused_body_kind: str | None = None
+        self.focused_aspect_bodies: set[str] = set()
+        self.analysis_report_text_cache = ""
+        self.timeline_report_text_cache = ""
+        self.search_workbench_run_count = 0
+        self.search_workbench_last_action = "waiting"
+        self._moon_drag_state: dict[str, object] = {}
+        self._wheel_drag_geometry: dict[str, float] = {}
+        manual_validation = self.session_state.get("manual_validation_comparison")
+        self.manual_validation_result = manual_validation if isinstance(manual_validation, dict) else {}
+        self.manual_validation_input_cache = str(self.manual_validation_result.get("inputText") or "")
+        self.manual_validation_source_var = tk.StringVar(value=str(self.manual_validation_result.get("source") or "CapricornPROMETHEUS"))
         self.top_nav_buttons: dict[str, tk.Button] = {}
         self.active_top_nav_label: str | None = None
         display_options = self.session_state.get("display_options", {})
+        self.aspect_profiles = load_aspect_profiles()
+        self.active_aspect_profile = aspect_profile_by_id(
+            str(self.session_state.get("active_aspect_profile") or DEFAULT_ASPECT_PROFILE_ID),
+            self.aspect_profiles,
+        )
+        self.aspect_profile_var = tk.StringVar(value=self.active_aspect_profile.name)
         self.show_aspects_var = tk.BooleanVar(value=bool(display_options.get("show_aspects", True)))
         self.show_lots_var = tk.BooleanVar(value=bool(display_options.get("show_lots", True)))
         self.show_nodes_var = tk.BooleanVar(value=bool(display_options.get("show_nodes", True)))
@@ -1054,7 +1754,8 @@ class ElectionalDesktopApp:
         self.point_set_var = tk.StringVar(value=get_point_set(display_options.get("point_set")).name)
         self.page_mode_var = tk.StringVar(value=PAGE_MODE_LABELS.get(str(display_options.get("page_mode") or "wheel"), "Wheel"))
         self.view_page_action_var = tk.StringVar(value="Interpretation")
-        self.right_panel_theme_var = tk.StringVar(value=RIGHT_PANEL_THEME_LABELS.get(str(display_options.get("right_panel_theme") or "astrolabe"), "Astrolabe"))
+        self.right_panel_theme_var = tk.StringVar(value=RIGHT_PANEL_THEME_LABELS.get(str(display_options.get("right_panel_theme") or "classic-natal"), "Classic Natal"))
+        self.wheel_view_preset_var = tk.StringVar(value=WHEEL_VIEW_PRESET_LABELS.get(str(display_options.get("wheel_view_preset") or "full-classic"), "Full Classic"))
         self.wheel_zoom = float(display_options.get("wheel_zoom", WHEEL_DEFAULT_ZOOM))
 
         self._configure_style()
@@ -1083,14 +1784,14 @@ class ElectionalDesktopApp:
         style.configure("Ribbon.TLabelframe", background=PALETTE["ribbon_panel"], bordercolor=PALETTE["panel_line"], relief="flat")
         style.configure("Ribbon.TLabelframe.Label", background=PALETTE["ribbon_panel"], foreground=PALETTE["muted"], font=("Georgia", 8, "bold"))
         style.configure("TNotebook", background=PALETTE["panel"], borderwidth=0)
-        style.configure("TNotebook.Tab", background="#e7ece8", foreground=PALETTE["muted"], padding=(11, 6), font=("Georgia", 8, "bold"))
-        style.map("TNotebook.Tab", background=[("selected", PALETTE["panel_alt"]), ("active", "#f2f5f1")], foreground=[("selected", PALETTE["accent_dark"]), ("active", PALETTE["text"])])
+        style.configure("TNotebook.Tab", background="#ececdf", foreground=PALETTE["muted"], padding=(12, 7), font=("Georgia", 8, "bold"))
+        style.map("TNotebook.Tab", background=[("selected", PALETTE["panel_alt"]), ("active", "#f7f5e9")], foreground=[("selected", PALETTE["accent_dark"]), ("active", PALETTE["text"])])
         style.configure("Title.TLabel", background=PALETTE["panel"], foreground=PALETTE["text"], font=("Georgia", 18, "bold"))
         style.configure("Small.TLabel", background=PALETTE["panel"], foreground=PALETTE["muted"], font=("Segoe UI", 9))
         style.configure("Accent.TLabel", background=PALETTE["panel"], foreground=PALETTE["accent"], font=("Georgia", 9, "bold"))
         style.configure("Score.TLabel", background=PALETTE["panel_alt"], foreground=PALETTE["score"], font=("Georgia", 32, "bold"))
-        style.configure("TButton", background=PALETTE["button"], foreground=PALETTE["text"], padding=(11, 7), bordercolor=PALETTE["button_line"], lightcolor=PALETTE["button"], darkcolor=PALETTE["button_line"], focusthickness=1, focuscolor=PALETTE["accent"])
-        style.configure("Compact.TButton", background=PALETTE["button"], foreground=PALETTE["text"], padding=(7, 5), bordercolor=PALETTE["button_line"], lightcolor=PALETTE["button"], darkcolor=PALETTE["button_line"], focusthickness=1, focuscolor=PALETTE["accent"])
+        style.configure("TButton", background=PALETTE["button"], foreground=PALETTE["text"], padding=(12, 7), bordercolor=PALETTE["button_line"], lightcolor=PALETTE["button"], darkcolor=PALETTE["button_line"], focusthickness=1, focuscolor=PALETTE["accent"])
+        style.configure("Compact.TButton", background=PALETTE["button"], foreground=PALETTE["text"], padding=(8, 5), bordercolor=PALETTE["button_line"], lightcolor=PALETTE["button"], darkcolor=PALETTE["button_line"], focusthickness=1, focuscolor=PALETTE["accent"])
         style.map("TButton", background=[("pressed", PALETTE["button_active"]), ("active", PALETTE["button_hover"])], bordercolor=[("active", PALETTE["accent"])])
         style.map("Compact.TButton", background=[("pressed", PALETTE["button_active"]), ("active", PALETTE["button_hover"])], bordercolor=[("active", PALETTE["accent"])])
         style.configure("TCheckbutton", background=PALETTE["panel"], foreground=PALETTE["muted"], font=("Segoe UI", 9))
@@ -1136,7 +1837,7 @@ class ElectionalDesktopApp:
         )
         self.workspace_panes.pack(fill=tk.BOTH, expand=True)
 
-        self.left_panel = tk.Frame(self.workspace_panes, bg=PALETTE["panel"], padx=8, pady=8, width=285)
+        self.left_panel = tk.Frame(self.workspace_panes, bg=PALETTE["panel"], padx=8, pady=8, width=320)
         self.left_panel.pack_propagate(False)
         self._build_left_scroll_area()
         self._build_left_controls()
@@ -1147,7 +1848,7 @@ class ElectionalDesktopApp:
         self.center_panel.rowconfigure(3, weight=1, minsize=260)
         self._build_chart_panel()
 
-        self.right_panel = tk.Frame(self.workspace_panes, bg=PALETTE["astrolabe_bg"], padx=7, pady=7, width=330)
+        self.right_panel = tk.Frame(self.workspace_panes, bg=PALETTE["astrolabe_bg"], padx=7, pady=7, width=350)
         self.right_panel.pack_propagate(False)
         self._build_right_panel()
         self._pack_workspace_panels()
@@ -1239,7 +1940,7 @@ class ElectionalDesktopApp:
         brand = tk.Frame(title_bar, bg=PALETTE["title_bar"])
         brand.pack(side=tk.LEFT, padx=18, pady=8)
         tk.Label(brand, text="Electional Software", bg=PALETTE["title_bar"], fg="#ffffff", font=("Segoe UI Semibold", 14)).pack(anchor="w")
-        tk.Label(brand, text="Judgment engine and timing workbench", bg=PALETTE["title_bar"], fg="#90a6b8", font=("Segoe UI", 8)).pack(anchor="w")
+        tk.Label(brand, text=f"Judgment engine and timing workbench | {APP_BUILD_LABEL}", bg=PALETTE["title_bar"], fg="#90a6b8", font=("Segoe UI", 8)).pack(anchor="w")
         tk.Label(
             title_bar,
             text="Python desktop engine",
@@ -1250,15 +1951,28 @@ class ElectionalDesktopApp:
 
         menu = ttk.Frame(self.root, style="Top.TFrame", padding=(14, 6))
         menu.pack(fill=tk.X)
-        for item in TOP_NAV_ITEMS:
+        for index, item in enumerate(TOP_NAV_ITEMS):
+            menu.columnconfigure(index, weight=1, uniform="top-nav")
             button = self._top_nav_button(menu, item)
             self.top_nav_buttons[item] = button
-            button.pack(side=tk.LEFT, padx=(0, 5))
+            button.grid(
+                row=0,
+                column=index,
+                sticky="ew",
+                padx=(0 if index == 0 else 3, 0 if index == len(TOP_NAV_ITEMS) - 1 else 3),
+            )
 
         ribbon = tk.Frame(self.root, bg=PALETTE["ribbon"], padx=12, pady=5)
         ribbon.pack(fill=tk.X)
-        for group_title, items in RIBBON_GROUPS:
-            self._ribbon_group(ribbon, group_title, items).pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10), pady=(1, 2))
+        for index, (group_title, items) in enumerate(RIBBON_GROUPS):
+            ribbon.columnconfigure(index, weight=1, uniform="ribbon-groups")
+            self._ribbon_group(ribbon, group_title, items).grid(
+                row=0,
+                column=index,
+                sticky="nsew",
+                padx=(0 if index == 0 else 5, 0 if index == len(RIBBON_GROUPS) - 1 else 5),
+                pady=(1, 2),
+            )
 
     def _top_nav_button(self, parent: tk.Widget, label: str) -> tk.Button:
         button = tk.Button(
@@ -1271,7 +1985,7 @@ class ElectionalDesktopApp:
             activeforeground="#fffdf6",
             relief=tk.FLAT,
             bd=0,
-            padx=13,
+            padx=10,
             pady=5,
             cursor="hand2",
             font=("Georgia", 9, "bold"),
@@ -1333,7 +2047,7 @@ class ElectionalDesktopApp:
             self._ribbon_button(grid, item).grid(row=row, column=column, sticky="nsew", padx=(0, 3), pady=(0, 3))
         return group
 
-    def _ribbon_button(self, parent: tk.Widget, label: str) -> tk.Frame:
+    def _ribbon_button(self, parent: tk.Widget, label: str) -> tk.Button:
         title = {
             "New Chart": "New",
             "Save Report": "Save",
@@ -1346,6 +2060,7 @@ class ElectionalDesktopApp:
             "Show Current": "Current",
             "Find Best": "Find Best",
             "Search Page": "Search",
+            "Transits/Timeline": "Timeline",
             "Advisor": "Advisor",
             "Improve": "Improve",
             "Decision": "Decision",
@@ -1363,47 +2078,44 @@ class ElectionalDesktopApp:
             "Clear Cache": "Clear",
             "Focus Wheel": "Focus",
             "Void Course": "VOC",
+            "Out of Bounds": "OOB",
+            "Aspect Config": "Aspects",
             "Fixed Stars": "Stars",
             "Heliacal Search": "Heliacal",
             "Map": "Map",
         }.get(label, label)
-        button = tk.Frame(
+        button = tk.Button(
             parent,
-            bg=PALETTE["button"],
-            highlightbackground=PALETTE["button_line"],
-            highlightthickness=1,
-            width=108,
-            height=32,
-        )
-        button.pack_propagate(False)
-        tk.Frame(button, bg=PALETTE["accent"], height=1).pack(fill=tk.X, pady=(0, 4))
-        tk.Label(
-            button,
             text=title,
+            command=lambda action=label: self._run_ribbon_action(action),
             bg=PALETTE["button"],
             fg=PALETTE["text"],
+            activebackground=PALETTE["button_hover"],
+            activeforeground=PALETTE["accent_dark"],
+            disabledforeground=PALETTE["muted"],
+            relief=tk.FLAT,
+            bd=0,
+            highlightbackground=PALETTE["button_line"],
+            highlightthickness=1,
+            width=14,
+            height=2,
+            cursor="hand2",
             font=("Georgia", 8, "bold"),
             justify=tk.CENTER,
             wraplength=100,
-        ).pack(fill=tk.X)
-        self._bind_clickable(button, lambda: self._run_ribbon_action(label))
+            padx=3,
+            pady=2,
+        )
         return button
 
     def _run_top_nav_action(self, label: str) -> None:
         actions = {
             "Wheel": lambda: self._open_main_page("Wheel", "Window"),
-            "Chart": lambda: (self._scroll_center_to_top(), self._focus_detail_page("Window")),
-            "Advisor": lambda: self._open_main_page("Advisor", "Advisor"),
-            "Improve": lambda: self._open_main_page("Improve", "Improve"),
-            "Decision": lambda: self._open_main_page("Decision", "Decision"),
-            "Selected Chart": lambda: self._focus_detail_page("Decision"),
-            "Compare": lambda: self._open_main_page("Compare", "Compare"),
-            "Search": lambda: self._open_main_page("Search", "Search"),
-            "Factors": lambda: self._open_main_page("Factors", "Factor Explorer"),
-            "Settings": lambda: (self._set_workspace_page("Settings"), self._show_preferences_dialog()),
-            "Configuration": self._show_preferences_dialog,
-            "Map": lambda: (self._set_workspace_page("Map"), self._show_astro_mapping_dialog()),
-            "Astro Mapping": self._show_astro_mapping_dialog,
+            "Search": self._open_search_workbench_page,
+            "Analysis": lambda: self._apply_page_mode("analysis"),
+            "Timeline": self._open_timeline_workbench,
+            "Validation": lambda: self._apply_page_mode("validation"),
+            "Reports": lambda: self._apply_page_mode("reports"),
         }
         actions.get(label, lambda: self._show_unknown_action(label))()
 
@@ -1420,6 +2132,35 @@ class ElectionalDesktopApp:
         self._scroll_center_to_top()
         self._focus_detail_page(detail_page)
         self.status_var.set(f"Opened {label} workspace page.")
+
+    def _mark_search_workbench_action(self, action: str, *, running: bool = False) -> None:
+        self.search_workbench_run_count += 1
+        stamp = datetime.now().strftime("%H:%M:%S")
+        self.search_workbench_last_action = f"{action} #{self.search_workbench_run_count} at {stamp}"
+        if hasattr(self, "search_workbench_title_var"):
+            self.search_workbench_title_var.set(f"Search Workbench | {action}")
+        if hasattr(self, "search_workbench_summary_var"):
+            state = "Running" if running else "Opened"
+            self.search_workbench_summary_var.set(f"{state}: {self.search_workbench_last_action}")
+        if hasattr(self, "search_workbench_detail_var"):
+            self.search_workbench_detail_var.set("Updating visible search diagnostics...")
+        if hasattr(self, "status_var"):
+            self.status_var.set(f"{action}: updating Search Workbench.")
+        try:
+            self.root.update_idletasks()
+        except tk.TclError:
+            return
+
+    def _open_search_workbench_page(self) -> None:
+        self._mark_search_workbench_action("Search Page")
+        if not self.selected_window:
+            self.calculate(show_input_chart=True)
+        self._set_workspace_page("Search")
+        self._scroll_center_to_top()
+        self._apply_page_mode("transit-search")
+        self._refresh_search_workbench_strip()
+        self._focus_detail_page("Search")
+        self.status_var.set("Opened Search Workbench with active filters, aspect profile, candidates, and rejection diagnostics.")
 
     def _bind_clickable(self, widget: tk.Widget, command: Callable[[], None]) -> None:
         widget.bind("<Button-1>", lambda _event: command())
@@ -1469,9 +2210,10 @@ class ElectionalDesktopApp:
             "Calculate": self.calculate,
             "Show Current": lambda: self.calculate(show_input_chart=True),
             "Find Best": self.calculate,
-            "Transits": self.calculate,
-            "Electional Search": self.calculate,
-            "Search Page": lambda: self._focus_detail_page("Search"),
+            "Transits": self._open_timeline_workbench,
+            "Transits/Timeline": self._open_timeline_workbench,
+            "Electional Search": self._run_electional_search_workbench,
+            "Search Page": self._open_search_workbench_page,
             "Shortlist": self._add_selected_to_shortlist,
             "Advisor": lambda: self._focus_detail_page("Advisor"),
             "Improve": lambda: self._focus_detail_page("Improve"),
@@ -1491,6 +2233,9 @@ class ElectionalDesktopApp:
             "Health": self._show_calculation_health_dialog,
             "Focus Wheel": self._toggle_focus_mode,
             "Void Course": self._show_void_course_dialog,
+            "Out of Bounds": self._show_out_of_bounds_dialog,
+            "Aspect Config": self._show_aspect_config_dialog,
+            "Assets": self._show_capricorn_asset_audit,
             "Preferences": self._show_preferences_dialog,
             "Systems": self._show_systems_dialog,
             "Bounds": self._show_bounds_dialog,
@@ -1507,6 +2252,334 @@ class ElectionalDesktopApp:
         self._display_option_changed()
         self._focus_detail_page("Aspects")
         self.status_var.set("Wheel aspects enabled and aspect list opened.")
+
+    def _show_capricorn_asset_audit(self) -> None:
+        inventory = inventory_capricorn_assets()
+        self._show_text_dialog("CapricornPROMETHEUS Assets", format_capricorn_asset_audit(inventory))
+        if inventory.exists and inventory.root:
+            self.status_var.set(f"Opened Capricorn asset audit for {inventory.root}.")
+        else:
+            self.status_var.set("Capricorn asset folder not found in the usual locations.")
+
+    def _import_capricorn_aspect_profiles(self) -> None:
+        result = import_capricorn_aspect_profiles()
+        self.aspect_profiles = load_aspect_profiles()
+        self.active_aspect_profile = self.aspect_profiles[-1] if self.aspect_profiles else self.active_aspect_profile
+        self.aspect_profile_var.set(self.active_aspect_profile.name)
+        if hasattr(self, "aspect_profile_combo"):
+            self.aspect_profile_combo.configure(values=self._aspect_profile_names())
+        self._refresh_aspect_focus_controls()
+        self._refresh_left_status_chips()
+        self._save_session()
+        self._show_text_dialog("Capricorn Aspect Import", format_capricorn_aspect_import_result(result))
+        self.status_var.set(f"Imported {result.imported_profiles} Capricorn aspect profiles.")
+
+    def _open_timeline_workbench(self) -> None:
+        self._mark_search_workbench_action("Timeline")
+        if not self.selected_window:
+            self.calculate(show_input_chart=True)
+        if not self.selected_window:
+            return
+        self._set_workspace_page("Timeline")
+        self._scroll_center_to_top()
+        self.page_mode_var.set(PAGE_MODE_LABELS["transit-search"])
+        self.show_aspects_var.set(True)
+        self._refresh_search_workbench_strip()
+        self._focus_detail_page("Timeline")
+        self._save_session()
+        self.status_var.set("Opened transit/timeline workbench with current, local-day, and next-24h aspect scans.")
+
+    def _run_electional_search_workbench(self) -> None:
+        self._mark_search_workbench_action("Electional Search", running=True)
+        self.calculate(show_input_chart=False)
+        if not self.selected_window:
+            return
+        self._set_workspace_page("Search")
+        self._scroll_center_to_top()
+        self._apply_page_mode("transit-search")
+        self._refresh_search_workbench_strip()
+        self._focus_detail_page("Search")
+        self.status_var.set("Electional Search completed with ranked candidates and rejection diagnostics.")
+
+    def _show_out_of_bounds_dialog(self) -> None:
+        if not self.selected_window:
+            messagebox.showinfo("Out of Bounds", "Calculate a chart before checking declination and out-of-bounds diagnostics.")
+            return
+        lines = judgment_context_lines(self.selected_window, "declinationContext")
+        if not lines:
+            lines = [
+                "Declination / Out-of-Bounds Diagnostics",
+                "- Declination data is not available for the current point set or backend response.",
+                "- Recalculate with the full electional point set, then open this tool again.",
+            ]
+        self._focus_detail_page("Declination")
+        self._show_text_dialog("Out of Bounds / Declination", "\n".join(lines))
+        self.status_var.set("Opened out-of-bounds and declination diagnostics.")
+
+    def _unique_aspect_profile_id(self, name: str, replacing: str | None = None) -> str:
+        base = sanitize_aspect_id(name)
+        if base == DEFAULT_ASPECT_PROFILE_ID:
+            base = "custom-aspect-profile"
+        used = {profile.id for profile in self.aspect_profiles if profile.id != replacing}
+        candidate = base
+        suffix = 2
+        while candidate in used:
+            candidate = f"{base}-{suffix}"
+            suffix += 1
+        return candidate
+
+    def _show_aspect_config_dialog(self) -> None:
+        working_aspects = list(self.active_aspect_profile.aspects)
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Aspect Configuration")
+        dialog.geometry("900x620")
+        dialog.configure(bg=PALETTE["app_bg"])
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        header = tk.Frame(dialog, bg=PALETTE["top_bar"], padx=12, pady=8)
+        header.pack(fill=tk.X)
+        tk.Label(header, text="Aspect Configuration Dialog", bg=PALETTE["top_bar"], fg="white", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        tk.Label(
+            header,
+            text="Create and tune the aspects used by chart detection, election search, scoring, reports, and the wheel.",
+            bg=PALETTE["top_bar"],
+            fg="#dce8e2",
+            font=("Segoe UI", 8),
+        ).pack(anchor="w", pady=(2, 0))
+
+        body = tk.Frame(dialog, bg=PALETTE["panel"], padx=12, pady=12)
+        body.pack(fill=tk.BOTH, expand=True)
+        profile_grid = tk.Frame(body, bg=PALETTE["panel"])
+        profile_grid.pack(fill=tk.X, pady=(0, 10))
+        profile_grid.columnconfigure(1, weight=1)
+        profile_grid.columnconfigure(3, weight=2)
+        name_var = tk.StringVar(value=self.active_aspect_profile.name)
+        description_var = tk.StringVar(value=self.active_aspect_profile.description)
+        tk.Label(profile_grid, text="Name", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold")).grid(row=0, column=0, sticky="w", padx=(0, 6))
+        tk.Entry(profile_grid, textvariable=name_var, bg=PALETTE["panel_alt"], relief=tk.FLAT, highlightthickness=1, highlightbackground=PALETTE["panel_line"]).grid(row=0, column=1, sticky="ew", padx=(0, 12), ipady=5)
+        tk.Label(profile_grid, text="Description", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold")).grid(row=0, column=2, sticky="w", padx=(0, 6))
+        tk.Entry(profile_grid, textvariable=description_var, bg=PALETTE["panel_alt"], relief=tk.FLAT, highlightthickness=1, highlightbackground=PALETTE["panel_line"]).grid(row=0, column=3, sticky="ew", ipady=5)
+
+        table_wrap = tk.Frame(body, bg=PALETTE["panel"], highlightbackground=PALETTE["panel_line"], highlightthickness=1)
+        table_wrap.pack(fill=tk.BOTH, expand=True)
+        columns = ("enabled", "glyph", "name", "line", "abbr", "angle", "orb", "tone", "kind")
+        tree = ttk.Treeview(table_wrap, columns=columns, show="headings", height=14)
+        headings = {
+            "enabled": "On",
+            "glyph": "Glyph",
+            "name": "Aspect",
+            "line": "Line",
+            "abbr": "Abv",
+            "angle": "Angle Exact",
+            "orb": "Orb",
+            "tone": "Tone",
+            "kind": "Kind",
+        }
+        widths = {"enabled": 48, "glyph": 60, "name": 190, "line": 82, "abbr": 70, "angle": 95, "orb": 80, "tone": 85, "kind": 78}
+        for column in columns:
+            tree.heading(column, text=headings[column])
+            tree.column(column, width=widths[column], minwidth=widths[column], stretch=column == "name")
+        scrollbar = ttk.Scrollbar(table_wrap, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        def refresh_tree(select_index: int | None = None) -> None:
+            tree.delete(*tree.get_children())
+            for index, aspect in enumerate(working_aspects):
+                tree.insert(
+                    "",
+                    tk.END,
+                    iid=str(index),
+                    values=(
+                        "yes" if aspect.enabled else "no",
+                        aspect.glyph or aspect.abbreviation,
+                        aspect.name,
+                        aspect.color,
+                        aspect.abbreviation,
+                        f"{float(aspect.angle):06.2f}",
+                        f"{float(aspect.default_orb):.2f}",
+                        aspect.tone,
+                        "built-in" if aspect.built_in else "custom",
+                    ),
+                )
+            if select_index is not None and 0 <= select_index < len(working_aspects):
+                tree.selection_set(str(select_index))
+                tree.see(str(select_index))
+
+        def selected_index() -> int | None:
+            selection = tree.selection()
+            if not selection:
+                return None
+            try:
+                return int(selection[0])
+            except ValueError:
+                return None
+
+        def open_editor(index: int | None = None) -> None:
+            existing = working_aspects[index] if index is not None else None
+            editor = tk.Toplevel(dialog)
+            editor.title("Edit Aspect" if existing else "Add Aspect")
+            editor.geometry("430x440")
+            editor.configure(bg=PALETTE["panel"])
+            editor.transient(dialog)
+            editor.grab_set()
+            form = tk.Frame(editor, bg=PALETTE["panel"], padx=12, pady=12)
+            form.pack(fill=tk.BOTH, expand=True)
+            name_field = tk.StringVar(value=existing.name if existing else "")
+            id_field = tk.StringVar(value=existing.id if existing else "")
+            abbr_field = tk.StringVar(value=existing.abbreviation if existing else "")
+            glyph_field = tk.StringVar(value=existing.glyph if existing else "")
+            angle_field = tk.StringVar(value=f"{float(existing.angle):g}" if existing else "45")
+            orb_field = tk.StringVar(value=f"{float(existing.default_orb):g}" if existing else "2")
+            tone_field = tk.StringVar(value=existing.tone if existing else "mixed")
+            color_field = tk.StringVar(value=existing.color if existing else "#536d8d")
+            enabled_field = tk.BooleanVar(value=existing.enabled if existing else True)
+
+            def row(label: str, widget: tk.Widget) -> None:
+                tk.Label(form, text=label, bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 8, "bold")).pack(anchor="w", pady=(7, 2))
+                widget.pack(fill=tk.X, ipady=4)
+
+            row("Name", tk.Entry(form, textvariable=name_field, bg=PALETTE["panel_alt"], relief=tk.FLAT, highlightthickness=1, highlightbackground=PALETTE["panel_line"]))
+            row("Identifier", tk.Entry(form, textvariable=id_field, bg=PALETTE["panel_alt"], relief=tk.FLAT, highlightthickness=1, highlightbackground=PALETTE["panel_line"]))
+            row("Abbreviation", tk.Entry(form, textvariable=abbr_field, bg=PALETTE["panel_alt"], relief=tk.FLAT, highlightthickness=1, highlightbackground=PALETTE["panel_line"]))
+            row("Glyph / fallback text", tk.Entry(form, textvariable=glyph_field, bg=PALETTE["panel_alt"], relief=tk.FLAT, highlightthickness=1, highlightbackground=PALETTE["panel_line"]))
+            number_row = tk.Frame(form, bg=PALETTE["panel"])
+            number_row.pack(fill=tk.X)
+            number_row.columnconfigure(0, weight=1)
+            number_row.columnconfigure(1, weight=1)
+            for column, (label, variable) in enumerate((("Exact angle", angle_field), ("Orb degrees", orb_field))):
+                cell = tk.Frame(number_row, bg=PALETTE["panel"])
+                cell.grid(row=0, column=column, sticky="ew", padx=(0, 5) if column == 0 else (5, 0))
+                tk.Label(cell, text=label, bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 8, "bold")).pack(anchor="w", pady=(7, 2))
+                tk.Entry(cell, textvariable=variable, bg=PALETTE["panel_alt"], relief=tk.FLAT, highlightthickness=1, highlightbackground=PALETTE["panel_line"]).pack(fill=tk.X, ipady=4)
+            row("Tone", ttk.Combobox(form, textvariable=tone_field, values=("support", "stress", "mixed"), state="readonly"))
+            row("Line / color", tk.Entry(form, textvariable=color_field, bg=PALETTE["panel_alt"], relief=tk.FLAT, highlightthickness=1, highlightbackground=PALETTE["panel_line"]))
+            tk.Checkbutton(form, text="Enabled in this profile", variable=enabled_field, bg=PALETTE["panel"], fg=PALETTE["text"], activebackground=PALETTE["panel"], selectcolor=PALETTE["panel_alt"]).pack(anchor="w", pady=(8, 0))
+
+            def save_aspect() -> None:
+                name = name_field.get().strip()
+                aspect_id = sanitize_aspect_id(id_field.get() or name)
+                try:
+                    angle = float(angle_field.get())
+                    orb = float(orb_field.get())
+                except ValueError:
+                    messagebox.showerror("Aspect validation", "Angle and orb must be numbers.", parent=editor)
+                    return
+                duplicate = any(aspect.id == aspect_id and idx != index for idx, aspect in enumerate(working_aspects))
+                candidate = Aspect(
+                    id=aspect_id,
+                    name=name,
+                    angle=angle,
+                    default_orb=orb,
+                    tone=tone_field.get(),
+                    meaning=(existing.meaning if existing else "Custom aspect definition."),
+                    abbreviation=abbr_field.get().strip() or name[:4].title(),
+                    glyph=glyph_field.get().strip() or abbr_field.get().strip() or name[:2].title(),
+                    color=color_field.get().strip() or "#536d8d",
+                    enabled=enabled_field.get(),
+                    built_in=bool(existing.built_in) if existing else False,
+                )
+                errors = []
+                if duplicate:
+                    errors.append(f"Duplicate aspect id: {aspect_id}.")
+                errors.extend(validate_aspect_profile(AspectProfile("edit", "Edit", "", tuple([candidate]))))
+                if errors:
+                    messagebox.showerror("Aspect validation", "\n".join(errors), parent=editor)
+                    return
+                if index is None:
+                    working_aspects.append(candidate)
+                    refresh_tree(len(working_aspects) - 1)
+                else:
+                    working_aspects[index] = candidate
+                    refresh_tree(index)
+                editor.destroy()
+
+            actions = tk.Frame(editor, bg=PALETTE["panel"], padx=12, pady=10)
+            actions.pack(fill=tk.X)
+            ttk.Button(actions, text="Save Aspect", command=save_aspect).pack(side=tk.RIGHT)
+            ttk.Button(actions, text="Cancel", command=editor.destroy).pack(side=tk.RIGHT, padx=(0, 8))
+
+        def delete_or_disable() -> None:
+            index = selected_index()
+            if index is None:
+                return
+            aspect = working_aspects[index]
+            if aspect.built_in:
+                working_aspects[index] = Aspect(
+                    id=aspect.id,
+                    name=aspect.name,
+                    angle=aspect.angle,
+                    default_orb=aspect.default_orb,
+                    tone=aspect.tone,
+                    meaning=aspect.meaning,
+                    abbreviation=aspect.abbreviation,
+                    glyph=aspect.glyph,
+                    color=aspect.color,
+                    enabled=False,
+                    built_in=True,
+                )
+                refresh_tree(index)
+                return
+            del working_aspects[index]
+            refresh_tree(min(index, len(working_aspects) - 1))
+
+        def move(delta: int) -> None:
+            index = selected_index()
+            if index is None:
+                return
+            target = index + delta
+            if target < 0 or target >= len(working_aspects):
+                return
+            working_aspects[index], working_aspects[target] = working_aspects[target], working_aspects[index]
+            refresh_tree(target)
+
+        def save_profile() -> None:
+            profile_name = name_var.get().strip() or "Custom Aspect Profile"
+            profile_id = self.active_aspect_profile.id
+            if profile_id == DEFAULT_ASPECT_PROFILE_ID:
+                if profile_name == self.active_aspect_profile.name:
+                    profile_name = f"{profile_name} Custom"
+                profile_id = self._unique_aspect_profile_id(profile_name)
+            profile = AspectProfile(profile_id, profile_name, description_var.get().strip(), tuple(working_aspects))
+            errors = validate_aspect_profile(profile)
+            if errors:
+                messagebox.showerror("Aspect profile validation", "\n".join(errors), parent=dialog)
+                return
+            replaced = False
+            next_profiles: list[AspectProfile] = []
+            for existing_profile in self.aspect_profiles:
+                if existing_profile.id == profile.id:
+                    next_profiles.append(profile)
+                    replaced = True
+                else:
+                    next_profiles.append(existing_profile)
+            if not replaced:
+                next_profiles.append(profile)
+            self.aspect_profiles = next_profiles
+            save_aspect_profiles(self.aspect_profiles)
+            self.active_aspect_profile = profile
+            self.aspect_profile_var.set(profile.name)
+            if hasattr(self, "aspect_profile_combo"):
+                self.aspect_profile_combo.configure(values=self._aspect_profile_names())
+            self._refresh_aspect_focus_controls()
+            self._refresh_left_status_chips()
+            self._save_session()
+            self._log_event(f"Saved aspect profile: {profile.name} ({len(profile.aspects)} aspects)")
+            self.status_var.set(f"Saved aspect profile: {profile.name}. Recalculate when ready.")
+            dialog.destroy()
+
+        button_bar = tk.Frame(body, bg=PALETTE["panel"])
+        button_bar.pack(fill=tk.X, pady=(10, 0))
+        ttk.Button(button_bar, text="Add", command=lambda: open_editor()).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(button_bar, text="Edit", command=lambda: open_editor(selected_index()) if selected_index() is not None else None).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(button_bar, text="Delete / Disable", command=delete_or_disable).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(button_bar, text="Move Up", command=lambda: move(-1)).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(button_bar, text="Move Down", command=lambda: move(1)).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(button_bar, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT)
+        ttk.Button(button_bar, text="OK and Save", command=save_profile).pack(side=tk.RIGHT, padx=(0, 8))
+        refresh_tree(0)
 
     def _new_chart(self) -> None:
         try:
@@ -1529,8 +2602,9 @@ class ElectionalDesktopApp:
         self.zodiac_system_var.set(get_zodiac_system(DEFAULT_ZODIAC_SYSTEM_ID).name)
         self.house_system_var.set(get_house_system(DEFAULT_HOUSE_SYSTEM_ID).name)
         self.preset_var.set(ELECTIONAL_PRESETS[1].name)
-        for var in self.aspect_vars.values():
-            var.set(True)
+        enabled_by_id = {aspect.id: aspect.enabled for aspect in self.active_aspect_profile.aspects}
+        for aspect_id, var in self.aspect_vars.items():
+            var.set(bool(enabled_by_id.get(aspect_id, True)))
         self.calculate(show_input_chart=True)
 
     def _save_current_report(self) -> None:
@@ -1604,6 +2678,7 @@ class ElectionalDesktopApp:
                 house_system.id,
                 daily_config,
                 self.objective_var.get(),
+                self._active_aspect_definitions(),
             )
         except Exception as exc:  # pragma: no cover - exercised through desktop UI.
             messagebox.showerror("Day Report", f"Could not build the 24-hour day report:\n{exc}")
@@ -1933,7 +3008,30 @@ class ElectionalDesktopApp:
                 pady=14,
             )
             empty.pack(fill=tk.X)
-            tk.Label(empty, text="No shortlisted windows yet.", bg=PALETTE["panel_alt"], fg=PALETTE["muted"], font=("Segoe UI", 10)).pack(anchor="w")
+            tk.Label(empty, text="No shortlisted windows yet.", bg=PALETTE["panel_alt"], fg=PALETTE["accent_dark"], font=("Georgia", 10, "bold")).pack(anchor="w")
+            tk.Label(
+                empty,
+                text=(
+                    "Run Find Best, click a candidate card, then press Shortlist or Save Pick. "
+                    "Once saved, this board will rank candidates by score, confidence, cleanliness, steadiness, and tags."
+                ),
+                bg=PALETTE["panel_alt"],
+                fg=PALETTE["text"],
+                font=("Segoe UI", 8),
+                wraplength=320,
+                justify=tk.LEFT,
+                anchor="w",
+            ).pack(fill=tk.X, pady=(5, 0))
+            tk.Label(
+                empty,
+                text="Good tags to start with: best for launch, backup, client-safe, needs review.",
+                bg=PALETTE["panel_alt"],
+                fg=PALETTE["muted"],
+                font=("Segoe UI", 8),
+                wraplength=320,
+                justify=tk.LEFT,
+                anchor="w",
+            ).pack(fill=tk.X, pady=(5, 0))
             return
 
         for rank, entry in enumerate(self.shortlist, start=1):
@@ -2127,6 +3225,7 @@ class ElectionalDesktopApp:
         point_set_var = tk.StringVar(value=self.point_set_var.get())
         page_mode_var = tk.StringVar(value=self.page_mode_var.get())
         right_panel_theme_var = tk.StringVar(value=self.right_panel_theme_var.get())
+        wheel_view_preset_var = tk.StringVar(value=self.wheel_view_preset_var.get())
         home_choices = [HOME_LOCATION_DEFAULT_LABEL, *self.location_names]
         if self.home_location_name and self.home_location_name not in home_choices:
             home_choices.append(self.home_location_name)
@@ -2159,6 +3258,7 @@ class ElectionalDesktopApp:
         self._dialog_combo_row(workflow, "Page mode", page_mode_var, list(PAGE_MODE_NAMES))
         self._dialog_combo_row(workflow, "Point configuration", point_set_var, list(POINT_SET_NAMES))
         self._dialog_combo_row(workflow, "Wheel presentation", right_panel_theme_var, list(RIGHT_PANEL_THEME_NAMES))
+        self._dialog_combo_row(workflow, "Wheel preset", wheel_view_preset_var, list(WHEEL_VIEW_PRESET_NAMES))
         self._dialog_combo_row(workflow, "Home location", home_var, home_choices)
 
         search = ttk.LabelFrame(body, text="Search Defaults", style="Panel.TLabelframe", padding=10)
@@ -2196,8 +3296,9 @@ class ElectionalDesktopApp:
                 objective_var.get(),
                 preset_var.get(),
                 PAGE_MODE_LABELS["wheel"],
-                get_point_set("ten-planets").name,
-                RIGHT_PANEL_THEME_LABELS["astrolabe"],
+                get_point_set("full-electional").name,
+                RIGHT_PANEL_THEME_LABELS["classic-natal"],
+                WHEEL_VIEW_PRESET_LABELS["full-classic"],
                 home_var.get(),
                 scan_var.get(),
                 step_var.get(),
@@ -2229,6 +3330,7 @@ class ElectionalDesktopApp:
                 page_mode_var.get(),
                 point_set_var.get(),
                 right_panel_theme_var.get(),
+                wheel_view_preset_var.get(),
                 home_var.get(),
                 scan_var.get(),
                 step_var.get(),
@@ -2270,6 +3372,7 @@ class ElectionalDesktopApp:
         page_mode: str,
         point_set_name: str,
         right_panel_theme: str,
+        wheel_view_preset: str,
         home_location_name: str,
         scan_hours: str,
         step_minutes: str,
@@ -2306,10 +3409,9 @@ class ElectionalDesktopApp:
         self.preset_var.set(preset if preset in self.presets_by_name else ELECTIONAL_PRESETS[1].name)
         self.page_mode_var.set(page_mode if page_mode in PAGE_MODE_NAMES else PAGE_MODE_LABELS["wheel"])
         self.point_set_var.set(get_point_set(point_set_name).name)
-        self.right_panel_theme_var.set(right_panel_theme if right_panel_theme in RIGHT_PANEL_THEME_NAMES else RIGHT_PANEL_THEME_LABELS["astrolabe"])
-        if self._is_classic_wheel_theme():
-            self.compact_wheel_var.set(False)
-            self.show_score_overlay_var.set(False)
+        self.right_panel_theme_var.set(right_panel_theme if right_panel_theme in RIGHT_PANEL_THEME_NAMES else RIGHT_PANEL_THEME_LABELS["classic-natal"])
+        self.wheel_view_preset_var.set(wheel_view_preset if wheel_view_preset in WHEEL_VIEW_PRESET_NAMES else WHEEL_VIEW_PRESET_LABELS["full-classic"])
+        self._apply_wheel_view_preset(self._current_wheel_preset_id(), save=False)
         chosen_home = home_location_name.strip()
         if chosen_home == HOME_LOCATION_DEFAULT_LABEL:
             self.home_location_name = None
@@ -2343,6 +3445,65 @@ class ElectionalDesktopApp:
 
     def _selected_aspect_ids(self) -> list[str]:
         return [aspect for aspect, var in self.aspect_vars.items() if var.get()]
+
+    def _aspect_profile_names(self) -> list[str]:
+        return [profile.name for profile in self.aspect_profiles]
+
+    def _profile_by_name(self, name: str) -> AspectProfile:
+        for profile in self.aspect_profiles:
+            if profile.name == name:
+                return profile
+        return self.aspect_profiles[0] if self.aspect_profiles else self.active_aspect_profile
+
+    def _active_aspect_definitions(self) -> tuple[Aspect, ...]:
+        return self.active_aspect_profile.aspects
+
+    def _aspect_profile_changed(self, _event: object | None = None) -> None:
+        previous = {aspect_id: var.get() for aspect_id, var in self.aspect_vars.items()}
+        self.active_aspect_profile = self._profile_by_name(self.aspect_profile_var.get())
+        self.aspect_profile_var.set(self.active_aspect_profile.name)
+        self._refresh_aspect_focus_controls(previous)
+        self._refresh_left_status_chips()
+        self._save_session()
+        self.status_var.set(f"Aspect profile active: {self.active_aspect_profile.name}.")
+
+    def _refresh_aspect_focus_controls(
+        self,
+        selections: Mapping[str, object] | None = None,
+        preset: object | None = None,
+    ) -> None:
+        if not hasattr(self, "aspect_focus_options_frame"):
+            return
+        for child in self.aspect_focus_options_frame.winfo_children():
+            child.destroy()
+        preset = preset or self.presets_by_name.get(self.preset_var.get(), ELECTIONAL_PRESETS[1])
+        selection_map = selections if isinstance(selections, Mapping) else {}
+        self.aspect_vars = {}
+        for aspect in self.active_aspect_profile.aspects:
+            if aspect.id in selection_map:
+                checked = bool(selection_map[aspect.id]) and aspect.enabled
+            else:
+                checked = bool(aspect.enabled and (aspect.id in preset.aspect_ids or not aspect.built_in))
+            var = tk.BooleanVar(value=checked)
+            self.aspect_vars[aspect.id] = var
+            label = (
+                f"{aspect.glyph or aspect.abbreviation}  {aspect.name}  "
+                f"{float(aspect.angle):g}deg / orb {float(aspect.default_orb):g}deg"
+            )
+            check = ttk.Checkbutton(self.aspect_focus_options_frame, text=label, variable=var)
+            check.pack(anchor="w", pady=2)
+            if not aspect.enabled:
+                check.state(["disabled"])
+        if not self.aspect_vars:
+            tk.Label(
+                self.aspect_focus_options_frame,
+                text="No aspect definitions are available. Open Aspect Config to restore the built-ins.",
+                bg=PALETTE["panel_alt"],
+                fg=PALETTE["stress"],
+                font=("Segoe UI", 8, "bold"),
+                wraplength=265,
+                justify=tk.LEFT,
+            ).pack(fill=tk.X)
 
     def _show_text_dialog(self, title: str, body: str) -> None:
         dialog = tk.Toplevel(self.root)
@@ -2556,7 +3717,12 @@ class ElectionalDesktopApp:
             f"Selected aspects: {', '.join(self._selected_aspect_ids()) or 'none'}",
             f"System: {self.selected_window['zodiacSystem'].name} / {self.selected_window['houseSystem'].name}",
             "",
-            *moon_void_course_summary(self.selected_window, self.current_location, self._selected_aspect_ids()),
+            *moon_void_course_summary(
+                self.selected_window,
+                self.current_location,
+                self._selected_aspect_ids(),
+                self._active_aspect_definitions(),
+            ),
         ]
         self._show_text_dialog("Void of Course Moon", "\n".join(lines))
         self.status_var.set("Opened void-of-course Moon scan.")
@@ -2714,28 +3880,24 @@ class ElectionalDesktopApp:
         self.search_preset_var = tk.StringVar(value=str(state.get("search_preset") or "Custom"))
         self.validation_var = tk.StringVar(value="Validation: waiting for first calculation")
 
-        control_tabs = ttk.Notebook(parent)
-        control_tabs.pack(fill=tk.X, pady=(0, 10))
-        setup_tab = ttk.Frame(control_tabs, style="Panel.TFrame", padding=8)
-        search_tab = ttk.Frame(control_tabs, style="Panel.TFrame", padding=8)
-        focus_tab = ttk.Frame(control_tabs, style="Panel.TFrame", padding=8)
-        control_tabs.add(setup_tab, text="Setup")
-        control_tabs.add(search_tab, text="Search")
-        control_tabs.add(focus_tab, text="Focus")
+        current_box = self._left_section(parent, "Current Setup", "The displayed chart state at a glance.")
+        self._build_left_status_chips(current_box)
+        self._build_workflow_next_step(current_box)
 
-        timing_box = ttk.LabelFrame(setup_tab, text="Timing", style="Panel.TLabelframe", padding=10)
-        timing_box.pack(fill=tk.X, pady=(0, 10))
+        timing_box = self._left_section(parent, "Timing", "Set the exact chart time without jumping to a candidate.")
         self._labeled_entry(timing_box, "Election date", self.date_var)
         self._labeled_entry(timing_box, "Start time", self.time_var)
         self._button_row(
             timing_box,
-            (("Now", self._set_current_time),),
+            (
+                ("Now", self._set_current_time),
+                ("Exact", lambda: self.calculate(show_input_chart=True)),
+            ),
             pady=(7, 0),
         )
         self._timing_adjustment_grid(timing_box)
 
-        location_box = ttk.LabelFrame(setup_tab, text="Location Defaults", style="Panel.TLabelframe", padding=10)
-        location_box.pack(fill=tk.X, pady=(0, 10))
+        location_box = self._left_section(parent, "Location", "Save, reuse, or correct your working place.")
         self.location_combo = self._labeled_combo(location_box, "Location preset", self.location_var, self.location_names)
         self.location_combo.bind("<<ComboboxSelected>>", self._load_selected_location)
         self._labeled_entry(location_box, "Location name", self.location_name_var)
@@ -2785,16 +3947,14 @@ class ElectionalDesktopApp:
         )
         self._refresh_location_status()
 
-        model_box = ttk.LabelFrame(setup_tab, text="Election Model", style="Panel.TLabelframe", padding=10)
-        model_box.pack(fill=tk.X, pady=(0, 10))
+        model_box = self._left_section(parent, "Election Model", "Objective, zodiac, houses, and preset.")
         self._labeled_combo(model_box, "Objective", self.objective_var, list(OBJECTIVES))
         self._labeled_combo(model_box, "Zodiac system", self.zodiac_system_var, list(ZODIAC_SYSTEM_NAMES))
         self._labeled_combo(model_box, "House system", self.house_system_var, list(HOUSE_SYSTEM_NAMES))
         self.preset_combo = self._labeled_combo(model_box, "Electional model", self.preset_var, [preset.name for preset in ELECTIONAL_PRESETS])
         self.preset_combo.bind("<<ComboboxSelected>>", self._sync_aspects_to_preset)
 
-        search_box = ttk.LabelFrame(search_tab, text="Search Quality", style="Panel.TLabelframe", padding=10)
-        search_box.pack(fill=tk.X)
+        search_box = self._left_section(parent, "Search Strategy", "Rank windows by score, cleanliness, confidence, or risk.")
         self._labeled_combo(search_box, "Search preset", self.search_preset_var, list(SEARCH_PRESET_NAMES)).bind("<<ComboboxSelected>>", self._apply_selected_search_preset)
         self._labeled_combo(search_box, "Search mode", self.search_quality_mode_var, list(SEARCH_QUALITY_MODE_NAMES)).bind("<<ComboboxSelected>>", lambda _event: self._update_search_summary())
         search_row = ttk.Frame(search_box, style="Panel.TFrame")
@@ -2836,8 +3996,38 @@ class ElectionalDesktopApp:
         max_row.columnconfigure(0, weight=1)
         max_row.columnconfigure(1, weight=1)
         self._labeled_entry(max_row, "Max results", self.max_results_var, compact=True, column=0)
-        filter_row = ttk.Frame(search_box, style="Panel.TFrame")
-        filter_row.pack(fill=tk.X, pady=(6, 0))
+        self._button_row(
+            search_box,
+            (
+                ("6h", lambda: self._set_search_preset("6", "60")),
+                ("12h", lambda: self._set_search_preset("12", "60")),
+                ("24h", lambda: self._set_search_preset("24", "120")),
+            ),
+            pady=(8, 0),
+        )
+        preset_filters = ttk.Frame(search_box, style="Panel.TFrame")
+        preset_filters.pack(fill=tk.X, pady=(7, 0))
+        for index, label in enumerate(("Strict Launch", "Clean Negotiation", "Safe Travel", "Conservative Money")):
+            preset_filters.columnconfigure(index % 2, weight=1, uniform="preset-filter")
+            ttk.Button(
+                preset_filters,
+                text=label,
+                command=lambda name=label: self._apply_search_filter_preset(name),
+                style="Compact.TButton",
+            ).grid(row=index // 2, column=index % 2, sticky="ew", padx=(0 if index % 2 == 0 else 3, 0 if index % 2 == 1 else 3), pady=(0 if index < 2 else 5, 0))
+        tk.Label(
+            search_box,
+            textvariable=self.search_summary_var,
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["muted"],
+            justify=tk.LEFT,
+            wraplength=270,
+            font=("Segoe UI", 8),
+        ).pack(anchor="w", fill=tk.X, pady=(8, 0))
+
+        safety_box = self._left_section(parent, "Safety Filters", "Hard gates for cleaner election windows.")
+        filter_row = ttk.Frame(safety_box, style="Panel.TFrame")
+        filter_row.pack(fill=tk.X, pady=(2, 0))
         tk.Checkbutton(
             filter_row,
             text="Require applying support",
@@ -2893,56 +4083,37 @@ class ElectionalDesktopApp:
             font=("Segoe UI", 8, "bold"),
             command=self._update_search_summary,
         ).pack(anchor="w")
+        self._update_search_summary()
+
+        aspect_box = self._left_section(parent, "Aspect Focus", "Choose which contacts the search should care about.")
+        preset = ELECTIONAL_PRESETS[1]
+        session_aspects = state.get("aspects") if isinstance(state.get("aspects"), dict) else {}
+        self.aspect_profile_combo = self._labeled_combo(aspect_box, "Aspect profile", self.aspect_profile_var, self._aspect_profile_names())
+        self.aspect_profile_combo.bind("<<ComboboxSelected>>", self._aspect_profile_changed)
+        self.aspect_focus_options_frame = ttk.Frame(aspect_box, style="Panel.TFrame")
+        self.aspect_focus_options_frame.pack(fill=tk.X, pady=(8, 0))
+        self._refresh_aspect_focus_controls(session_aspects, preset)
         self._button_row(
-            search_box,
+            aspect_box,
             (
-                ("6h", lambda: self._set_search_preset("6", "60")),
-                ("12h", lambda: self._set_search_preset("12", "60")),
-                ("24h", lambda: self._set_search_preset("24", "120")),
+                ("Aspect Config", self._show_aspect_config_dialog),
+                ("Apply Preset", self._sync_aspects_to_preset),
+                ("Import Cap", self._import_capricorn_aspect_profiles),
             ),
             pady=(8, 0),
         )
-        preset_filters = ttk.Frame(search_box, style="Panel.TFrame")
-        preset_filters.pack(fill=tk.X, pady=(6, 0))
-        for label in ("Strict Launch", "Clean Negotiation", "Safe Travel", "Conservative Money"):
-            ttk.Button(
-                preset_filters,
-                text=label,
-                command=lambda name=label: self._apply_search_filter_preset(name),
-            ).pack(fill=tk.X, pady=(0, 4))
-        tk.Label(
-            search_box,
-            textvariable=self.search_summary_var,
-            bg=PALETTE["panel"],
-            fg=PALETTE["muted"],
-            justify=tk.LEFT,
-            wraplength=250,
-            font=("Segoe UI", 8),
-        ).pack(anchor="w", fill=tk.X, pady=(7, 0))
-        self._update_search_summary()
-
-        aspect_box = ttk.LabelFrame(focus_tab, text="Aspect Focus", style="Panel.TLabelframe", padding=10)
-        aspect_box.pack(fill=tk.X, pady=(0, 10))
-        preset = ELECTIONAL_PRESETS[1]
-        session_aspects = state.get("aspects") if isinstance(state.get("aspects"), dict) else {}
-        for aspect_id in ("conjunction", "trine", "sextile", "square", "opposition"):
-            default_value = bool(session_aspects.get(aspect_id, aspect_id in preset.aspect_ids))
-            var = tk.BooleanVar(value=default_value)
-            self.aspect_vars[aspect_id] = var
-            ttk.Checkbutton(aspect_box, text=aspect_id.title(), variable=var).pack(anchor="w", pady=2)
 
         tk.Label(
-            focus_tab,
-            text="Aspect focus controls which contacts are searched and scored. Use the wheel controls above the chart for visual point layers.",
-            bg=PALETTE["panel"],
+            aspect_box,
+            text="Aspect profiles control which contacts are searched, scored, drawn, and reported. Custom angles use their profile orb unless the electional model overrides that id.",
+            bg=PALETTE["panel_alt"],
             fg=PALETTE["muted"],
             justify=tk.LEFT,
-            wraplength=250,
+            wraplength=270,
             font=("Segoe UI", 8),
         ).pack(anchor="w", fill=tk.X)
 
-        action_box = tk.Frame(parent, bg=PALETTE["panel_alt"], highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=10, pady=10)
-        action_box.pack(fill=tk.X, pady=(0, 10))
+        action_box = self._left_section(parent, "Actions", "Calculate, review, and open deeper pages.")
         self._button_row(
             action_box,
             (
@@ -2955,7 +4126,7 @@ class ElectionalDesktopApp:
             (
                 ("Preferences", self._show_preferences_dialog),
                 ("Day Report", self._show_daily_aspect_report_dialog),
-                ("Search Page", lambda: self._focus_detail_page("Search")),
+                ("Search Page", self._open_search_workbench_page),
             ),
             pady=(7, 0),
         )
@@ -2965,9 +4136,167 @@ class ElectionalDesktopApp:
             bg=PALETTE["panel"],
             fg=PALETTE["accent_dark"],
             justify=tk.LEFT,
-            wraplength=250,
+            wraplength=285,
             font=("Georgia", 9, "bold"),
         ).pack(anchor="w", pady=(10, 0))
+
+    def _left_section(self, parent: tk.Widget, title: str, subtitle: str = "") -> tk.Frame:
+        section = tk.Frame(
+            parent,
+            bg=PALETTE["panel_alt"],
+            highlightbackground=PALETTE["panel_line"],
+            highlightthickness=1,
+            padx=10,
+            pady=9,
+        )
+        section.pack(fill=tk.X, pady=(0, 10))
+        tk.Frame(section, bg=PALETTE["accent"], height=2).pack(fill=tk.X, pady=(0, 6))
+        tk.Label(
+            section,
+            text=title,
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["accent_dark"],
+            font=("Georgia", 9, "bold"),
+            anchor="w",
+        ).pack(fill=tk.X)
+        if subtitle:
+            tk.Label(
+                section,
+                text=subtitle,
+                bg=PALETTE["panel_alt"],
+                fg=PALETTE["muted"],
+                font=("Segoe UI", 8),
+                wraplength=275,
+                justify=tk.LEFT,
+                anchor="w",
+            ).pack(fill=tk.X, pady=(2, 3))
+        return section
+
+    def _build_left_status_chips(self, parent: tk.Widget) -> None:
+        self.left_status_chip_vars = [tk.StringVar(value="") for _ in range(5)]
+        for variable in self.left_status_chip_vars:
+            chip = tk.Frame(
+                parent,
+                bg=PALETTE["chip"],
+                highlightbackground=PALETTE["chip_line"],
+                highlightthickness=1,
+                padx=7,
+                pady=4,
+            )
+            chip.pack(fill=tk.X, pady=(5, 0))
+            tk.Label(
+                chip,
+                textvariable=variable,
+                bg=PALETTE["chip"],
+                fg=PALETTE["top_bar_dark"],
+                font=("Segoe UI Semibold", 8),
+                wraplength=265,
+                justify=tk.LEFT,
+                anchor="w",
+            ).pack(fill=tk.X)
+        self._refresh_left_status_chips()
+
+    def _build_workflow_next_step(self, parent: tk.Widget) -> None:
+        guide = tk.Frame(
+            parent,
+            bg=PALETTE["surface_sage"],
+            highlightbackground=PALETTE["chip_line"],
+            highlightthickness=1,
+            padx=8,
+            pady=7,
+        )
+        guide.pack(fill=tk.X, pady=(8, 0))
+        tk.Label(
+            guide,
+            text="Next Step",
+            bg=PALETTE["surface_sage"],
+            fg=PALETTE["accent_dark"],
+            font=("Georgia", 9, "bold"),
+            anchor="w",
+        ).pack(fill=tk.X)
+        self.workflow_step_title_var = tk.StringVar(value="")
+        self.workflow_step_body_var = tk.StringVar(value="")
+        self.workflow_step_hint_var = tk.StringVar(value="")
+        tk.Label(
+            guide,
+            textvariable=self.workflow_step_title_var,
+            bg=PALETTE["surface_sage"],
+            fg=PALETTE["top_bar_dark"],
+            font=("Segoe UI Semibold", 8),
+            wraplength=260,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(
+            guide,
+            textvariable=self.workflow_step_body_var,
+            bg=PALETTE["surface_sage"],
+            fg=PALETTE["text"],
+            font=("Segoe UI", 8),
+            wraplength=260,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(2, 0))
+        tk.Label(
+            guide,
+            textvariable=self.workflow_step_hint_var,
+            bg=PALETTE["surface_sage"],
+            fg=PALETTE["muted"],
+            font=("Segoe UI", 7),
+            wraplength=260,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(2, 6))
+        self._button_row(
+            guide,
+            (
+                ("Current", lambda: self.calculate(show_input_chart=True)),
+                ("Find Best", self.calculate),
+                ("Analysis", lambda: self._focus_detail_page("Analysis")),
+            ),
+        )
+        self._refresh_workflow_next_step()
+
+    def _refresh_left_status_chips(self) -> None:
+        if not getattr(self, "left_status_chip_vars", None):
+            return
+        lines = left_status_chip_lines(
+            self.date_var.get() if hasattr(self, "date_var") else "",
+            self.time_var.get() if hasattr(self, "time_var") else "",
+            self.location_name_var.get() if hasattr(self, "location_name_var") else "",
+            self.timezone_var.get() if hasattr(self, "timezone_var") else "",
+            self.zodiac_system_var.get() if hasattr(self, "zodiac_system_var") else "",
+            self.house_system_var.get() if hasattr(self, "house_system_var") else "",
+            (
+                f"{self.search_quality_mode_var.get()} | {self.active_aspect_profile.name}"
+                if hasattr(self, "search_quality_mode_var") and hasattr(self, "active_aspect_profile")
+                else self.search_quality_mode_var.get()
+                if hasattr(self, "search_quality_mode_var")
+                else ""
+            ),
+            self.validation_var.get() if hasattr(self, "validation_var") else "",
+        )
+        for variable, text in zip(self.left_status_chip_vars, lines):
+            variable.set(text)
+        self._refresh_workflow_next_step()
+
+    def _refresh_workflow_next_step(self) -> None:
+        if not hasattr(self, "workflow_step_title_var"):
+            return
+        has_rejections = False
+        if isinstance(getattr(self, "current_rejection_summary", None), dict):
+            top_reasons = self.current_rejection_summary.get("topReasons")
+            has_rejections = bool(top_reasons)
+        title, body, hint = workflow_next_step_lines(
+            has_chart=bool(self.selected_window or self.input_snapshot),
+            candidate_count=len(getattr(self, "current_windows", [])),
+            selected_index=int(getattr(self, "selected_window_index", -1)),
+            displayed_source=str(getattr(self, "displayed_chart_source", "")),
+            has_rejections=has_rejections,
+        )
+        self.workflow_step_title_var.set(title)
+        self.workflow_step_body_var.set(body)
+        self.workflow_step_hint_var.set(hint)
 
     def _button_row(
         self,
@@ -3204,8 +4533,10 @@ class ElectionalDesktopApp:
 
     def _sync_aspects_to_preset(self, _event: object | None = None) -> None:
         preset = self.presets_by_name.get(self.preset_var.get(), ELECTIONAL_PRESETS[1])
+        enabled_by_id = {aspect.id: aspect.enabled for aspect in self.active_aspect_profile.aspects}
         for aspect_id, var in self.aspect_vars.items():
-            var.set(aspect_id in preset.aspect_ids)
+            var.set(bool(enabled_by_id.get(aspect_id, True) and (aspect_id in preset.aspect_ids or aspect_id not in preset.aspect_orbs)))
+        self._save_session()
         self.status_var.set(f"Aspect focus updated for {preset.name}.")
 
     def _set_search_preset(self, scan_hours: str, step_minutes: str) -> None:
@@ -3270,8 +4601,10 @@ class ElectionalDesktopApp:
             )
         except ValueError:
             self.search_summary_var.set("Search settings need attention.")
+            self._refresh_left_status_chips()
             return
         self.search_summary_var.set(format_search_summary(config))
+        self._refresh_left_status_chips()
 
     def _shift_time(self, hours: int) -> None:
         self._shift_time_minutes(hours * 60)
@@ -3364,23 +4697,77 @@ class ElectionalDesktopApp:
         self._state_card(state_bar, "Selected Window", self.selected_state_var, 2, PALETTE["accent"])
         self._state_card(state_bar, "Difference", self.offset_state_var, 3, PALETTE["warning"])
 
-        self._build_wheel_display_controls()
+        self.search_workbench_frame = tk.Frame(
+            self.center_panel,
+            bg=PALETTE["panel_alt"],
+            highlightbackground=PALETTE["panel_line"],
+            highlightthickness=1,
+            padx=10,
+            pady=7,
+        )
+        self.search_workbench_frame.grid(row=2, column=0, sticky="ew", pady=(0, 6))
+        self.search_workbench_frame.columnconfigure(0, weight=1)
+        self.search_workbench_frame.columnconfigure(1, weight=1)
+        self.search_workbench_title_var = tk.StringVar(value="Search Workbench")
+        self.search_workbench_summary_var = tk.StringVar(value="Waiting for calculation. Use Electional Search to rank candidate windows.")
+        self.search_workbench_detail_var = tk.StringVar(value="Aspect profile and filters will appear here.")
+        tk.Label(
+            self.search_workbench_frame,
+            textvariable=self.search_workbench_title_var,
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["accent_dark"],
+            font=("Georgia", 9, "bold"),
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew")
+        tk.Label(
+            self.search_workbench_frame,
+            textvariable=self.search_workbench_summary_var,
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["text"],
+            font=("Segoe UI Semibold", 8),
+            anchor="w",
+            justify=tk.LEFT,
+            wraplength=520,
+        ).grid(row=1, column=0, sticky="ew", pady=(3, 0))
+        tk.Label(
+            self.search_workbench_frame,
+            textvariable=self.search_workbench_detail_var,
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["muted"],
+            font=("Segoe UI", 8),
+            anchor="w",
+            justify=tk.LEFT,
+            wraplength=520,
+        ).grid(row=2, column=0, sticky="ew", pady=(2, 0))
+        quick_actions = tk.Frame(self.search_workbench_frame, bg=PALETTE["panel_alt"])
+        quick_actions.grid(row=0, column=1, rowspan=3, sticky="e", padx=(10, 0))
+        ttk.Button(quick_actions, text="Run Search", command=self._run_electional_search_workbench, style="Compact.TButton").pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(quick_actions, text="Timeline", command=self._open_timeline_workbench, style="Compact.TButton").pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(quick_actions, text="Aspects", command=self._show_aspect_config_dialog, style="Compact.TButton").pack(side=tk.LEFT)
 
-        self.wheel_workspace = tk.Frame(self.center_panel, bg=PALETTE["panel"])
+        self.wheel_workspace = tk.Frame(
+            self.center_panel,
+            bg=PALETTE["surface"],
+            highlightbackground=PALETTE["panel_line_strong"],
+            highlightthickness=1,
+            padx=6,
+            pady=6,
+        )
         self.wheel_workspace.grid(row=3, column=0, sticky="nsew")
-        self.wheel_workspace.columnconfigure(1, weight=1)
-        self.wheel_workspace.rowconfigure(0, weight=1)
+        self.wheel_workspace.columnconfigure(0, weight=1)
+        self.wheel_workspace.columnconfigure(1, weight=0)
+        self.wheel_workspace.rowconfigure(1, weight=1)
+        self._build_wheel_display_controls()
 
         self.classic_left_panel = tk.Frame(
             self.wheel_workspace,
             bg=CLASSIC_PANEL_BG,
             highlightbackground=CLASSIC_PANEL_LINE,
             highlightthickness=1,
-            padx=6,
-            pady=8,
+            padx=5,
+            pady=7,
             width=CLASSIC_LEFT_PANEL_WIDTH,
         )
-        self.classic_left_panel.grid(row=0, column=0, sticky="nsw", padx=(0, 8))
         self.classic_left_panel.grid_propagate(False)
 
         self.canvas = tk.Canvas(
@@ -3391,7 +4778,7 @@ class ElectionalDesktopApp:
             highlightthickness=1,
             highlightbackground=PALETTE["panel_line"],
         )
-        self.canvas.grid(row=0, column=1, sticky="nsew")
+        self.canvas.grid(row=1, column=0, sticky="nsew")
         self.canvas.bind("<Configure>", self._schedule_redraw)
         self.canvas.bind("<Enter>", lambda _event: self.center_scroll_canvas.bind_all("<MouseWheel>", self._scroll_center_workspace))
         self.canvas.bind("<Leave>", lambda _event: self.center_scroll_canvas.unbind_all("<MouseWheel>"))
@@ -3405,7 +4792,7 @@ class ElectionalDesktopApp:
             pady=8,
             width=CLASSIC_RIGHT_PANEL_WIDTH,
         )
-        self.classic_right_panel.grid(row=0, column=2, sticky="nse", padx=(8, 0))
+        self.classic_right_panel.grid(row=1, column=1, sticky="nse", padx=(8, 0))
         self.classic_right_panel.grid_propagate(False)
         self._build_classic_side_panels()
 
@@ -3432,45 +4819,61 @@ class ElectionalDesktopApp:
     def _build_chart_page_strip(self) -> None:
         strip = tk.Frame(
             self.center_panel,
-            bg=PALETTE["top_bar_dark"],
-            highlightbackground=PALETTE["panel_line_strong"],
+            bg=PALETTE["surface_soft"],
+            highlightbackground=PALETTE["panel_line"],
             highlightthickness=1,
-            padx=7,
-            pady=5,
+            padx=8,
+            pady=6,
         )
         strip.grid(row=4, column=0, sticky="ew", pady=(5, 0))
-        tk.Label(strip, text="View", bg=PALETTE["top_bar_dark"], fg="white", font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=(0, 6))
-        page_action_combo = ttk.Combobox(strip, textvariable=self.view_page_action_var, values=VIEW_PAGE_STRIP_ACTIONS, state="readonly", width=17)
+        nav_row = tk.Frame(strip, bg=PALETTE["surface_soft"])
+        nav_row.pack(fill=tk.X)
+        quick_row = tk.Frame(strip, bg=PALETTE["surface_soft"])
+        quick_row.pack(fill=tk.X, pady=(5, 0))
+
+        tk.Label(nav_row, text="More detail", bg=PALETTE["surface_soft"], fg=PALETTE["accent"], font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=(0, 6))
+        page_action_combo = ttk.Combobox(nav_row, textvariable=self.view_page_action_var, values=VIEW_PAGE_STRIP_ACTIONS, state="readonly", width=18)
         page_action_combo.pack(side=tk.LEFT, padx=(0, 4))
         page_action_combo.bind("<<ComboboxSelected>>", lambda _event: self._run_view_page_action(self.view_page_action_var.get()))
-        ttk.Button(strip, text="Open", command=lambda: self._run_view_page_action(self.view_page_action_var.get()), style="Compact.TButton").pack(side=tk.LEFT, padx=(0, 9))
-        tk.Label(strip, text="Mode", bg=PALETTE["top_bar_dark"], fg="white", font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=(0, 6))
-        page_mode_combo = ttk.Combobox(strip, textvariable=self.page_mode_var, values=PAGE_MODE_NAMES, state="readonly", width=20)
+        ttk.Button(nav_row, text="Open", command=lambda: self._run_view_page_action(self.view_page_action_var.get()), style="Compact.TButton").pack(side=tk.LEFT, padx=(0, 12))
+        tk.Label(nav_row, text="Workspace mode", bg=PALETTE["surface_soft"], fg=PALETTE["muted"], font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=(0, 6))
+        page_mode_combo = ttk.Combobox(nav_row, textvariable=self.page_mode_var, values=PAGE_MODE_NAMES, state="readonly", width=22)
         page_mode_combo.pack(side=tk.LEFT, padx=(0, 9))
         page_mode_combo.bind("<<ComboboxSelected>>", lambda _event: self._page_mode_changed())
+        tk.Label(quick_row, text="Primary tools", bg=PALETTE["surface_soft"], fg=PALETTE["accent"], font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=(0, 6))
         for label in VIEW_PAGE_QUICK_ACTIONS:
             tk.Button(
-                strip,
+                quick_row,
                 text=label,
                 command=lambda action=label: self._run_view_page_action(action),
                 bg=PALETTE["button"],
-                fg=PALETTE["top_bar_dark"],
+                fg=PALETTE["accent_dark"],
                 activebackground=PALETTE["button_hover"],
                 relief=tk.FLAT,
                 padx=7,
                 pady=2,
                 font=("Georgia", 8, "bold"),
             ).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(strip, text="Focus", command=self._focus_selected_body).pack(side=tk.RIGHT, padx=(6, 0))
-        self.focus_body_combo = ttk.Combobox(strip, textvariable=self.focus_body_var, values=[], state="readonly", width=16)
+        ttk.Button(quick_row, text="Focus", command=self._focus_selected_body, style="Compact.TButton").pack(side=tk.RIGHT, padx=(6, 0))
+        self.focus_body_combo = ttk.Combobox(quick_row, textvariable=self.focus_body_var, values=[], state="readonly", width=18)
         self.focus_body_combo.pack(side=tk.RIGHT)
         self.focus_body_combo.bind("<<ComboboxSelected>>", lambda _event: self._focus_selected_body())
-        tk.Label(strip, text="Point", bg=PALETTE["top_bar_dark"], fg="white", font=("Segoe UI", 8, "bold")).pack(side=tk.RIGHT, padx=(8, 6))
+        tk.Label(quick_row, text="Focus point", bg=PALETTE["surface_soft"], fg=PALETTE["muted"], font=("Segoe UI", 8, "bold")).pack(side=tk.RIGHT, padx=(8, 6))
 
     def _run_view_page_action(self, label: str) -> None:
         self.view_page_action_var.set(label if label in VIEW_PAGE_STRIP_ACTIONS else "Interpretation")
         if label == "Interpretation":
             self._focus_detail_page("Window")
+        elif label == "Search":
+            self._open_search_workbench_page()
+        elif label == "Analysis":
+            self._apply_page_mode("analysis")
+        elif label == "Timeline":
+            self._open_timeline_workbench()
+        elif label == "Validation":
+            self._apply_page_mode("validation")
+        elif label == "Reports":
+            self._apply_page_mode("reports")
         elif label == "Chart Data":
             self._show_chart_inspector()
         elif label == "Save Wheel":
@@ -3485,31 +4888,43 @@ class ElectionalDesktopApp:
 
     def _build_wheel_display_controls(self) -> None:
         display = tk.Frame(
-            self.center_panel,
-            bg=PALETTE["panel_alt"],
-            highlightbackground=PALETTE["panel_line_strong"],
+            self.wheel_workspace,
+            bg=PALETTE["surface_soft"],
+            highlightbackground=PALETTE["panel_line"],
             highlightthickness=1,
-            padx=9,
-            pady=4,
+            padx=8,
+            pady=5,
         )
-        display.grid(row=2, column=0, sticky="ew", pady=(0, 5))
-        tk.Label(display, text="Wheel View", bg=PALETTE["panel_alt"], fg=PALETTE["accent"], font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(display, text="Clean", command=self._apply_clean_wheel_view).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(display, text="Full", command=self._apply_full_wheel_view).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(display, text="Fit", command=self._fit_wheel_view).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(display, text="Zoom -", command=lambda: self._adjust_wheel_zoom(-0.06)).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(display, text="Zoom +", command=lambda: self._adjust_wheel_zoom(0.06)).pack(side=tk.LEFT, padx=(0, 8))
-        tk.Label(display, text="Theme", bg=PALETTE["panel_alt"], fg=PALETTE["muted"], font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=(0, 6))
-        theme_combo = ttk.Combobox(display, textvariable=self.right_panel_theme_var, values=RIGHT_PANEL_THEME_NAMES, state="readonly", width=15)
+        display.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6))
+        view_row = tk.Frame(display, bg=PALETTE["surface_soft"])
+        view_row.pack(fill=tk.X)
+        option_row = tk.Frame(display, bg=PALETTE["surface_soft"])
+        option_row.pack(fill=tk.X, pady=(5, 0))
+
+        tk.Label(view_row, text="Wheel preset", bg=PALETTE["surface_soft"], fg=PALETTE["accent"], font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=(0, 8))
+        preset_combo = ttk.Combobox(view_row, textvariable=self.wheel_view_preset_var, values=WHEEL_VIEW_PRESET_NAMES, state="readonly", width=14)
+        preset_combo.pack(side=tk.LEFT, padx=(0, 8))
+        preset_combo.bind("<<ComboboxSelected>>", lambda _event: self._wheel_preset_changed())
+        for label, command in (
+            ("Clean", self._apply_clean_wheel_view),
+            ("Full Classic", self._apply_full_wheel_view),
+            ("Diagnostic", self._apply_diagnostic_wheel_view),
+            ("Fit", self._fit_wheel_view),
+            ("Zoom -", lambda: self._adjust_wheel_zoom(-0.06)),
+            ("Zoom +", lambda: self._adjust_wheel_zoom(0.06)),
+        ):
+            ttk.Button(view_row, text=label, command=command, style="Compact.TButton").pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(view_row, text="Reset Panels", command=self._reset_workspace_panels, style="Compact.TButton").pack(side=tk.RIGHT)
+
+        tk.Label(option_row, text="Theme", bg=PALETTE["surface_soft"], fg=PALETTE["muted"], font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=(0, 6))
+        theme_combo = ttk.Combobox(option_row, textvariable=self.right_panel_theme_var, values=RIGHT_PANEL_THEME_NAMES, state="readonly", width=14)
         theme_combo.pack(side=tk.LEFT, padx=(0, 10))
         theme_combo.bind("<<ComboboxSelected>>", lambda _event: self._wheel_theme_changed())
-        tk.Label(display, text="Points", bg=PALETTE["panel_alt"], fg=PALETTE["muted"], font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=(0, 6))
-        point_combo = ttk.Combobox(display, textvariable=self.point_set_var, values=POINT_SET_NAMES, state="readonly", width=17)
-        point_combo.pack(side=tk.LEFT, padx=(0, 10))
+        tk.Label(option_row, text="Points", bg=PALETTE["surface_soft"], fg=PALETTE["muted"], font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=(0, 6))
+        point_combo = ttk.Combobox(option_row, textvariable=self.point_set_var, values=POINT_SET_NAMES, state="readonly", width=16)
+        point_combo.pack(side=tk.LEFT, padx=(0, 12))
         point_combo.bind("<<ComboboxSelected>>", lambda _event: self._point_set_changed())
-        ttk.Button(display, text="Reset Panels", command=self._reset_workspace_panels).pack(side=tk.RIGHT)
-        ttk.Button(display, text="Bottom", command=self._scroll_center_to_bottom).pack(side=tk.RIGHT, padx=(0, 6))
-        ttk.Button(display, text="Top", command=self._scroll_center_to_top).pack(side=tk.RIGHT, padx=(0, 6))
+        tk.Label(option_row, text="Overlays", bg=PALETTE["surface_soft"], fg=PALETTE["accent_dark"], font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=(0, 7))
         for label, variable in (
             ("Aspects", self.show_aspects_var),
             ("Score", self.show_score_overlay_var),
@@ -3519,14 +4934,14 @@ class ElectionalDesktopApp:
             ("Compact", self.compact_wheel_var),
         ):
             tk.Checkbutton(
-                display,
+                option_row,
                 text=label,
                 variable=variable,
                 command=self._display_option_changed,
-                bg=PALETTE["panel_alt"],
-                activebackground=PALETTE["panel_alt"],
+                bg=PALETTE["surface_soft"],
+                activebackground=PALETTE["surface_soft"],
                 fg=PALETTE["muted"],
-                selectcolor=PALETTE["panel_alt"],
+                selectcolor=PALETTE["surface_soft"],
                 font=("Segoe UI", 8, "bold"),
             ).pack(side=tk.LEFT, padx=(0, 8))
 
@@ -3544,8 +4959,14 @@ class ElectionalDesktopApp:
     def _current_wheel_theme_id(self) -> str:
         return RIGHT_PANEL_THEME_IDS_BY_NAME.get(self.right_panel_theme_var.get(), "astrolabe")
 
+    def _current_wheel_preset_id(self) -> str:
+        return WHEEL_VIEW_PRESET_IDS_BY_NAME.get(self.wheel_view_preset_var.get(), "full-classic")
+
     def _is_classic_wheel_theme(self) -> bool:
         return self._current_wheel_theme_id() == "classic-natal"
+
+    def _is_diagnostic_wheel_preset(self) -> bool:
+        return self._current_wheel_preset_id() == "diagnostic"
 
     def _planet_marker_font(self, size: int) -> tuple[str, int]:
         return ("Segoe UI Symbol" if self._is_classic_wheel_theme() else "Segoe UI Semibold", size)
@@ -3570,10 +4991,6 @@ class ElectionalDesktopApp:
         if self._is_classic_wheel_theme():
             self.compact_wheel_var.set(False)
             self.show_score_overlay_var.set(False)
-            if self.point_set_var.get() == get_point_set("full-electional").name:
-                self.show_lots_var.set(False)
-                self.show_nodes_var.set(False)
-                self.show_fixed_stars_var.set(False)
         self._display_option_changed()
         self._apply_current_theme()
         self.status_var.set(f"Wheel theme: {self.right_panel_theme_var.get()}.")
@@ -3592,8 +5009,19 @@ class ElectionalDesktopApp:
             self.page_mode_var.set(PAGE_MODE_LABELS[mode_id])
             self.show_aspects_var.set(True)
             self.compact_wheel_var.set(False)
+            self._set_workspace_page("Analysis")
             self._focus_detail_page("Analysis")
             status = "Page mode: Analysis."
+        elif mode_id == "validation":
+            self.page_mode_var.set(PAGE_MODE_LABELS[mode_id])
+            self._set_workspace_page("Validation")
+            self._focus_detail_page("Validation")
+            status = "Page mode: Validation."
+        elif mode_id == "reports":
+            self.page_mode_var.set(PAGE_MODE_LABELS[mode_id])
+            self._set_workspace_page("Reports")
+            self._focus_detail_page("Reports")
+            status = "Page mode: Reports."
         elif mode_id == "medieval-data":
             self.page_mode_var.set(PAGE_MODE_LABELS[mode_id])
             self.show_aspects_var.set(True)
@@ -3619,12 +5047,13 @@ class ElectionalDesktopApp:
             self.show_nodes_var.set(False)
             self.show_fixed_stars_var.set(False)
             self.compact_wheel_var.set(True)
+            self._set_workspace_page("Search")
             self._focus_detail_page("Search")
             status = "Page mode: Transit Search."
         else:
             self.page_mode_var.set(PAGE_MODE_LABELS["wheel"])
             self.show_aspects_var.set(True)
-            self.compact_wheel_var.set(True)
+            self._set_workspace_page("Wheel")
             self._focus_detail_page("Window")
             status = "Page mode: Wheel."
         self._redraw_selected_window()
@@ -3648,11 +5077,6 @@ class ElectionalDesktopApp:
             self.center_scroll_canvas.yview_moveto(0)
             self.status_var.set("Middle workspace moved to top.")
 
-    def _scroll_center_to_bottom(self) -> None:
-        if hasattr(self, "center_scroll_canvas"):
-            self.center_scroll_canvas.yview_moveto(1)
-            self.status_var.set("Middle workspace moved to bottom.")
-
     def _toggle_focus_mode(self) -> None:
         self._set_focus_mode(not self.focus_mode)
 
@@ -3660,9 +5084,9 @@ class ElectionalDesktopApp:
         for panel in (self.left_panel, self.center_pane, self.right_panel):
             if str(panel) in self.workspace_panes.panes():
                 self.workspace_panes.forget(panel)
-        self.workspace_panes.add(self.left_panel, minsize=250, width=282, stretch="never", padx=0)
-        self.workspace_panes.add(self.center_pane, minsize=820, width=1120, stretch="always", padx=6)
-        self.workspace_panes.add(self.right_panel, minsize=285, width=326, stretch="never", padx=0)
+        self.workspace_panes.add(self.left_panel, minsize=280, width=320, stretch="never", padx=0)
+        self.workspace_panes.add(self.center_pane, minsize=720, width=1060, stretch="always", padx=6)
+        self.workspace_panes.add(self.right_panel, minsize=320, width=350, stretch="never", padx=0)
 
     def _apply_current_theme(self) -> None:
         is_classic = self._is_classic_wheel_theme()
@@ -3672,13 +5096,12 @@ class ElectionalDesktopApp:
                 highlightbackground=CLASSIC_PANEL_LINE if is_classic else PALETTE["panel_line"],
             )
         if hasattr(self, "classic_left_panel"):
+            self.classic_left_panel.grid_remove()
             if self.selected_window:
                 self._refresh_classic_side_panels(self.selected_window, self.current_location)
             elif is_classic:
-                self.classic_left_panel.grid()
                 self.classic_right_panel.grid()
             else:
-                self.classic_left_panel.grid_remove()
                 self.classic_right_panel.grid_remove()
 
     def _set_focus_mode(self, enabled: bool) -> None:
@@ -3706,6 +5129,51 @@ class ElectionalDesktopApp:
         self.status_var.set("Workspace panels reset. Drag the vertical handles to resize side panels.")
 
     def _apply_clean_wheel_view(self) -> None:
+        self._apply_wheel_view_preset("clean")
+
+    def _apply_full_wheel_view(self) -> None:
+        self._apply_wheel_view_preset("full-classic")
+
+    def _apply_diagnostic_wheel_view(self) -> None:
+        self._apply_wheel_view_preset("diagnostic")
+
+    def _apply_wheel_view_preset(self, preset_id: str, *, save: bool = True) -> None:
+        preset_id = preset_id if preset_id in WHEEL_VIEW_PRESET_LABELS else "full-classic"
+        self.wheel_view_preset_var.set(WHEEL_VIEW_PRESET_LABELS[preset_id])
+        self.right_panel_theme_var.set(RIGHT_PANEL_THEME_LABELS["classic-natal"])
+        self.show_score_overlay_var.set(False)
+        self.wheel_zoom = WHEEL_DEFAULT_ZOOM
+        if preset_id == "clean":
+            self.point_set_var.set(get_point_set("classical-7").name)
+            self.show_aspects_var.set(True)
+            self.show_lots_var.set(False)
+            self.show_nodes_var.set(False)
+            self.show_fixed_stars_var.set(False)
+            self.compact_wheel_var.set(True)
+        elif preset_id == "diagnostic":
+            self.point_set_var.set(get_point_set("full-electional").name)
+            self.show_aspects_var.set(True)
+            self.show_lots_var.set(True)
+            self.show_nodes_var.set(True)
+            self.show_fixed_stars_var.set(True)
+            self.compact_wheel_var.set(False)
+        else:
+            self.point_set_var.set(get_point_set("full-electional").name)
+            self.show_aspects_var.set(True)
+            self.show_lots_var.set(True)
+            self.show_nodes_var.set(True)
+            self.show_fixed_stars_var.set(True)
+            self.compact_wheel_var.set(False)
+        self._redraw_selected_window()
+        self._apply_current_theme()
+        if save:
+            self._save_session()
+        self.status_var.set(f"Wheel preset: {WHEEL_VIEW_PRESET_LABELS[preset_id]}.")
+
+    def _wheel_preset_changed(self) -> None:
+        self._apply_wheel_view_preset(self._current_wheel_preset_id())
+
+    def _legacy_apply_clean_wheel_view(self) -> None:
         self.point_set_var.set(get_point_set("classical-7").name)
         self.show_aspects_var.set(True)
         self.show_lots_var.set(False)
@@ -3714,7 +5182,7 @@ class ElectionalDesktopApp:
         self.compact_wheel_var.set(True)
         self._display_option_changed()
 
-    def _apply_full_wheel_view(self) -> None:
+    def _legacy_apply_full_wheel_view(self) -> None:
         self.point_set_var.set(get_point_set("full-electional").name)
         self.show_aspects_var.set(True)
         self.show_lots_var.set(True)
@@ -3751,19 +5219,8 @@ class ElectionalDesktopApp:
             anchor="w",
             justify=tk.LEFT,
             wraplength=CLASSIC_LEFT_WRAP,
-        ).pack(fill=tk.X, anchor="w", pady=(5, 10))
-        self.classic_dial_canvases: list[tk.Canvas] = []
-        for _index in range(3):
-            canvas = tk.Canvas(
-                self.classic_left_panel,
-                width=CLASSIC_DIAL_SIZE,
-                height=CLASSIC_DIAL_SIZE,
-                bg=CLASSIC_PANEL_BG,
-                bd=0,
-                highlightthickness=0,
-            )
-            canvas.pack(anchor="center", pady=(0, 12))
-            self.classic_dial_canvases.append(canvas)
+        ).pack(fill=tk.X, anchor="w", pady=(5, 8))
+        tk.Frame(self.classic_left_panel, bg=CLASSIC_PANEL_LINE, height=1).pack(fill=tk.X, pady=(1, 8))
 
         self.classic_point_table_canvas = tk.Canvas(
             self.classic_right_panel,
@@ -3809,30 +5266,19 @@ class ElectionalDesktopApp:
         )
         self.classic_aspect_grid_canvas.pack(fill=tk.BOTH, expand=True)
 
-    def _draw_classic_dial(self, canvas: tk.Canvas, top_text: str, bottom_text: str) -> None:
-        canvas.delete("all")
-        inset = 8
-        size = CLASSIC_DIAL_SIZE
-        mid = size / 2
-        canvas.create_oval(inset, inset, size - inset, size - inset, fill="#fffefa", outline=CLASSIC_PANEL_LINE, width=2)
-        canvas.create_line(mid, inset + 2, mid, size - inset - 2, fill=CLASSIC_PANEL_LINE, width=1)
-        canvas.create_line(inset + 2, mid, size - inset - 2, mid, fill=CLASSIC_PANEL_LINE, width=1)
-        canvas.create_text(mid, size * 0.32, text=top_text, fill=CLASSIC_PANEL_TEXT, font=("Georgia", 12, "bold"))
-        canvas.create_text(mid, size * 0.68, text=bottom_text, fill=CLASSIC_PANEL_TEXT, font=("Georgia", 12, "bold"))
-
     def _draw_classic_point_table(self, snapshot: dict[str, object]) -> None:
         canvas = self.classic_point_table_canvas
         canvas.delete("all")
         width = max(330, int(canvas.winfo_width() or CLASSIC_RIGHT_PANEL_WIDTH - 16))
-        row_h = 16
-        headers = ("#", "H", "Glyph", "Point", "Position", "Dignity")
+        height = max(222, int(canvas.winfo_height() or 222))
+        row_h = 15
+        headers = ("#", "H", "Point", "Position", "Dign.")
         cols = (
             7,
             24,
-            44,
-            68,
-            int(width * 0.55),
-            int(width * 0.82),
+            46,
+            int(width * 0.50),
+            int(width * 0.78),
         )
         canvas.create_rectangle(0, 0, width, 20, fill="#f3f6f2", outline=CLASSIC_PANEL_LINE)
         for col, header in zip(cols, headers):
@@ -3842,23 +5288,25 @@ class ElectionalDesktopApp:
         rows: list[dict[str, object]] = [dict(point) for point in visible[:12]]
         if self.show_lots_var.get():
             rows.extend(dict(lot) for lot in self._visible_lots(snapshot)[:3])
-        for index, point in enumerate(rows[:12], start=1):
+        max_rows = min(12, max(8, int((height - 36) / row_h)))
+        for index, point in enumerate(rows[:max_rows], start=1):
             y = 20 + index * row_h
             bg = "#fffefa" if index % 2 else "#f1f4f0"
             canvas.create_rectangle(0, y - row_h + 1, width, y + 1, fill=bg, outline=PALETTE["panel_line"])
             name = str(point.get("name", "Point"))
             glyph = planet_glyph(name) if point.get("id") in visible_ids else lot_abbreviation(name)
-            dignity = point.get("dignity")
-            dignity_text = str(dignity.get("label", ""))[:8] if isinstance(dignity, Mapping) else ""
+            dignity_text = classic_dignity_table_text(point)
             color = CLASSIC_PLANET_COLORS.get(name, CLASSIC_PANEL_TEXT)
             baseline = y - 7
             canvas.create_text(cols[0], baseline, text=str(index), anchor="w", fill=CLASSIC_PANEL_MUTED, font=("Segoe UI", 8))
             canvas.create_text(cols[1], baseline, text=str(point.get("house", "")), anchor="w", fill=CLASSIC_PANEL_TEXT, font=("Segoe UI Semibold", 8))
             canvas.create_text(cols[2], baseline, text=glyph, anchor="w", fill=color, font=("Segoe UI Symbol", 10, "bold"))
-            canvas.create_text(cols[3], baseline, text=name[:13], anchor="w", fill=CLASSIC_PANEL_TEXT, font=("Segoe UI Semibold", 8))
-            canvas.create_text(cols[4], baseline, text=classic_position_table_text(point), anchor="w", fill=CLASSIC_PANEL_TEXT, font=("Segoe UI", 8))
-            canvas.create_text(cols[5], baseline, text=dignity_text or "n/a", anchor="w", fill=CLASSIC_PANEL_MUTED, font=("Segoe UI", 8))
-        canvas.create_text(width - 8, 216, text="Point Detail", anchor="e", fill=CLASSIC_PANEL_ACCENT, font=("Georgia", 8, "bold"))
+            canvas.create_text(cols[2] + 20, baseline, text=name[:14], anchor="w", fill=CLASSIC_PANEL_TEXT, font=("Segoe UI Semibold", 8))
+            canvas.create_text(cols[3], baseline, text=classic_position_table_text(point), anchor="w", fill=CLASSIC_PANEL_TEXT, font=("Segoe UI", 8))
+            canvas.create_text(cols[4], baseline, text=dignity_text, anchor="w", fill=CLASSIC_PANEL_MUTED, font=("Segoe UI", 8))
+        footer_y = min(height - 9, 23 + max_rows * row_h)
+        canvas.create_line(0, footer_y - 9, width, footer_y - 9, fill=CLASSIC_PANEL_LINE)
+        canvas.create_text(width - 8, footer_y, text="Point Detail", anchor="e", fill=CLASSIC_PANEL_ACCENT, font=("Georgia", 8, "bold"))
 
     def _draw_classic_aspect_grid(self, snapshot: dict[str, object]) -> None:
         canvas = self.classic_aspect_grid_canvas
@@ -3900,7 +5348,7 @@ class ElectionalDesktopApp:
                 x = left + column * cell + cell / 2
                 y = top + row * cell + cell / 2
                 color = PALETTE["stress"] if aspect.get("tone") == "stress" else PALETTE["support"] if aspect.get("tone") == "support" else CLASSIC_PANEL_ACCENT
-                canvas.create_text(x, y - 4, text=aspect_glyph(aspect.get("aspectName")), fill=color, font=("Segoe UI Symbol", 10, "bold"))
+                canvas.create_text(x, y - 4, text=aspect_glyph(aspect), fill=color, font=("Segoe UI Symbol", 10, "bold"))
                 orb = str(aspect.get("orbText") or "")
                 canvas.create_text(x, y + 8, text=orb.replace("\N{DEGREE SIGN}", "")[:4], fill=color, font=("Segoe UI", 6))
         canvas.create_line(left + size, top, left + size, top + size, fill="#596762", width=1)
@@ -3925,11 +5373,81 @@ class ElectionalDesktopApp:
                 continue
             left = planet_glyph(str(bodies[0]))
             right = planet_glyph(str(bodies[1]))
-            glyph = aspect_glyph(aspect.get("aspectName"))
+            glyph = aspect_glyph(aspect)
             orb = str(aspect.get("orbText") or "")
             marker = "A" if aspect.get("isApplying") else "S"
             rows.append(f"{left} {glyph} {right}  {orb} {marker}")
         return rows or ["No active aspects"]
+
+    def _classic_chart_info_lines(self, snapshot: dict[str, object], location: LocationPreset | None = None) -> list[str]:
+        location = location or self.current_location
+        location_text = location.name if location else "Location unavailable"
+        formatted_time = str(snapshot.get("formattedTime", "time unavailable"))
+        time_parts = formatted_time.split(", ")
+        if len(time_parts) >= 3:
+            time_lines = [", ".join(time_parts[:2]), ", ".join(time_parts[2:])]
+        else:
+            time_lines = [formatted_time]
+        if ", " in location_text and len(location_text) > 18:
+            location_head, location_tail = location_text.split(", ", 1)
+            location_lines = [f"{location_head},", location_tail]
+        else:
+            location_lines = [location_text]
+        zodiac_name = getattr(snapshot.get("zodiacSystem"), "name", "Zodiac n/a")
+        house_name = getattr(snapshot.get("houseSystem"), "name", "House n/a")
+        rules_line = "Traditional" if snapshot.get("traditionalRulesEnabled", True) else "13-sign rules off"
+        nodes_label = "Mean Nodes"
+        calculation_notes = snapshot.get("calculationNotes", [])
+        if any("true node" in str(note).lower() for note in calculation_notes):
+            nodes_label = "True Nodes"
+        return [
+            line
+            for line in [
+                "Natal Chart",
+                *time_lines,
+                *location_lines,
+                f"{zodiac_name}",
+                f"{house_name}",
+                nodes_label,
+                rules_line,
+            ]
+            if line
+        ]
+
+    def _draw_classic_chart_info(self, snapshot: dict[str, object], x: float, y: float, max_width: float) -> None:
+        lines = self._classic_chart_info_lines(snapshot, self.current_location)
+        line_height = 13
+        block_width = max(112, max_width)
+        block_height = 31 + line_height * len(lines)
+        self.canvas.create_rectangle(
+            x,
+            y,
+            x + block_width,
+            y + block_height,
+            fill=CLASSIC_PANEL_BG,
+            outline=CLASSIC_PANEL_LINE,
+            width=1,
+            tags=("classic-chart-info",),
+        )
+        self.canvas.create_text(
+            x + 8,
+            y + 9,
+            text="Birth",
+            anchor="nw",
+            fill=CLASSIC_PANEL_ACCENT,
+            font=("Georgia", 9, "bold"),
+            tags=("classic-chart-info",),
+        )
+        self.canvas.create_text(
+            x + 8,
+            y + 29,
+            text="\n".join(lines),
+            anchor="nw",
+            fill=CLASSIC_PANEL_TEXT,
+            font=("Segoe UI", 8, "bold"),
+            width=max(80, int(block_width - 14)),
+            tags=("classic-chart-info",),
+        )
 
     def _refresh_classic_side_panels(self, snapshot: dict[str, object], location: LocationPreset | None = None) -> None:
         if not hasattr(self, "classic_meta_lines_var"):
@@ -3939,33 +5457,11 @@ class ElectionalDesktopApp:
             self.classic_right_panel.grid_remove()
             return
 
-        self.classic_left_panel.grid()
+        self.classic_left_panel.grid_remove()
         self.classic_right_panel.grid()
         location = location or self.current_location
-        location_text = location.name if location else "Location unavailable"
-        zodiac_name = getattr(snapshot.get("zodiacSystem"), "name", "Zodiac n/a")
-        house_name = getattr(snapshot.get("houseSystem"), "name", "House n/a")
-        rules_line = "Traditional" if snapshot.get("traditionalRulesEnabled", True) else "13-sign rules off"
-        nodes_label = "Mean Nodes"
-        calculation_notes = snapshot.get("calculationNotes", [])
-        if any("true node" in str(note).lower() for note in calculation_notes):
-            nodes_label = "True Nodes"
         self.classic_meta_title_var.set("Birth")
-        self.classic_meta_lines_var.set(
-            "\n".join(
-                [
-                    "Natal Chart",
-                    str(snapshot.get("formattedTime", "time unavailable")),
-                    location_text,
-                    f"{zodiac_name}",
-                    f"{house_name}",
-                    nodes_label,
-                    rules_line,
-                ]
-            )
-        )
-        for canvas, (top_text, bottom_text) in zip(self.classic_dial_canvases, classic_dial_labels()):
-            self._draw_classic_dial(canvas, top_text, bottom_text)
+        self.classic_meta_lines_var.set("\n".join(self._classic_chart_info_lines(snapshot, location)))
         self._draw_classic_point_table(snapshot)
         self._draw_classic_aspect_grid(snapshot)
 
@@ -3984,7 +5480,9 @@ class ElectionalDesktopApp:
         self.detail_notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 9))
         self.summary_text = self._text_tab("Summary")
         self.window_detail_text = self._text_tab("Window")
-        self.analysis_text = self._text_tab("Analysis")
+        self.analysis_canvas, self.analysis_frame = self._visual_tab("Analysis")
+        self.validation_canvas, self.validation_frame = self._visual_tab("Validation")
+        self.reports_canvas, self.reports_frame = self._visual_tab("Reports")
         self.advisor_text = self._text_tab("Advisor")
         self.improve_text = self._text_tab("Improve")
         self.decision_text = self._text_tab("Decision")
@@ -4012,7 +5510,7 @@ class ElectionalDesktopApp:
         self.lots_text = self._text_tab("Lots")
         self.nodes_text = self._text_tab("Nodes")
         self.timing_text = self._text_tab("Timing")
-        self.timeline_text = self._text_tab("Timeline")
+        self.timeline_canvas, self.timeline_frame = self._visual_tab("Timeline")
         self.planets_text = self._text_tab("Planets")
         self.aspects_text = self._text_tab("Aspects")
         self.aspectarian_text = self._text_tab("Aspectarian")
@@ -4046,6 +5544,27 @@ class ElectionalDesktopApp:
         self.shortlist_compare_text = self._text_tab("Pick Compare")
         shortlist_actions = ttk.Frame(self.detail_notebook, style="Panel.TFrame", padding=7)
         self.detail_notebook.add(shortlist_actions, text="Pick Tools")
+        tk.Label(
+            shortlist_actions,
+            text="Pick Tools",
+            bg=PALETTE["panel"],
+            fg=PALETTE["accent_dark"],
+            font=("Georgia", 11, "bold"),
+            anchor="w",
+        ).pack(fill=tk.X, pady=(0, 4))
+        tk.Label(
+            shortlist_actions,
+            text=(
+                "Export or copy the selected election, the whole shortlist, or a decision sheet. "
+                "Use this after saving two or more serious candidates."
+            ),
+            bg=PALETTE["panel"],
+            fg=PALETTE["muted"],
+            font=("Segoe UI", 8),
+            wraplength=320,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(0, 8))
         ttk.Button(shortlist_actions, text="Save Selected .ics", command=self._save_selected_calendar_event).pack(fill=tk.X, pady=(0, 7))
         ttk.Button(shortlist_actions, text="Copy Selected .ics", command=self._copy_selected_calendar_event).pack(fill=tk.X, pady=(0, 7))
         ttk.Button(shortlist_actions, text="Save Decision Sheet", command=self._save_comparison_sheet).pack(fill=tk.X, pady=(0, 7))
@@ -4111,6 +5630,20 @@ class ElectionalDesktopApp:
                 justify=tk.LEFT,
                 anchor="w",
             ).pack(fill=tk.X, pady=(2, 0))
+        self.house_geometry_var = tk.StringVar(value="")
+        house_block = tk.Frame(frame, bg=PALETTE["panel"], highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=7, pady=5)
+        house_block.pack(fill=tk.X, pady=(7, 0))
+        tk.Label(house_block, text="House Geometry", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 8, "bold"), anchor="w").pack(fill=tk.X)
+        tk.Label(
+            house_block,
+            textvariable=self.house_geometry_var,
+            bg=PALETTE["panel"],
+            fg=PALETTE["text"],
+            font=("Segoe UI", 7),
+            wraplength=330,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(3, 0))
         self.aspect_dashboard_var = tk.StringVar(value="")
         aspect_block = tk.Frame(frame, bg=PALETTE["panel"], highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=7, pady=5)
         aspect_block.pack(fill=tk.X, pady=(7, 0))
@@ -4199,6 +5732,8 @@ class ElectionalDesktopApp:
             validation_lines = [str(line).lstrip("- ") for line in validation_summary_lines(snapshot, self.current_location)[:4]]
             for index, variable in enumerate(self.validation_panel_vars):
                 variable.set(validation_lines[index] if index < len(validation_lines) else "")
+        if hasattr(self, "house_geometry_var"):
+            self.house_geometry_var.set("\n".join(house_geometry_insight_lines(snapshot)[:4]))
         if hasattr(self, "aspect_dashboard_var"):
             dashboard_lines = []
             highlights = self.current_aspect_highlights if isinstance(self.current_aspect_highlights, dict) else {}
@@ -4209,14 +5744,27 @@ class ElectionalDesktopApp:
             self.aspect_dashboard_var.set("\n".join(dashboard_lines) if dashboard_lines else "No selected major aspect in orb.")
 
     def _build_window_list_panel(self) -> None:
-        frame = tk.Frame(self.right_panel, bg=PALETTE["astrolabe_panel"], highlightbackground=PALETTE["astrolabe_line"], highlightthickness=1, padx=7, pady=6)
+        frame = tk.Frame(self.right_panel, bg=PALETTE["astrolabe_panel"], highlightbackground=PALETTE["astrolabe_line"], highlightthickness=1, padx=8, pady=7)
         frame.pack(fill=tk.X, pady=(0, 7))
-        tk.Label(frame, text="CANDIDATE WINDOWS", bg=PALETTE["astrolabe_panel"], fg=PALETTE["astrolabe_gold"], font=("Georgia", 8, "bold"), anchor="w").pack(fill=tk.X, pady=(0, 5))
+        header = tk.Frame(frame, bg=PALETTE["astrolabe_panel"])
+        header.pack(fill=tk.X)
+        tk.Label(header, text="CANDIDATE BOARD", bg=PALETTE["astrolabe_panel"], fg=PALETTE["astrolabe_gold"], font=("Georgia", 8, "bold"), anchor="w").pack(side=tk.LEFT)
+        self.candidate_board_summary_var = tk.StringVar(value="No search yet")
+        tk.Label(
+            frame,
+            textvariable=self.candidate_board_summary_var,
+            bg=PALETTE["astrolabe_panel"],
+            fg=PALETTE["astrolabe_muted"],
+            font=("Segoe UI", 7),
+            wraplength=310,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(3, 6))
         viewport = ttk.Frame(frame, style="Panel.TFrame")
         viewport.pack(fill=tk.X)
         self.window_cards_canvas = tk.Canvas(
             viewport,
-            height=190,
+            height=310,
             bg=PALETTE["panel"],
             highlightthickness=1,
             highlightbackground=PALETTE["panel_line"],
@@ -4238,11 +5786,22 @@ class ElectionalDesktopApp:
         )
         buttons = ttk.Frame(frame, style="Panel.TFrame")
         buttons.pack(fill=tk.X, pady=(7, 0))
-        ttk.Button(buttons, text="Prev", command=lambda: self._select_relative_window(-1)).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
-        ttk.Button(buttons, text="Next", command=lambda: self._select_relative_window(1)).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
-        ttk.Button(buttons, text="Use Time", command=self._use_selected_window_time).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
-        ttk.Button(buttons, text="Save Pick", command=self._add_selected_to_shortlist).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
-        ttk.Button(buttons, text="Copy", command=self._copy_current_report).pack(side=tk.LEFT, expand=True, fill=tk.X)
+        actions = (
+            ("Prev", lambda: self._select_relative_window(-1)),
+            ("Next", lambda: self._select_relative_window(1)),
+            ("Use Time", self._use_selected_window_time),
+            ("Save Pick", self._add_selected_to_shortlist),
+            ("Copy", self._copy_current_report),
+        )
+        for index, (label, command) in enumerate(actions):
+            buttons.columnconfigure(index % 3, weight=1, uniform="candidate-actions")
+            ttk.Button(buttons, text=label, command=command, style="Compact.TButton").grid(
+                row=index // 3,
+                column=index % 3,
+                sticky="ew",
+                padx=(0 if index % 3 == 0 else 3, 0 if index % 3 == 2 else 3),
+                pady=(0 if index < 3 else 5, 0),
+            )
 
     def _text_panel(self, title: str, height: int) -> tk.Text:
         frame = ttk.LabelFrame(self.right_panel, text=title, style="Panel.TLabelframe", padding=7)
@@ -4260,6 +5819,58 @@ class ElectionalDesktopApp:
         text.pack(fill=tk.X)
         text.configure(state=tk.DISABLED)
         return text
+
+    def _tab_placeholder_text(self, title: str) -> str:
+        purpose = {
+            "Summary": "Dashboard overview for the displayed chart.",
+            "Window": "Selected candidate timing, reasons, and next actions.",
+            "Advisor": "Practical electional advice and cautions.",
+            "Improve": "Specific changes that may improve the current election.",
+            "Decision": "Go/no-go brief for the selected window.",
+            "Compare": "Comparison between the input chart and candidate windows.",
+            "Diagnostics": "Calculation health, validation, and data-quality notes.",
+            "Search": "Search settings, candidate counts, rejected windows, and filter explanations.",
+            "Focus": "Point interpretation after selecting a planet, lot, node, star, or timeline aspect.",
+            "Score": "Score breakdown, grade, reasons, and angular testimony.",
+            "Accounting": "Line-by-line point accounting behind the score.",
+            "Conditions": "Planet, Moon, and calculation condition notes.",
+            "Angles": "Angular contacts and angle-based electional testimony.",
+            "Point Data": "Classical point table for planets, lots, nodes, and houses.",
+            "Medieval": "Traditional condition, dignity, reception, and house-rule context when available.",
+            "Rules": "Pure Python electional rules, planetary hour, nakshatra, tithi, and cautions.",
+            "Significators": "Objective significators and their condition.",
+            "Moon": "Moon condition, phase, void status, and applying contacts.",
+            "House Rulers": "Relevant house lords and their electional condition.",
+            "Reception": "Reception, dispositors, and whether planets can help each other.",
+            "Planet Condition": "Motion, dignity availability, angularity, and planet-specific notes.",
+            "Declination": "Parallels, contra-parallels, and declination diagnostics.",
+            "Advanced": "Advanced aspect diagnostics and secondary testimony.",
+            "Factor Explorer": "Grouped scoring factors and why they moved the grade.",
+            "Constellations": "True 13-sign constellation placement diagnostics.",
+            "Cusps": "House cusp positions and house-system context.",
+            "Lots": "Arabic lots/parts, formulas, and house placement.",
+            "Nodes": "Lunar node positions and angle proximity.",
+            "Timing": "Applying/separating contacts and exact-time guidance.",
+            "Planets": "Planet positions, houses, motion, dignity, and angular flags.",
+            "Aspects": "Selected aspect contacts currently in orb.",
+            "Aspectarian": "Grid-style aspect table for the current point set.",
+            "Aspect Strength": "Strongest support and stress contacts by strength.",
+            "Fixed Stars": "Fixed-star reference positions and contacts.",
+            "Shortlist": "Saved candidates and their rankable decision data.",
+            "Pick Compare": "Two saved candidates compared side by side.",
+            "Button Health": "Checks visible navigation buttons and page targets.",
+            "Log": "Recent app events, calculations, exports, and selection actions.",
+        }.get(title, "Electional detail page.")
+        return "\n".join(
+            [
+                title,
+                "",
+                purpose,
+                "",
+                "Waiting for chart data.",
+                "Run Calculate or Find Best to populate this page with live electional testimony.",
+            ]
+        )
 
     def _text_tab(self, title: str) -> tk.Text:
         frame = ttk.Frame(self.detail_notebook, style="Panel.TFrame", padding=4)
@@ -4279,16 +5890,47 @@ class ElectionalDesktopApp:
             highlightbackground=PALETTE["panel_line"],
         )
         text.pack(fill=tk.BOTH, expand=True)
+        text.insert(tk.END, self._tab_placeholder_text(title))
         text.configure(state=tk.DISABLED)
         return text
+
+    def _visual_tab(self, title: str) -> tuple[tk.Canvas, ttk.Frame]:
+        tab = ttk.Frame(self.detail_notebook, style="Panel.TFrame", padding=4)
+        self.detail_notebook.add(tab, text=title)
+        tab.columnconfigure(0, weight=1)
+        tab.rowconfigure(0, weight=1)
+        canvas = tk.Canvas(
+            tab,
+            bg=PALETTE["panel"],
+            highlightthickness=1,
+            highlightbackground=PALETTE["panel_line"],
+            bd=0,
+        )
+        scrollbar = ttk.Scrollbar(tab, orient=tk.VERTICAL, command=canvas.yview)
+        body = ttk.Frame(canvas, style="Panel.TFrame", padding=8)
+        window_id = canvas.create_window((0, 0), window=body, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        body.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window_id, width=event.width))
+        canvas.bind("<Enter>", lambda _event: canvas.bind_all("<MouseWheel>", lambda event, target=canvas: target.yview_scroll(int(-1 * (event.delta / 120)), "units")))
+        canvas.bind("<Leave>", lambda _event: canvas.unbind_all("<MouseWheel>"))
+        return canvas, body
+
+    def _clear_frame(self, frame: tk.Widget) -> None:
+        for child in frame.winfo_children():
+            child.destroy()
 
     def calculate(self, *, show_input_chart: bool = False) -> None:
         preset = self.presets_by_name.get(self.preset_var.get(), ELECTIONAL_PRESETS[1])
         zodiac_system = get_zodiac_system(self.zodiac_system_var.get())
         house_system = get_house_system(self.house_system_var.get())
         selected_aspects = [aspect for aspect, var in self.aspect_vars.items() if var.get()]
+        aspect_definitions = self._active_aspect_definitions()
         if not selected_aspects:
             self.validation_var.set("Validation failed:\n- Select at least one aspect focus before calculating.")
+            self._refresh_left_status_chips()
             self.status_var.set("Validation: failed. Select at least one aspect focus.")
             messagebox.showerror("Electional validation failed", "Select at least one aspect focus before calculating.")
             return
@@ -4314,6 +5956,7 @@ class ElectionalDesktopApp:
         if errors:
             message = "Validation failed:\n" + "\n".join(f"- {error}" for error in errors)
             self.validation_var.set(message)
+            self._refresh_left_status_chips()
             self.status_var.set("Validation: failed. Fix the highlighted input values and calculate again.")
             messagebox.showerror("Electional validation failed", message)
             return
@@ -4356,6 +5999,7 @@ class ElectionalDesktopApp:
                 house_system.id,
                 search_config,
                 self.objective_var.get(),
+                aspect_definitions,
             )
         except Exception as exc:  # pragma: no cover - exercised manually through the desktop UI.
             debug_path = record_desktop_exception("Electional calculation failed")
@@ -4382,7 +6026,8 @@ class ElectionalDesktopApp:
             cache_text = f" Cache hits {cache.get('hits', 0)}, stored {cache.get('currsize', 0)}."
         self.current_search_summary = (
             f"{format_search_summary(search_config)} Mode: {search_mode}; evaluated {evaluated_count} "
-            f"({searched_count} coarse + {refined_count} refined); deep-built {deep_count}.{cache_text}"
+            f"({searched_count} coarse + {refined_count} refined); deep-built {deep_count}. "
+            f"Aspect profile: {self.active_aspect_profile.name}; active aspects {len(selected_aspects)}.{cache_text}"
         )
         self.current_rejection_summary = dict(report.get("rejectionSummary") or {})
         self.current_searched_window_count = evaluated_count
@@ -4411,6 +6056,7 @@ class ElectionalDesktopApp:
             validation_suffix += " | 13-sign rules off"
         accuracy_label = self._accuracy_status_label(selected_window)
         self.validation_var.set(f"Validation: {accuracy_label}{validation_suffix}")
+        self._refresh_left_status_chips()
         result_note = f"{len(windows)} matching window{'s' if len(windows) != 1 else ''}"
         if not windows:
             result_note = "No matching windows; showing the input chart"
@@ -4432,6 +6078,7 @@ class ElectionalDesktopApp:
         self._render_summary_chips(selected_window)
         self._refresh_classic_side_panels(selected_window, location)
         self._populate_window_list(windows)
+        self._refresh_search_workbench_strip()
         self.selected_window_index = selected_index
         self._refresh_window_card_styles()
         self._draw_wheel(selected_window)
@@ -4443,71 +6090,110 @@ class ElectionalDesktopApp:
         for card in self.window_cards:
             card.destroy()
         self.window_cards = []
+        self._refresh_candidate_board_summary(windows)
         if not windows:
             empty_card = tk.Frame(
                 self.window_cards_frame,
-                bg=PALETTE["astrolabe_panel"],
+                bg=PALETTE["panel_alt"],
                 highlightbackground=PALETTE["astrolabe_line"],
                 highlightthickness=1,
-                padx=8,
-                pady=8,
+                padx=10,
+                pady=10,
             )
-            empty_card.pack(fill=tk.X, padx=4, pady=(4, 6))
+            empty_card.pack(fill=tk.X, padx=5, pady=(5, 7))
             tk.Label(
                 empty_card,
                 text="No candidate windows matched the current filters.",
-                bg=PALETTE["astrolabe_panel"],
-                fg=PALETTE["astrolabe_muted"],
-                font=("Segoe UI", 8, "bold"),
-                wraplength=280,
+                bg=PALETTE["panel_alt"],
+                fg=PALETTE["astrolabe_ink"],
+                font=("Georgia", 9, "bold"),
+                wraplength=300,
                 justify=tk.LEFT,
             ).pack(fill=tk.X)
             summary = self.current_rejection_summary if isinstance(self.current_rejection_summary, dict) else {}
             top_reasons = summary.get("topReasons", [])
             suggestions = summary.get("suggestedRelaxations", [])
             if isinstance(top_reasons, list) and top_reasons:
-                reason_text = "Top blockers:\n" + "\n".join(f"- {reason} ({count})" for reason, count in top_reasons[:3])
+                reason_text = "Top blockers:\n" + "\n".join(f"{reason} ({count})" for reason, count in top_reasons[:4])
                 tk.Label(
                     empty_card,
                     text=reason_text,
-                    bg=PALETTE["astrolabe_panel"],
+                    bg=PALETTE["panel_alt"],
                     fg=PALETTE["astrolabe_ink"],
-                    font=("Segoe UI", 7),
-                    wraplength=280,
+                    font=("Segoe UI", 8),
+                    wraplength=300,
                     justify=tk.LEFT,
                     anchor="w",
                 ).pack(fill=tk.X, pady=(6, 0))
             if isinstance(suggestions, list) and suggestions:
                 tk.Label(
                     empty_card,
-                    text="Try next:\n" + "\n".join(f"- {suggestion}" for suggestion in suggestions[:2]),
-                    bg=PALETTE["astrolabe_panel"],
+                    text="Suggested relaxations",
+                    bg=PALETTE["panel_alt"],
                     fg=PALETTE["accent_dark"],
-                    font=("Segoe UI", 7, "bold"),
-                    wraplength=280,
+                    font=("Georgia", 8, "bold"),
+                    anchor="w",
+                ).pack(fill=tk.X, pady=(8, 2))
+                suggestion_wrap = tk.Frame(empty_card, bg=PALETTE["panel_alt"])
+                suggestion_wrap.pack(fill=tk.X)
+                for suggestion in suggestions[:3]:
+                    suggestion_card = tk.Frame(
+                        suggestion_wrap,
+                        bg=PALETTE["chip"],
+                        highlightbackground=PALETTE["chip_line"],
+                        highlightthickness=1,
+                        padx=7,
+                        pady=4,
+                    )
+                    suggestion_card.pack(fill=tk.X, pady=(0, 4))
+                    tk.Label(
+                        suggestion_card,
+                        text=str(suggestion),
+                        bg=PALETTE["chip"],
+                        fg=PALETTE["accent_dark"],
+                        font=("Segoe UI Semibold", 7),
+                        wraplength=285,
+                        justify=tk.LEFT,
+                        anchor="w",
+                    ).pack(fill=tk.X)
+                ttk.Button(empty_card, text="Open Search Page", command=self._open_search_workbench_page, style="Compact.TButton").pack(fill=tk.X, pady=(4, 0))
+            else:
+                tk.Label(
+                    empty_card,
+                    text="Open the Search page to inspect filters and rejected-window diagnostics.",
+                    bg=PALETTE["panel_alt"],
+                    fg=PALETTE["muted"],
+                    font=("Segoe UI", 8),
+                    wraplength=300,
                     justify=tk.LEFT,
                     anchor="w",
                 ).pack(fill=tk.X, pady=(6, 0))
             self.selected_window_index = -1
+            self._refresh_candidate_board_summary(windows)
+            self._refresh_workflow_next_step()
             return
         for index, window in enumerate(windows, start=1):
             self._create_window_card(index - 1, window)
-        self.selected_window_index = 0
+        if self.selected_window_index >= len(windows):
+            self.selected_window_index = 0
         self._refresh_window_card_styles()
 
     def _create_window_card(self, index: int, window: dict[str, object]) -> None:
+        score = int(window.get("score", 0))
+        card_bg = window_score_color(score)
         card = tk.Frame(
             self.window_cards_frame,
-            bg=PALETTE["astrolabe_panel"],
+            bg=card_bg,
             highlightbackground=PALETTE["astrolabe_gold"] if index == self.selected_window_index else PALETTE["panel_line"],
             highlightthickness=1,
-            padx=8,
-            pady=6,
+            padx=9,
+            pady=8,
         )
-        card.pack(fill=tk.X, padx=4, pady=(4, 5))
+        card.pack(fill=tk.X, padx=5, pady=(5, 6))
         self.window_cards.append(card)
         header = tk.Frame(card, bg=card["bg"])
         header.pack(fill=tk.X)
+        header.columnconfigure(1, weight=1)
         tk.Label(
             header,
             text=f"#{index + 1}",
@@ -4516,22 +6202,46 @@ class ElectionalDesktopApp:
             font=("Georgia", 7, "bold"),
             padx=6,
             pady=1,
-        ).pack(side=tk.LEFT, padx=(0, 7))
+        ).grid(row=0, column=0, sticky="w", padx=(0, 7))
         tk.Label(
             header,
             text=str(window["time"]),
             bg=card["bg"],
             fg=PALETTE["astrolabe_ink"],
             font=("Georgia", 9, "bold"),
-        ).pack(side=tk.LEFT)
+            anchor="w",
+        ).grid(row=0, column=1, sticky="ew")
         tk.Label(
             header,
-            text=f"{window['score']} {score_band_label(int(window['score']))}",
-            bg=card["bg"],
+            text=f"{score} {score_band_label(score)}",
+            bg=PALETTE["panel_alt"],
             fg=PALETTE["astrolabe_gold"],
             font=("Georgia", 8, "bold"),
             padx=6,
-        ).pack(side=tk.RIGHT)
+            pady=1,
+        ).grid(row=0, column=2, sticky="e")
+        offset_text = selection_offset_label(self.input_snapshot or window, window)
+        stage_text = self._search_stage_label(window)
+        meta = tk.Frame(card, bg=card["bg"])
+        meta.pack(fill=tk.X, pady=(4, 0))
+        tk.Label(
+            meta,
+            text=offset_text,
+            bg=card["bg"],
+            fg=PALETTE["muted"],
+            font=("Segoe UI Semibold", 7),
+            anchor="w",
+        ).pack(side=tk.LEFT)
+        if stage_text:
+            tk.Label(
+                meta,
+                text=stage_text,
+                bg=PALETTE["chip"],
+                fg=PALETTE["accent_dark"],
+                font=("Segoe UI Semibold", 7),
+                padx=5,
+                pady=1,
+            ).pack(side=tk.RIGHT)
         tk.Label(
             card,
             text=str(window.get("title", "Electional window")),
@@ -4540,16 +6250,6 @@ class ElectionalDesktopApp:
             font=("Georgia", 8, "bold"),
             anchor="w",
         ).pack(fill=tk.X, pady=(4, 0))
-        tk.Label(
-            card,
-            text=str(window.get("note", "")),
-            bg=card["bg"],
-            fg=PALETTE["astrolabe_muted"],
-            font=("Segoe UI", 8),
-            anchor="w",
-            wraplength=280,
-            justify=tk.LEFT,
-        ).pack(fill=tk.X)
         rank_reasons = window.get("rankReasons", [])
         if isinstance(rank_reasons, list) and rank_reasons:
             tk.Label(
@@ -4557,45 +6257,133 @@ class ElectionalDesktopApp:
                 text=str(rank_reasons[0]),
                 bg=card["bg"],
                 fg=PALETTE["accent_dark"],
-                font=("Segoe UI", 7, "bold"),
+                font=("Segoe UI", 8, "bold"),
                 anchor="w",
-                wraplength=280,
+                wraplength=300,
                 justify=tk.LEFT,
             ).pack(fill=tk.X, pady=(3, 0))
-        support = sum(1 for aspect in window["detectedAspects"] if aspect["tone"] == "support")
-        stress = sum(1 for aspect in window["detectedAspects"] if aspect["tone"] == "stress")
-        fixed_stars = fixed_star_contact_count(window)
-        breakdown = window.get("scoreBreakdown", {})
-        diagnostics = breakdown.get("diagnostics", {}) if isinstance(breakdown, dict) else {}
-        confidence = diagnostics.get("confidence", {}) if isinstance(diagnostics, dict) else {}
-        cleanliness = diagnostics.get("cleanliness", {}) if isinstance(diagnostics, dict) else {}
-        volatility = diagnostics.get("volatility", {}) if isinstance(diagnostics, dict) else {}
-        fit_matches = int(breakdown.get("objectiveMatches", 0)) if isinstance(breakdown, dict) else 0
-        offset_text = selection_offset_label(self.input_snapshot or window, window)
-        stage_text = self._search_stage_label(window)
+        note = str(window.get("note", "")).strip()
+        if note:
+            tk.Label(
+                card,
+                text=note,
+                bg=card["bg"],
+                fg=PALETTE["astrolabe_muted"],
+                font=("Segoe UI", 8),
+                anchor="w",
+                wraplength=300,
+                justify=tk.LEFT,
+            ).pack(fill=tk.X, pady=(2, 0))
+        if isinstance(rank_reasons, list) and len(rank_reasons) > 1:
+            why_text = "\n".join(str(reason) for reason in rank_reasons[1:3])
+            tk.Label(
+                card,
+                text=why_text,
+                bg=card["bg"],
+                fg=PALETTE["text"],
+                font=("Segoe UI", 7),
+                anchor="w",
+                wraplength=300,
+                justify=tk.LEFT,
+            ).pack(fill=tk.X, pady=(4, 0))
+        why_window = str(window.get("whyThisWindow") or "").strip()
+        if why_window and not rank_reasons:
+            tk.Label(
+                card,
+                text=why_window,
+                bg=card["bg"],
+                fg=PALETTE["text"],
+                font=("Segoe UI", 7),
+                anchor="w",
+                wraplength=300,
+                justify=tk.LEFT,
+            ).pack(fill=tk.X, pady=(4, 0))
         tag_row = tk.Frame(card, bg=card["bg"])
         tag_row.pack(fill=tk.X, pady=(6, 0))
-        tag_specs = [
-            (f"Conf {confidence.get('score', '--')}", PALETTE["astrolabe_gold"], PALETTE["button"]),
-            (f"{fit_matches} fit", "#5b8f57", PALETTE["button"]),
-            (f"+{support}", "#5b8f57", PALETTE["button"]),
-            (f"!{stress}", "#a34e57", PALETTE["button"]),
-            (offset_text, PALETTE["astrolabe_muted"], PALETTE["button"]),
-        ]
-        if stage_text:
-            tag_specs.append((stage_text, PALETTE["astrolabe_gold"], "#efe6c7"))
-        for text, fg, bg in tag_specs:
+        for badge_index, (text, tone) in enumerate(candidate_metric_badges(window)):
+            bg, fg = self._candidate_badge_colors(tone)
+            tag_row.columnconfigure(badge_index % 3, weight=1, uniform="candidate-badge")
             tk.Label(
                 tag_row,
                 text=text,
                 bg=bg,
                 fg=fg,
-                font=("Georgia", 7, "bold"),
-                padx=5,
+                font=("Segoe UI Semibold", 7),
+                padx=4,
                 pady=2,
-            ).pack(side=tk.LEFT, padx=(0, 4))
+            ).grid(row=badge_index // 3, column=badge_index % 3, sticky="ew", padx=(0 if badge_index % 3 == 0 else 2, 0 if badge_index % 3 == 2 else 2), pady=(0 if badge_index < 3 else 4, 0))
         self._bind_card_click(card, lambda selected=index: self._select_window_by_index(selected))
         self._bind_card_click(card, lambda selected=index: self._activate_window_card(selected), double_click=True)
+
+    def _candidate_badge_colors(self, tone: str) -> tuple[str, str]:
+        if tone in {"support", "confidence", "cleanliness", "fit"}:
+            return "#e8f4eb", PALETTE["support"]
+        if tone == "stress":
+            return "#f8e5e8", PALETTE["stress"]
+        if tone == "volatility":
+            return "#fff2d8", PALETTE["warning"]
+        if tone in {"stage", "balance"}:
+            return PALETTE["chip"], PALETTE["accent_dark"]
+        return PALETTE["button"], PALETTE["muted"]
+
+    def _refresh_candidate_board_summary(self, windows: list[dict[str, object]] | None = None) -> None:
+        if not hasattr(self, "candidate_board_summary_var"):
+            return
+        candidate_windows = list(windows if windows is not None else self.current_windows)
+        self.candidate_board_summary_var.set(
+            candidate_board_summary(
+                candidate_windows,
+                evaluated_count=getattr(self, "current_searched_window_count", len(candidate_windows)),
+                search_mode=self.search_quality_mode_var.get() if hasattr(self, "search_quality_mode_var") else "",
+                selected_index=self.selected_window_index,
+                displayed_source=self.displayed_chart_source,
+            )
+        )
+
+    def _refresh_search_workbench_strip(self) -> None:
+        if not hasattr(self, "search_workbench_summary_var"):
+            return
+        windows = list(self.current_windows)
+        selected = self.selected_window or self.input_snapshot
+        active_aspects = len(self._selected_aspect_ids()) if getattr(self, "aspect_vars", None) else 0
+        profile_name = self.active_aspect_profile.name if hasattr(self, "active_aspect_profile") else "Major Five"
+        selected_time = str(selected.get("formattedTime", "waiting")) if isinstance(selected, dict) else "waiting"
+        self.search_workbench_title_var.set(f"Search Workbench | {profile_name}")
+        action_note = f"Last action: {self.search_workbench_last_action}. "
+        if windows:
+            top = windows[0]
+            summary = (
+                f"{action_note}{len(windows)} candidate window{'s' if len(windows) != 1 else ''} ready; "
+                f"top score {top.get('score', '?')} at {top.get('formattedTime', top.get('time', 'time n/a'))}."
+            )
+            strongest = ""
+            aspects = top.get("detectedAspects", []) if isinstance(top, dict) else []
+            if isinstance(aspects, list) and aspects:
+                strongest = f" Strongest: {aspects[0].get('label', 'aspect')} ({aspects[0].get('orbText', 'orb n/a')})."
+            detail = (
+                f"Mode: {self.search_quality_mode_var.get()} | "
+                f"Scan {self.scan_hours_var.get()}h every {self.step_minutes_var.get()}m | "
+                f"active aspects {active_aspects} | {house_geometry_summary(selected)}.{strongest}"
+            )
+        else:
+            summary = f"{action_note}No candidate windows matched yet; displayed chart is {selected_time}."
+            blockers: list[str] = []
+            rejection_summary = self.current_rejection_summary if isinstance(self.current_rejection_summary, dict) else {}
+            top_reasons = rejection_summary.get("topReasons", [])
+            if isinstance(top_reasons, list) and top_reasons:
+                blockers = [f"{reason} ({count})" for reason, count in top_reasons[:2]]
+            suggestions = rejection_summary.get("suggestedRelaxations", [])
+            suggestion_text = ""
+            if isinstance(suggestions, list) and suggestions:
+                suggestion_text = f" Try: {suggestions[0]}"
+            detail = (
+                f"Mode: {self.search_quality_mode_var.get()} | "
+                f"active aspects {active_aspects} | "
+                f"{house_geometry_summary(selected)} | "
+                f"blockers: {', '.join(blockers) if blockers else 'none reported yet'}.{suggestion_text}"
+            )
+        self.search_workbench_summary_var.set(summary)
+        self.search_workbench_detail_var.set(detail)
 
     def _bind_card_click(self, widget: tk.Widget, command: Callable[[], None], *, double_click: bool = False) -> None:
         widget.bind("<Double-Button-1>" if double_click else "<Button-1>", lambda _event: command())
@@ -4624,7 +6412,9 @@ class ElectionalDesktopApp:
         self._set_timing_context(self.input_snapshot or selected, selected, self.current_location)
         self._render_summary_chips(selected)
         self._refresh_classic_side_panels(selected, self.current_location)
+        self._refresh_search_workbench_strip()
         self._refresh_window_card_styles()
+        self._refresh_workflow_next_step()
         self._draw_wheel(selected)
         self._render_text_panels(selected, self.current_windows, self.current_location)
         self._apply_current_theme()
@@ -4646,6 +6436,8 @@ class ElectionalDesktopApp:
         for index, card in enumerate(self.window_cards):
             selected = index == self.selected_window_index
             card.configure(highlightbackground=PALETTE["astrolabe_gold"] if selected else PALETTE["panel_line"], highlightthickness=2 if selected else 1)
+        self._refresh_candidate_board_summary()
+        self._refresh_workflow_next_step()
 
     def _accuracy_status_label(self, snapshot: dict[str, object]) -> str:
         accuracy = snapshot.get("accuracyAudit", {})
@@ -4705,6 +6497,7 @@ class ElectionalDesktopApp:
                 house_system.id,
                 self.objective_var.get(),
                 "fast",
+                self._active_aspect_definitions(),
             )
 
         try:
@@ -4721,6 +6514,151 @@ class ElectionalDesktopApp:
         self.time_var.set(local.strftime("%H:%M"))
         self._log_event(f"Applied selected window to input time: {self.date_var.get()} {self.time_var.get()}")
         self.calculate(show_input_chart=True)
+
+    def _event_wheel_degrees(self, event: tk.Event) -> float | None:
+        geometry = getattr(self, "_wheel_drag_geometry", {})
+        if not geometry:
+            return None
+        try:
+            return wheel_degrees_from_xy(float(geometry["cx"]), float(geometry["cy"]), float(event.x), float(event.y))
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def _start_moon_drag(self, event: tk.Event, planet_id: str) -> None:
+        if not self.selected_window:
+            return
+        self._moon_drag_state = {
+            "planet_id": planet_id,
+            "start_x": float(event.x),
+            "start_y": float(event.y),
+            "moved": False,
+            "target_degrees": self._event_wheel_degrees(event),
+        }
+        self.canvas.configure(cursor="fleur")
+        self.status_var.set("Moon drag ready: move around the wheel, then release to calculate that timing.")
+
+    def _drag_moon_marker(self, event: tk.Event) -> None:
+        state = getattr(self, "_moon_drag_state", {})
+        if not state:
+            return
+        start_x = float(state.get("start_x", event.x))
+        start_y = float(state.get("start_y", event.y))
+        moved = math.hypot(float(event.x) - start_x, float(event.y) - start_y) >= 4.0
+        target_degrees = self._event_wheel_degrees(event)
+        state["moved"] = bool(state.get("moved")) or moved
+        state["target_degrees"] = target_degrees
+        self._moon_drag_state = state
+        self._draw_moon_drag_preview(target_degrees)
+        if target_degrees is not None:
+            self.status_var.set(f"Moon drag target: {target_degrees:.1f} deg on wheel. Release to solve chart time.")
+
+    def _release_moon_drag(self, event: tk.Event, planet_id: str) -> None:
+        state = getattr(self, "_moon_drag_state", {})
+        self._moon_drag_state = {}
+        self.canvas.delete("moon-drag-preview")
+        self.canvas.configure(cursor="")
+        if not state or not state.get("moved"):
+            self._select_planet_by_id(planet_id)
+            return
+        target_degrees = self._event_wheel_degrees(event)
+        if target_degrees is None:
+            target_degrees = state.get("target_degrees")
+        if target_degrees is None:
+            self.status_var.set("Moon drag cancelled: wheel target was unavailable.")
+            return
+        self._apply_moon_drag_time(float(target_degrees))
+
+    def _draw_moon_drag_preview(self, target_degrees: float | None) -> None:
+        self.canvas.delete("moon-drag-preview")
+        if target_degrees is None:
+            return
+        geometry = getattr(self, "_wheel_drag_geometry", {})
+        try:
+            cx = float(geometry["cx"])
+            cy = float(geometry["cy"])
+            outer = float(geometry["outer"])
+        except (KeyError, TypeError, ValueError):
+            return
+        radius = outer * (0.720 if self._is_classic_wheel_theme() else 0.645)
+        x, y = _polar(cx, cy, radius, target_degrees)
+        inner_x, inner_y = _polar(cx, cy, max(30.0, radius - 55.0), target_degrees)
+        self.canvas.create_line(inner_x, inner_y, x, y, fill=PALETTE["warning"], width=2, dash=(4, 4), tags=("moon-drag-preview",))
+        self.canvas.create_oval(x - 15, y - 15, x + 15, y + 15, outline=PALETTE["warning"], width=2, tags=("moon-drag-preview",))
+        self.canvas.create_text(
+            x,
+            y,
+            text=planet_glyph("Moon"),
+            fill=CLASSIC_PLANET_COLORS.get("Moon", PALETTE["warning"]),
+            font=("Segoe UI Symbol", 18, "bold"),
+            tags=("moon-drag-preview",),
+        )
+
+    def _apply_moon_drag_time(self, target_degrees: float) -> None:
+        if not self.selected_window or not self.current_location:
+            self.status_var.set("Moon drag needs an active calculated chart first.")
+            return
+        try:
+            matched_time, matched_distance = self._find_time_for_moon_wheel_degrees(target_degrees)
+        except Exception as exc:  # pragma: no cover - UI resilience path.
+            debug_path = record_desktop_exception("Moon drag timing solve failed")
+            detail = f" Debug trace: {debug_path}" if debug_path else ""
+            self._log_event(f"Moon drag failed: {exc}")
+            self.status_var.set(f"Moon drag failed: {exc}.{detail}")
+            return
+        local = matched_time.astimezone(ZoneInfo(self.current_location.timezone))
+        self.date_var.set(local.strftime("%Y-%m-%d"))
+        self.time_var.set(local.strftime("%H:%M"))
+        self._log_event(
+            f"Moon drag set input time to {self.date_var.get()} {self.time_var.get()} "
+            f"for wheel angle {target_degrees:.1f} deg (miss {matched_distance:.2f} deg)"
+        )
+        self.status_var.set(
+            f"Moon drag solved: {local:%Y-%m-%d %H:%M} local; recalculating aspects and election judgment."
+        )
+        self.calculate(show_input_chart=True)
+
+    def _find_time_for_moon_wheel_degrees(self, target_degrees: float) -> tuple[datetime, float]:
+        if not self.selected_window or not self.current_location:
+            raise ValueError("No active chart/location is available.")
+        start_moment = self.selected_window["date"]
+        preset = self.presets_by_name.get(self.preset_var.get(), ELECTIONAL_PRESETS[1])
+        zodiac_system = get_zodiac_system(self.zodiac_system_var.get())
+        house_system = get_house_system(self.house_system_var.get())
+        selected_aspects = self._selected_aspect_ids()
+        aspect_definitions = self._active_aspect_definitions()
+
+        def _moon_angle(moment: datetime) -> float:
+            snapshot = build_snapshot_for_moment(
+                moment,
+                self.current_location,
+                preset,
+                selected_aspects,
+                zodiac_system.id,
+                house_system.id,
+                self.objective_var.get(),
+                "fast",
+                aspect_definitions,
+            )
+            ascendant = next(angle for angle in snapshot["angles"] if angle["id"] == "asc")
+            moon = next(planet for planet in snapshot["positions"] if planet["name"] == "Moon")
+            return wheel_degrees(float(moon["longitude"]), float(ascendant["longitude"]))
+
+        best_moment = start_moment
+        best_distance = 999.0
+        for offset_minutes in range(-18 * 60, 18 * 60 + 1, 10):
+            moment = start_moment + timedelta(minutes=offset_minutes)
+            distance = circular_distance_degrees(_moon_angle(moment), target_degrees)
+            if distance < best_distance:
+                best_moment = moment
+                best_distance = distance
+        refined_center = best_moment
+        for offset_minutes in range(-12, 13):
+            moment = refined_center + timedelta(minutes=offset_minutes)
+            distance = circular_distance_degrees(_moon_angle(moment), target_degrees)
+            if distance < best_distance:
+                best_moment = moment
+                best_distance = distance
+        return best_moment, best_distance
 
     def _schedule_redraw(self, _event: object | None = None) -> None:
         if not self.selected_window:
@@ -4780,6 +6718,7 @@ class ElectionalDesktopApp:
 
         ascendant = next(angle for angle in snapshot["angles"] if angle["id"] == "asc")
         asc_lon = float(ascendant["longitude"])
+        self._wheel_drag_geometry = {"cx": cx, "cy": cy, "outer": outer, "asc_lon": asc_lon}
 
         self._draw_constellation_band(cx, cy, outer, constellation_inner, asc_lon)
         self.canvas.create_oval(
@@ -4838,17 +6777,38 @@ class ElectionalDesktopApp:
         self.canvas.create_oval(cx - 72, cy - 72, cx + 72, cy + 72, outline="#b7c2ca", width=2)
 
         house_cusps = sorted(snapshot.get("houseCusps", []), key=lambda cusp: int(cusp["house"]))
+        span_by_house = {int(row["house"]): row["span"] for row in house_span_rows(snapshot)}
         for house_index, cusp in enumerate(house_cusps):
-            next_cusp = house_cusps[(house_index + 1) % 12]
+            next_cusp = house_cusps[(house_index + 1) % len(house_cusps)]
+            house_no = int(cusp["house"])
             cusp_longitude = float(cusp["longitude"])
             label_longitude = midpoint_longitude(cusp_longitude, float(next_cusp["longitude"]))
             angle = wheel_degrees(cusp_longitude, asc_lon)
             x1, y1 = _polar(cx, cy, house_inner, angle)
             x2, y2 = _polar(cx, cy, zodiac_inner, angle)
-            self.canvas.create_line(x1, y1, x2, y2, fill=PALETTE["chart_line"], width=1)
+            self.canvas.create_line(
+                x1,
+                y1,
+                x2,
+                y2,
+                fill=PALETTE["chart_line"],
+                width=2 if house_no in {1, 4, 7, 10} else 1,
+            )
             label_angle = wheel_degrees(label_longitude, asc_lon)
             lx, ly = _polar(cx, cy, outer * 0.64, label_angle)
-            self.canvas.create_text(lx, ly, text=str(cusp["house"]), fill=PALETTE["accent_dark"], font=("Segoe UI Semibold", 10 if self.compact_wheel_var.get() else 12))
+            self.canvas.create_text(lx, ly, text=str(house_no), fill=PALETTE["accent_dark"], font=("Segoe UI Semibold", 10 if self.compact_wheel_var.get() else 12))
+            span_text = house_span_label(span_by_house.get(house_no))
+            if span_text and self._is_diagnostic_wheel_preset():
+                sx, sy = _polar(cx, cy, outer * 0.585, label_angle)
+                self._draw_halo_text(
+                    sx,
+                    sy,
+                    text=span_text,
+                    fill=PALETTE["muted"],
+                    halo=PALETTE["surface"],
+                    font=("Segoe UI", 7 if self.compact_wheel_var.get() else 8),
+                    tags=("house-span",),
+                )
 
         if self.show_aspects_var.get():
             self._draw_aspects(snapshot, cx, cy, aspect_radius, asc_lon)
@@ -4866,10 +6826,12 @@ class ElectionalDesktopApp:
         self._draw_wheel_legend(width, height)
 
     def _draw_classic_wheel(self, snapshot: dict[str, object], width: int, height: int) -> None:
-        cx = width / 2
+        metadata_width = 142 if width >= 600 else 0
+        chart_width = max(320, width - metadata_width)
+        cx = metadata_width + chart_width / 2
         cy = height / 2
         side_padding = 14 if self.show_fixed_stars_var.get() else 10
-        fit_width = max(320, width - side_padding * 2)
+        fit_width = max(320, chart_width - side_padding * 2)
         fit_height = max(320, height - 14)
         outer = max(150, min(fit_width, fit_height) / 2 * self.wheel_zoom)
         sign_outer = outer * 0.958
@@ -4882,12 +6844,15 @@ class ElectionalDesktopApp:
         self._classic_center_radius = aspect_radius
 
         self._draw_grid(width, height)
+        if metadata_width:
+            self._draw_classic_chart_info(snapshot, 10, 10, metadata_width - 20)
         self.canvas.create_oval(cx - outer - 8, cy - outer - 8, cx + outer + 8, cy + outer + 8, fill="#d6dbce", outline="")
         self.canvas.create_oval(cx - outer, cy - outer, cx + outer, cy + outer, fill=CLASSIC_CONSTELLATION_FILL, outline=CLASSIC_HOUSE_LINE, width=1)
         self.canvas.create_oval(cx - sign_outer, cy - sign_outer, cx + sign_outer, cy + sign_outer, fill="#eee6c7", outline="#000000", width=1)
 
         ascendant = next(angle for angle in snapshot["angles"] if angle["id"] == "asc")
         asc_lon = float(ascendant["longitude"])
+        self._wheel_drag_geometry = {"cx": cx, "cy": cy, "outer": outer, "asc_lon": asc_lon}
         zodiac_system = snapshot.get("zodiacSystem")
         system_id = getattr(zodiac_system, "id", None) or getattr(zodiac_system, "name", None)
         segments = zodiac_arc_segments(system_id)
@@ -4942,18 +6907,36 @@ class ElectionalDesktopApp:
         self.canvas.create_oval(cx - house_inner, cy - house_inner, cx + house_inner, cy + house_inner, fill=CLASSIC_ASPECT_CENTER, outline=CLASSIC_HOUSE_LINE, width=1)
 
         house_cusps = sorted(snapshot.get("houseCusps", []), key=lambda cusp: int(cusp["house"]))
+        span_by_house = {int(row["house"]): row["span"] for row in house_span_rows(snapshot)}
         house_labels: list[tuple[float, float, str]] = []
+        house_span_labels: list[tuple[float, float, str]] = []
         for house_index, cusp in enumerate(house_cusps):
-            next_cusp = house_cusps[(house_index + 1) % 12]
+            next_cusp = house_cusps[(house_index + 1) % len(house_cusps)]
+            house_no = int(cusp["house"])
             cusp_longitude = float(cusp["longitude"])
             next_longitude = float(next_cusp["longitude"])
             angle = wheel_degrees(cusp_longitude, asc_lon)
             x1, y1 = _polar(cx, cy, aspect_radius, angle)
             x2, y2 = _polar(cx, cy, zodiac_inner, angle)
-            self.canvas.create_line(x1, y1, x2, y2, fill=CLASSIC_HOUSE_LINE, width=3 if cusp["house"] in {1, 4, 7, 10} else 2)
+            self.canvas.create_line(x1, y1, x2, y2, fill=CLASSIC_HOUSE_LINE, width=3 if house_no in {1, 4, 7, 10} else 2)
+            marker_inner_x, marker_inner_y = _polar(cx, cy, house_outer - 5, angle)
+            marker_outer_x, marker_outer_y = _polar(cx, cy, zodiac_inner + 3, angle)
+            self.canvas.create_line(
+                marker_inner_x,
+                marker_inner_y,
+                marker_outer_x,
+                marker_outer_y,
+                fill="#0f1534",
+                width=2 if house_no in {1, 4, 7, 10} else 1,
+                tags=("house-projection",),
+            )
             label_angle = wheel_degrees(midpoint_longitude(cusp_longitude, next_longitude), asc_lon)
             lx, ly = _polar(cx, cy, house_label_radius, label_angle)
-            house_labels.append((lx, ly, str(cusp["house"])))
+            house_labels.append((lx, ly, str(house_no)))
+            span_text = house_span_label(span_by_house.get(house_no))
+            if span_text and self._is_diagnostic_wheel_preset():
+                sx, sy = _polar(cx, cy, house_outer + (zodiac_inner - house_outer) * 0.22, label_angle)
+                house_span_labels.append((sx, sy, span_text))
 
         if self.show_aspects_var.get():
             self._draw_classic_aspects(snapshot, cx, cy, aspect_radius * 0.94, asc_lon)
@@ -4966,6 +6949,8 @@ class ElectionalDesktopApp:
             self._draw_lots(snapshot, cx, cy, asc_lon, outer)
         if self.show_nodes_var.get() and point_set.show_nodes:
             self._draw_nodes(snapshot, cx, cy, asc_lon, outer)
+        for sx, sy, span_text in house_span_labels:
+            self._draw_house_span_label(sx, sy, span_text)
         for lx, ly, house_text in house_labels:
             self._draw_house_number_badge(lx, ly, house_text)
         self._draw_focused_body_callout(snapshot, cx, cy, outer, asc_lon)
@@ -4980,6 +6965,14 @@ class ElectionalDesktopApp:
             font=("Georgia", 9),
             tags=("classic-footer",),
         )
+        self.canvas.create_text(
+            cx,
+            min(height - 4, footer_y + 12),
+            text=house_geometry_summary(snapshot),
+            fill=CLASSIC_PANEL_MUTED,
+            font=("Segoe UI", 7),
+            tags=("classic-footer",),
+        )
 
     def _draw_house_number_badge(self, x: float, y: float, text: str) -> None:
         self._draw_halo_text(
@@ -4990,6 +6983,17 @@ class ElectionalDesktopApp:
             halo="#d6c1c9",
             font=("Georgia", 11 if self.compact_wheel_var.get() else 13, "bold"),
             tags=("house-label",),
+        )
+
+    def _draw_house_span_label(self, x: float, y: float, text: str) -> None:
+        self._draw_halo_text(
+            x,
+            y,
+            text=text,
+            fill=CLASSIC_HOUSE_SPAN_TEXT,
+            halo=CLASSIC_HOUSE_SPAN_HALO,
+            font=("Segoe UI", 7 if self.compact_wheel_var.get() else 8, "bold"),
+            tags=("house-span",),
         )
 
     def _draw_classic_aspects(self, snapshot: dict[str, object], cx: float, cy: float, radius: float, asc_lon: float) -> None:
@@ -5019,7 +7023,7 @@ class ElectionalDesktopApp:
             x2, y2 = _polar(cx, cy, radius, angle_b)
             tone = str(aspect.get("tone") or "")
             color = CLASSIC_ASPECT_SUPPORT if tone == "support" else CLASSIC_ASPECT_STRESS if tone == "stress" else CLASSIC_ASPECT_NEUTRAL
-            width = 2 if aspect.get("isApplying") else 1
+            width = 3 if aspect.get("isApplying") else 2
             dash = () if aspect.get("isApplying") else (5, 5)
             self.canvas.create_line(
                 x1,
@@ -5087,6 +7091,8 @@ class ElectionalDesktopApp:
         self.canvas.create_text(x, y, text=text, fill=fill, font=font, anchor=anchor, tags=tags)
 
     def _is_focused_body(self, kind: str, name: str) -> bool:
+        if kind == "planet" and name in getattr(self, "focused_aspect_bodies", set()):
+            return True
         return self.focused_body_kind == kind and self.focused_body_name == name
 
     def _focused_wheel_target(self, snapshot: dict[str, object]) -> tuple[str, dict[str, object]] | None:
@@ -5444,12 +7450,12 @@ class ElectionalDesktopApp:
             offsets = body_marker_offsets(
                 [float(planet["longitude"]) for planet in planets],
                 compact=self.compact_wheel_var.get(),
-                crowd_threshold=7.5 if self.compact_wheel_var.get() else 9.0,
-                angle_step=4.1 if self.compact_wheel_var.get() else 4.8,
-                radial_step=4.8 if self.compact_wheel_var.get() else 5.8,
+                crowd_threshold=8.5 if self.compact_wheel_var.get() else 10.5,
+                angle_step=4.8 if self.compact_wheel_var.get() else 5.8,
+                radial_step=5.6 if self.compact_wheel_var.get() else 7.0,
             )
             base_radius = outer * (0.708 if self.compact_wheel_var.get() else 0.720)
-            marker_size = 14 if self.compact_wheel_var.get() else 16
+            marker_size = 15 if self.compact_wheel_var.get() else 18
         else:
             offsets = planet_marker_offsets([float(planet["longitude"]) for planet in planets], compact=self.compact_wheel_var.get())
             base_radius = outer * (0.665 if self.compact_wheel_var.get() else 0.645)
@@ -5497,7 +7503,7 @@ class ElectionalDesktopApp:
                         tags=("planet-marker", planet_tag),
                     )
                 marker_color = CLASSIC_PLANET_COLORS.get(str(planet["name"]), PALETTE["top_bar_dark"])
-                glyph_size = 24 if self.compact_wheel_var.get() else 28
+                glyph_size = 27 if self.compact_wheel_var.get() else 31
                 self._draw_halo_text(
                     x,
                     y,
@@ -5514,8 +7520,8 @@ class ElectionalDesktopApp:
                 tangent_x = -radial_y
                 tangent_y = radial_x
                 if degree_text:
-                    degree_tangent = 16 if self.compact_wheel_var.get() else 19
-                    degree_radial = 8 if self.compact_wheel_var.get() else 10
+                    degree_tangent = 18 if self.compact_wheel_var.get() else 22
+                    degree_radial = 9 if self.compact_wheel_var.get() else 12
                     tangent_sign = -1 if x >= cx else 1
                     degree_x = x + tangent_x * degree_tangent * tangent_sign + radial_x * degree_radial
                     degree_y = y + tangent_y * degree_tangent * tangent_sign + radial_y * degree_radial
@@ -5524,7 +7530,7 @@ class ElectionalDesktopApp:
                         degree_y,
                         text=degree_text,
                         fill=CLASSIC_PLANET_DEGREE,
-                        font=("Segoe UI Semibold", 9 if self.compact_wheel_var.get() else 10),
+                        font=("Segoe UI Semibold", 10 if self.compact_wheel_var.get() else 11),
                         tags=("planet-marker", planet_tag),
                     )
                 if planet.get("isRetrograde"):
@@ -5556,8 +7562,15 @@ class ElectionalDesktopApp:
                     font=self._planet_marker_font(9 if self.compact_wheel_var.get() else 10),
                     tags=("planet-marker", planet_tag),
                 )
-            self.canvas.tag_bind(planet_tag, "<Button-1>", lambda _event, planet_id=str(planet["id"]): self._select_planet_by_id(planet_id))
-            self.canvas.tag_bind(planet_tag, "<Enter>", lambda _event: self.canvas.configure(cursor="hand2"))
+            planet_id = str(planet["id"])
+            if str(planet.get("name")) == "Moon":
+                self.canvas.tag_bind(planet_tag, "<ButtonPress-1>", lambda event, target_id=planet_id: self._start_moon_drag(event, target_id))
+                self.canvas.tag_bind(planet_tag, "<B1-Motion>", self._drag_moon_marker)
+                self.canvas.tag_bind(planet_tag, "<ButtonRelease-1>", lambda event, target_id=planet_id: self._release_moon_drag(event, target_id))
+                self.canvas.tag_bind(planet_tag, "<Enter>", lambda _event: self.canvas.configure(cursor="fleur"))
+            else:
+                self.canvas.tag_bind(planet_tag, "<Button-1>", lambda _event, target_id=planet_id: self._select_planet_by_id(target_id))
+                self.canvas.tag_bind(planet_tag, "<Enter>", lambda _event: self.canvas.configure(cursor="hand2"))
             self.canvas.tag_bind(planet_tag, "<Leave>", lambda _event: self.canvas.configure(cursor=""))
 
     def _draw_lots(self, snapshot: dict[str, object], cx: float, cy: float, asc_lon: float, outer: float) -> None:
@@ -5715,6 +7728,370 @@ class ElectionalDesktopApp:
                 smooth=True,
             )
 
+    def _tone_surface(self, tone: str) -> tuple[str, str]:
+        if tone in {"support", "score"}:
+            return PALETTE["surface_support"], PALETTE["support"]
+        if tone == "stress":
+            return PALETTE["surface_stress"], PALETTE["stress"]
+        if tone == "warning":
+            return PALETTE["surface_gold"], PALETTE["warning"]
+        if tone == "mixed":
+            return PALETTE["surface_gold"], PALETTE["gold"]
+        return PALETTE["surface"], PALETTE["accent_dark"]
+
+    def _visual_card(self, parent: tk.Widget, title: str, subtitle: str = "", *, tone: str = "neutral") -> tk.Frame:
+        bg, accent = self._tone_surface(tone)
+        card = tk.Frame(parent, bg=bg, highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=9, pady=8)
+        card.pack(fill=tk.X, pady=(0, 8))
+        tk.Frame(card, bg=accent, height=2).pack(fill=tk.X, pady=(0, 5))
+        tk.Label(card, text=title, bg=bg, fg=accent, font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        if subtitle:
+            tk.Label(card, text=subtitle, bg=bg, fg=PALETTE["muted"], font=("Segoe UI", 8), wraplength=315, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(2, 0))
+        return card
+
+    def _render_highlight_card(self, parent: tk.Widget, title: str, result: object) -> None:
+        result_map = result if isinstance(result, Mapping) else None
+        tone = str(result_map.get("tone") or "neutral") if result_map else "neutral"
+        card = self._visual_card(parent, title, tone=tone)
+        for index, line in enumerate(format_aspect_highlight(result_map).splitlines()[:3]):
+            tk.Label(
+                card,
+                text=line,
+                bg=card["bg"],
+                fg=PALETTE["text"] if index else PALETTE["accent_dark"],
+                font=("Segoe UI Semibold", 8 if index == 0 else 7),
+                wraplength=300,
+                justify=tk.LEFT,
+                anchor="w",
+            ).pack(fill=tk.X, pady=(2 if index else 4, 0))
+
+    def _render_timeline_panel(self, snapshot: dict[str, object]) -> None:
+        if not hasattr(self, "timeline_frame"):
+            return
+        self._clear_frame(self.timeline_frame)
+        highlights = self.current_aspect_highlights if isinstance(self.current_aspect_highlights, Mapping) else {}
+        header = self._visual_card(
+            self.timeline_frame,
+            "Aspect Timeline",
+            "Current, local-day, and next-24-hour aspect peaks for the displayed chart.",
+        )
+        tk.Label(
+            header,
+            text=f"Displayed: {snapshot.get('formattedTime', 'time unavailable')}",
+            bg=header["bg"],
+            fg=PALETTE["text"],
+            font=("Segoe UI", 8),
+            wraplength=315,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(4, 0))
+        for title, key in (("Current Aspect", "current"), ("Strongest Today", "localDay"), ("Strongest Next 24h", "rolling24Hours")):
+            self._render_highlight_card(self.timeline_frame, title, highlights.get(key))
+        self._render_timeline_section("Local Day", timeline_visual_rows(highlights, key="timelineByTime", limit=12))
+        self._render_timeline_section("Rolling Next 24 Hours", timeline_visual_rows(highlights, key="rollingTimelineByTime", limit=12))
+
+    def _render_timeline_section(self, title: str, rows: list[dict[str, object]]) -> None:
+        section = self._visual_card(self.timeline_frame, title)
+        if not rows:
+            tk.Label(
+                section,
+                text="No aspect timeline entries available for this range.",
+                bg=section["bg"],
+                fg=PALETTE["muted"],
+                font=("Segoe UI", 8),
+                wraplength=315,
+                justify=tk.LEFT,
+                anchor="w",
+            ).pack(fill=tk.X, pady=(5, 0))
+            return
+        for row in rows:
+            self._render_timeline_row(section, row)
+
+    def _render_timeline_row(self, parent: tk.Widget, row: dict[str, object]) -> None:
+        bg, accent = self._tone_surface(str(row.get("tone") or "neutral"))
+        item = tk.Frame(parent, bg=bg, highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=7, pady=5)
+        item.pack(fill=tk.X, pady=(5, 0))
+        header = tk.Frame(item, bg=bg)
+        header.pack(fill=tk.X)
+        tk.Label(header, text=str(row.get("time", "time n/a")), bg=bg, fg=accent, font=("Segoe UI Semibold", 7), anchor="w").pack(side=tk.LEFT)
+        tk.Label(header, text=str(row.get("toneLabel", "Mixed")), bg=bg, fg=accent, font=("Georgia", 7, "bold"), anchor="e").pack(side=tk.RIGHT)
+        tk.Label(item, text=str(row.get("label", "Aspect")), bg=bg, fg=PALETTE["text"], font=("Segoe UI Semibold", 8), wraplength=305, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(3, 0))
+        detail = f"{row.get('orb', 'orb n/a')} | {row.get('phase', 'phase n/a')} | peak {row.get('peak', 'exact n/a')} | strength {row.get('strength', '--')}"
+        tk.Label(item, text=detail, bg=bg, fg=PALETTE["muted"], font=("Segoe UI", 7), wraplength=305, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(2, 0))
+        self._bind_timeline_row(item, row)
+
+    def _bind_timeline_row(self, widget: tk.Widget, row: dict[str, object]) -> None:
+        widget.bind("<Button-1>", lambda _event, selected=row: self._focus_timeline_aspect(selected))
+        widget.bind("<Enter>", lambda _event: widget.configure(cursor="hand2"))
+        widget.bind("<Leave>", lambda _event: widget.configure(cursor=""))
+        for child in widget.winfo_children():
+            self._bind_timeline_row(child, row)
+
+    def _focus_timeline_aspect(self, row: Mapping[str, object]) -> None:
+        bodies = row.get("bodies", [])
+        body_names = [str(body) for body in bodies if str(body)] if isinstance(bodies, list) else []
+        if not body_names:
+            self.status_var.set("Timeline aspect selected, but no focusable bodies were available.")
+            return
+        self.focused_aspect_bodies = set(body_names[:2])
+        self.focused_body_kind = "planet"
+        self.focused_body_name = body_names[0]
+        self.focus_body_var.set(" / ".join(body_names[:2]))
+        self._set_text(
+            self.interpretation_text,
+            f"Timeline aspect focus: {row.get('label', 'Aspect')}\n"
+            f"Bodies: {', '.join(body_names[:2])}\n"
+            f"{row.get('orb', '')} | {row.get('phase', '')} | peak {row.get('peak', '')}",
+        )
+        self._redraw_selected_window()
+        self.status_var.set(f"Focused timeline aspect: {row.get('label', 'Aspect')}.")
+
+    def _render_analysis_panel(self, snapshot: dict[str, object], windows: list[dict[str, object]], location: object) -> None:
+        if not hasattr(self, "analysis_frame"):
+            return
+        self._clear_frame(self.analysis_frame)
+        score = int(snapshot.get("score", 0) or 0)
+        header = self._visual_card(
+            self.analysis_frame,
+            "Electional Analysis",
+            f"{snapshot.get('formattedTime', 'time unavailable')} | {getattr(location, 'name', 'Location unavailable')}",
+            tone="score" if score >= 76 else "warning",
+        )
+        tk.Label(header, text=f"Score {score} - {score_band_label(score)}", bg=header["bg"], fg=PALETTE["score"], font=("Georgia", 18, "bold"), anchor="w").pack(fill=tk.X, pady=(4, 0))
+        tk.Label(header, text=str(snapshot.get("note") or snapshot.get("title") or "Review the supporting testimony below."), bg=header["bg"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=315, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(2, 0))
+
+        metric_section = self._visual_card(self.analysis_frame, "Quality Metrics", "Score, diagnostics, aspect balance, angularity, and rule load.")
+        grid = tk.Frame(metric_section, bg=metric_section["bg"])
+        grid.pack(fill=tk.X, pady=(5, 0))
+        for index, (label, value, note, tone) in enumerate(analysis_metric_cards(snapshot, windows)):
+            self._analysis_metric_card(grid, index, label, value, note, tone)
+
+        highlights = self.current_aspect_highlights if isinstance(self.current_aspect_highlights, Mapping) else {}
+        aspect_section = self._visual_card(self.analysis_frame, "Aspect Highlights", "Strongest contacts for now, the local day, and the next 24 hours.")
+        for title, key in (("Current", "current"), ("Local Day", "localDay"), ("Next 24h", "rolling24Hours")):
+            result = highlights.get(key)
+            line = format_aspect_highlight(result if isinstance(result, Mapping) else None).splitlines()[0]
+            tk.Label(aspect_section, text=f"{title}: {line}", bg=aspect_section["bg"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=315, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(4, 0))
+
+        self._analysis_text_section("Moon Timing", judgment_context_lines(snapshot, "moonCondition"))
+        self._analysis_text_section("Planet Conditions", judgment_context_lines(snapshot, "planetConditionContext"))
+        self._analysis_text_section("House Geometry", house_geometry_insight_lines(snapshot))
+        self._analysis_text_section("Houses And Angles", [*angle_testimony_lines(snapshot), *judgment_context_lines(snapshot, "houseRulerContext")])
+        self._analysis_text_section("Search, Validation, And Rejections", analysis_notice_lines(snapshot, self.current_rejection_summary, location))
+        self._analysis_text_section("Accuracy Validation", validation_workbench_lines(snapshot, location, self.manual_validation_result))
+
+    def _render_validation_panel(self, snapshot: dict[str, object], location: object) -> None:
+        if not hasattr(self, "validation_frame"):
+            return
+        self._clear_frame(self.validation_frame)
+        header = self._visual_card(
+            self.validation_frame,
+            "Accuracy Validation",
+            "Swiss integration audit plus manual CapricornPROMETHEUS comparison for the displayed chart.",
+            tone="score" if self._accuracy_status_label(snapshot).lower().startswith("swiss") else "warning",
+        )
+        for line in validation_workbench_lines(snapshot, location, self.manual_validation_result)[:10]:
+            tk.Label(
+                header,
+                text=line,
+                bg=header["bg"],
+                fg=PALETTE["text"],
+                font=("Segoe UI", 8),
+                wraplength=315,
+                justify=tk.LEFT,
+                anchor="w",
+            ).pack(fill=tk.X, pady=(3, 0))
+
+        manual = self._visual_card(
+            self.validation_frame,
+            "Manual CapricornPROMETHEUS Compare",
+            "Paste planet, angle, or cusp rows. The app parses recognized sign-degree values and reports deltas.",
+        )
+        tk.Label(manual, text="Reference source", bg=manual["bg"], fg=PALETTE["muted"], font=("Segoe UI Semibold", 7), anchor="w").pack(fill=tk.X, pady=(5, 2))
+        tk.Entry(
+            manual,
+            textvariable=self.manual_validation_source_var,
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["text"],
+            relief=tk.SOLID,
+            bd=1,
+            font=("Segoe UI", 8),
+        ).pack(fill=tk.X, ipady=3)
+        tk.Label(manual, text="Paste comparison rows", bg=manual["bg"], fg=PALETTE["muted"], font=("Segoe UI Semibold", 7), anchor="w").pack(fill=tk.X, pady=(7, 2))
+        self.manual_validation_input_widget = tk.Text(
+            manual,
+            height=7,
+            bg=PALETTE["panel_alt"],
+            fg=PALETTE["text"],
+            relief=tk.SOLID,
+            bd=1,
+            wrap=tk.WORD,
+            font=("Consolas", 8),
+            padx=5,
+            pady=4,
+        )
+        self.manual_validation_input_widget.pack(fill=tk.X)
+        self.manual_validation_input_widget.insert("1.0", self.manual_validation_input_cache)
+        action_row = tk.Frame(manual, bg=manual["bg"])
+        action_row.pack(fill=tk.X, pady=(7, 0))
+        ttk.Button(action_row, text="Compare", command=self._run_manual_validation_compare, style="Compact.TButton").pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(action_row, text="Clear", command=self._clear_manual_validation_compare, style="Compact.TButton").pack(side=tk.LEFT)
+
+        result_card = self._visual_card(self.validation_frame, "Comparison Result", tone="warning" if self.manual_validation_result.get("status") == "Review" else "score")
+        for line in format_manual_validation_comparison(self.manual_validation_result)[:14]:
+            tk.Label(
+                result_card,
+                text=line,
+                bg=result_card["bg"],
+                fg=PALETTE["text"],
+                font=("Segoe UI", 8),
+                wraplength=315,
+                justify=tk.LEFT,
+                anchor="w",
+            ).pack(fill=tk.X, pady=(3, 0))
+
+    def _run_manual_validation_compare(self) -> None:
+        if not self.selected_window:
+            self.status_var.set("Manual comparison needs a calculated chart first.")
+            return
+        text = ""
+        if hasattr(self, "manual_validation_input_widget"):
+            text = self.manual_validation_input_widget.get("1.0", tk.END).strip()
+        self.manual_validation_input_cache = text
+        self.manual_validation_result = build_manual_validation_comparison(
+            self.selected_window,
+            text,
+            source=self.manual_validation_source_var.get(),
+        )
+        self._render_validation_panel(self.selected_window, self.current_location)
+        self._render_analysis_panel(self.selected_window, self.current_windows, self.current_location)
+        self._save_session()
+        self.status_var.set(f"Manual validation comparison: {self.manual_validation_result.get('status', 'complete')}.")
+
+    def _clear_manual_validation_compare(self) -> None:
+        self.manual_validation_input_cache = ""
+        self.manual_validation_result = {}
+        if hasattr(self, "manual_validation_input_widget"):
+            self.manual_validation_input_widget.delete("1.0", tk.END)
+        if self.selected_window:
+            self._render_validation_panel(self.selected_window, self.current_location)
+            self._render_analysis_panel(self.selected_window, self.current_windows, self.current_location)
+        self._save_session()
+        self.status_var.set("Manual validation comparison cleared.")
+
+    def _render_reports_panel(self, snapshot: dict[str, object], windows: list[dict[str, object]], location: object) -> None:
+        if not hasattr(self, "reports_frame"):
+            return
+        self._clear_frame(self.reports_frame)
+        header = self._visual_card(
+            self.reports_frame,
+            "Reports And Exports",
+            "Create readable decision artifacts from the displayed chart, search results, and shortlist.",
+        )
+        tk.Label(
+            header,
+            text=f"Displayed: {snapshot.get('formattedTime', 'time unavailable')} | {len(windows)} candidate window{'s' if len(windows) != 1 else ''}",
+            bg=header["bg"],
+            fg=PALETTE["text"],
+            font=("Segoe UI", 8),
+            wraplength=315,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(4, 0))
+        report_actions = (
+            ("View Full Report", self._show_current_report_dialog),
+            ("Copy Report", self._copy_current_report),
+            ("Save Report", self._save_current_report),
+            ("Day Report", self._show_daily_aspect_report_dialog),
+            ("Save Decision Sheet", self._save_comparison_sheet),
+            ("Open Shortlist Board", lambda: self._focus_detail_page("Shortlist Board")),
+        )
+        grid = tk.Frame(header, bg=header["bg"])
+        grid.pack(fill=tk.X, pady=(8, 0))
+        for index, (label, command) in enumerate(report_actions):
+            grid.columnconfigure(index % 2, weight=1, uniform="report-actions")
+            ttk.Button(grid, text=label, command=command, style="Compact.TButton").grid(
+                row=index // 2,
+                column=index % 2,
+                sticky="ew",
+                padx=(0 if index % 2 == 0 else 4, 0 if index % 2 == 1 else 4),
+                pady=(0 if index < 2 else 5, 0),
+            )
+
+        summary = self._visual_card(self.reports_frame, "Report Preview")
+        preview_lines = [
+            f"Score {snapshot.get('score', 'n/a')} - {score_band_label(int(snapshot.get('score', 0) or 0))}",
+            str(snapshot.get("note") or snapshot.get("title") or "No note available."),
+            f"Validation: {self._accuracy_status_label(snapshot)}",
+            f"Manual compare: {self.manual_validation_result.get('status', 'not run') if isinstance(self.manual_validation_result, dict) else 'not run'}",
+            f"Search: {self.current_search_summary or 'Search summary unavailable.'}",
+        ]
+        for line in preview_lines:
+            tk.Label(summary, text=line, bg=summary["bg"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=315, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(3, 0))
+
+    def _analysis_metric_card(self, parent: tk.Widget, index: int, label: str, value: str, note: str, tone: str) -> None:
+        bg, accent = self._tone_surface(tone)
+        parent.columnconfigure(index % 2, weight=1, uniform="analysis-metrics")
+        card = tk.Frame(parent, bg=bg, highlightbackground=PALETTE["panel_line"], highlightthickness=1, padx=6, pady=5)
+        card.grid(row=index // 2, column=index % 2, sticky="ew", padx=(0 if index % 2 == 0 else 3, 0 if index % 2 == 1 else 3), pady=(0 if index < 2 else 5, 0))
+        tk.Label(card, text=label, bg=bg, fg=PALETTE["muted"], font=("Segoe UI Semibold", 7), anchor="w").pack(fill=tk.X)
+        tk.Label(card, text=value, bg=bg, fg=accent, font=("Georgia", 13, "bold"), anchor="w").pack(fill=tk.X)
+        tk.Label(card, text=note, bg=bg, fg=PALETTE["text"], font=("Segoe UI", 7), wraplength=135, justify=tk.LEFT, anchor="w").pack(fill=tk.X)
+
+    def _analysis_text_section(self, title: str, lines: list[str]) -> None:
+        section = self._visual_card(self.analysis_frame, title)
+        readable = [str(line).lstrip("- ") for line in lines if str(line).strip()]
+        if not readable:
+            readable = ["No details available."]
+        for line in readable[:8]:
+            tk.Label(section, text=line, bg=section["bg"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=315, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(3, 0))
+
+    def _context_page_text(self, title: str, lines: list[str], snapshot: dict[str, object]) -> str:
+        readable = [str(line).strip() for line in lines if str(line).strip()]
+        if readable and not all("unavailable" in line.lower() for line in readable):
+            return "\n".join(readable)
+        zodiac_name = getattr(snapshot.get("zodiacSystem"), "name", "Zodiac n/a")
+        house_name = getattr(snapshot.get("houseSystem"), "name", "House n/a")
+        purpose = {
+            "Significators": "Reviews the planets that represent the election objective, the querent/operator, and the relevant houses.",
+            "Moon": "Reviews lunar phase, void status, applying contacts, and whether the Moon helps or weakens the timing.",
+            "House Rulers": "Reviews the lords of the key houses and whether they are supported, stressed, angular, or unavailable.",
+            "Reception": "Reviews mutual reception, dispositors, and whether planets can help each other deliver the election.",
+            "Planet Conditions": "Reviews motion, angularity, dignity availability, and condition notes for the active point set.",
+            "Declination": "Reviews parallels, contra-parallels, and out-of-bounds style testimony when available.",
+            "Advanced Aspects": "Reviews secondary aspect diagnostics, applying/separating nuance, and special contacts when active.",
+        }.get(title, "Reviews supporting testimony for the displayed election.")
+        if not snapshot.get("traditionalRulesEnabled", True) and title in {"Significators", "House Rulers", "Reception"}:
+            reason = (
+                "Traditional rulership and reception logic is intentionally disabled in True 13-Sign mode. "
+                "Switch to a 12-sign tropical or sidereal zodiac when you want classical lord, reception, and dignity judgments."
+            )
+        elif title == "Declination":
+            reason = "No declination or parallel testimony is active for this chart and point set yet."
+        elif title == "Advanced Aspects":
+            reason = "No advanced aspect diagnostics are active for the selected point set and aspect focus."
+        else:
+            reason = "This diagnostic page has no active testimony for the displayed chart yet."
+        return "\n".join(
+            [
+                title,
+                "",
+                "Purpose",
+                f"- {purpose}",
+                "",
+                "Current status",
+                reason,
+                "",
+                "Current calculation",
+                f"- Zodiac: {zodiac_name}",
+                f"- House system: {house_name}",
+                f"- Time: {snapshot.get('formattedTime', 'time unavailable')}",
+                "",
+                "Next useful move",
+                "- Change point set, zodiac/house system, or aspect focus, then recalculate.",
+            ]
+        )
+
     def _render_text_panels(self, snapshot: dict[str, object], windows: list[dict[str, object]], location: object) -> None:
         support = sum(1 for aspect in snapshot["detectedAspects"] if aspect["tone"] == "support")
         stress = sum(1 for aspect in snapshot["detectedAspects"] if aspect["tone"] == "stress")
@@ -5722,17 +8099,23 @@ class ElectionalDesktopApp:
         self._set_text(
             self.summary_text,
             (
-                f"Score: {snapshot['score']}\n"
+                "Summary Dashboard\n"
+                f"Displayed chart: {snapshot.get('formattedTime', 'time unavailable')}\n"
+                f"Location: {getattr(location, 'name', 'Location unavailable')} / {getattr(location, 'timezone', 'timezone n/a')}\n"
+                f"Score: {snapshot['score']} ({score_band_label(int(snapshot['score']))})\n"
                 f"Score explanation: {format_score_breakdown(snapshot)}\n"
                 f"Lunar phase: {format_lunar_phase(snapshot)}\n"
-                f"Timezone: {location.timezone}\n"
                 f"Zodiac: {snapshot['zodiacSystem'].name}\n"
                 f"House system: {snapshot['houseSystem'].name}\n"
                 f"Ayanamsha: {float(snapshot['ayanamsha']):.3f} deg\n"
                 f"Fixed-star score: {float(snapshot['scoreBreakdown'].get('fixedStar', 0)):+.1f}\n"
                 f"Calculation engine: {snapshot['calculationBackend']['activeEngine']}\n"
                 f"Model: {snapshot['preset'].name}\n"
-                f"Engine: {snapshot['engine']}"
+                f"Engine: {snapshot['engine']}\n\n"
+                "Read this first\n"
+                "- Use Analysis for the full judgment.\n"
+                "- Use Timeline to see aspect peaks across the day.\n"
+                "- Use Search to understand why windows passed or failed filters."
             ),
         )
         self.metric_vars["score"].set(str(snapshot["score"]))
@@ -5757,6 +8140,7 @@ class ElectionalDesktopApp:
         self._set_text(
             self.window_detail_text,
             (
+                "Selected Window\n"
                 f"Rank: {selected_rank} of {len(windows)}\n"
                 f"Time: {snapshot['formattedTime']}\n"
                 f"Score: {snapshot['score']} - {snapshot.get('title', 'Election')}\n"
@@ -5764,7 +8148,10 @@ class ElectionalDesktopApp:
                 f"Score explanation: {format_score_breakdown(snapshot)}\n"
                 f"{chr(10).join(score_reason_lines(snapshot)[:4])}\n"
                 f"{snapshot.get('note', '')}\n"
-                f"{aspect_labels}"
+                f"{aspect_labels}\n\n"
+                "Actions\n"
+                "- Use Selected Time to copy this window back into the input chart.\n"
+                "- Shortlist serious candidates before comparing them."
             ),
         )
         timeline_lines = [
@@ -5776,18 +8163,21 @@ class ElectionalDesktopApp:
             "Rolling Next 24 Hours",
             *format_aspect_timeline(self.current_aspect_highlights, key="rollingTimelineByTime", limit=12),
         ]
-        self._set_text(self.timeline_text, "\n".join(timeline_lines))
-        self._set_text(
-            self.analysis_text,
-            build_analysis_page(
-                snapshot,
-                windows,
-                location,
-                self.current_aspect_highlights,
-                self.current_search_summary,
-                self.current_rejection_summary,
-            ),
+        self.timeline_report_text_cache = "\n".join(timeline_lines)
+        self.analysis_report_text_cache = build_analysis_page(
+            snapshot,
+            windows,
+            location,
+            self.current_aspect_highlights,
+            self.current_search_summary,
+            self.current_rejection_summary,
         )
+        validation_report_text = "\n".join(validation_workbench_lines(snapshot, location, self.manual_validation_result))
+        self.analysis_report_text_cache = self.analysis_report_text_cache + "\n\n" + validation_report_text
+        self._render_timeline_panel(snapshot)
+        self._render_analysis_panel(snapshot, windows, location)
+        self._render_validation_panel(snapshot, location)
+        self._render_reports_panel(snapshot, windows, location)
         self._set_text(
             self.advisor_text,
             "\n".join(advisor_lines(self.selected_window, self.input_snapshot, self.objective_var.get())),
@@ -5908,13 +8298,13 @@ class ElectionalDesktopApp:
             *rule_lines(snapshot),
         ]
         self._set_text(self.rules_text, "\n".join(rule_summary) if rule_lines(snapshot) else "\n".join([*rule_summary, "- No active caution/support rules."]))
-        self._set_text(self.significators_text, "\n".join(judgment_context_lines(snapshot, "significatorContext")))
-        self._set_text(self.moon_judgment_text, "\n".join(judgment_context_lines(snapshot, "moonCondition")))
-        self._set_text(self.house_rulers_text, "\n".join(judgment_context_lines(snapshot, "houseRulerContext")))
-        self._set_text(self.reception_text, "\n".join(judgment_context_lines(snapshot, "receptionContext")))
-        self._set_text(self.planet_condition_text, "\n".join(judgment_context_lines(snapshot, "planetConditionContext")))
-        self._set_text(self.declination_text, "\n".join(judgment_context_lines(snapshot, "declinationContext")))
-        self._set_text(self.advanced_aspects_text, "\n".join(judgment_context_lines(snapshot, "advancedAspectContext")))
+        self._set_text(self.significators_text, self._context_page_text("Significators", judgment_context_lines(snapshot, "significatorContext"), snapshot))
+        self._set_text(self.moon_judgment_text, self._context_page_text("Moon", judgment_context_lines(snapshot, "moonCondition"), snapshot))
+        self._set_text(self.house_rulers_text, self._context_page_text("House Rulers", judgment_context_lines(snapshot, "houseRulerContext"), snapshot))
+        self._set_text(self.reception_text, self._context_page_text("Reception", judgment_context_lines(snapshot, "receptionContext"), snapshot))
+        self._set_text(self.planet_condition_text, self._context_page_text("Planet Conditions", judgment_context_lines(snapshot, "planetConditionContext"), snapshot))
+        self._set_text(self.declination_text, self._context_page_text("Declination", judgment_context_lines(snapshot, "declinationContext"), snapshot))
+        self._set_text(self.advanced_aspects_text, self._context_page_text("Advanced Aspects", judgment_context_lines(snapshot, "advancedAspectContext"), snapshot))
         self._set_text(self.factor_explorer_text, "\n".join(factor_explorer_lines(snapshot, self.input_snapshot)))
         self._set_text(self.constellations_text, "\n".join(constellation_lines(snapshot)))
 
@@ -5935,7 +8325,7 @@ class ElectionalDesktopApp:
         self._set_text(self.planets_text, "\n".join(planet_lines + angle_lines))
 
         cusp_lines = [
-            f"House {cusp['house']:<2} {format_position(cusp):<16}"
+            f"House {cusp['house']:<2} {format_position(cusp):<16} span {next((row['span'] for row in house_span_rows(snapshot) if row['house'] == int(cusp['house'])), 0):>5.2f} deg"
             for cusp in snapshot.get("houseCusps", [])
         ]
         self._set_text(
@@ -5944,7 +8334,11 @@ class ElectionalDesktopApp:
                 f"{snapshot['houseSystem'].name} cusps\n"
                 f"Zodiac: {snapshot['zodiacSystem'].name}\n"
                 f"Ayanamsha: {float(snapshot['ayanamsha']):.3f} deg\n\n"
+                + "\n".join(house_geometry_insight_lines(snapshot))
+                + "\n\n"
                 + "\n".join(cusp_lines)
+                + "\n\n"
+                + "\n".join(house_geometry_lines(snapshot))
             ),
         )
 
@@ -5990,6 +8384,11 @@ class ElectionalDesktopApp:
                 "Aspect Timing",
                 str(timing.get("summary", "Timing profile unavailable.")),
                 "",
+                "How to use this page",
+                "- Check whether the strongest contacts are applying or separating.",
+                "- Prefer windows where support is applying and stress is separating or weak.",
+                "- Compare this page with Timeline for exact local-day and next-24h peaks.",
+                "",
                 f"Applying contacts: {timing.get('applyingCount', 0)}",
                 f"Support: {timing.get('supportCount', 0)}",
                 f"Stress: {timing.get('stressCount', 0)}",
@@ -6009,12 +8408,41 @@ class ElectionalDesktopApp:
                     )
             self._set_text(self.timing_text, "\n".join(timing_lines))
         else:
-            self._set_text(self.timing_text, "Timing profile unavailable.")
+            self._set_text(
+                self.timing_text,
+                "\n".join(
+                    [
+                        "Aspect Timing",
+                        "",
+                        "Timing profile unavailable for this chart.",
+                        "",
+                        "How to use this page",
+                        "- Recalculate after changing time, location, aspect focus, or point set.",
+                        "- Use Timeline for local-day and rolling-24h aspect scans when available.",
+                        "- Use Find Best to generate candidate windows with applying support.",
+                    ]
+                ),
+            )
 
         aspect_lines = []
         for aspect in snapshot["detectedAspects"]:
             aspect_lines.append(f"{format_aspect_summary(aspect)} - {aspect['tone']}")
-        self._set_text(self.aspects_text, "\n".join(aspect_lines) or "No selected major aspects in orb.")
+        self._set_text(
+            self.aspects_text,
+            "\n".join(aspect_lines)
+            or "\n".join(
+                [
+                    "Aspects",
+                    "",
+                    "No selected major aspects are currently in orb.",
+                    "",
+                    "Try next",
+                    "- Enable more aspect types in the left rail.",
+                    "- Switch Points from a smaller set to Full Electional.",
+                    "- Widen the search or use Timeline to inspect the day before filtering.",
+                ]
+            ),
+        )
         self._set_text(self.aspectarian_text, format_aspectarian(snapshot))
         self._set_text(self.aspect_strength_text, "\n".join(strongest_aspect_analysis_lines(snapshot)))
 
@@ -6124,6 +8552,7 @@ class ElectionalDesktopApp:
             self._show_fixed_star_focus(star)
 
     def _show_lot_focus(self, lot: dict[str, object]) -> None:
+        self.focused_aspect_bodies = set()
         self.focused_body_kind = "lot"
         self.focused_body_name = str(lot["name"])
         self.focus_body_var.set(str(lot["name"]))
@@ -6139,6 +8568,7 @@ class ElectionalDesktopApp:
         self._log_event(f"Focused lot: {lot['name']} {format_position(lot)}")
 
     def _show_node_focus(self, node: dict[str, object]) -> None:
+        self.focused_aspect_bodies = set()
         self.focused_body_kind = "node"
         self.focused_body_name = str(node["name"])
         self.focus_body_var.set(str(node["name"]))
@@ -6154,6 +8584,7 @@ class ElectionalDesktopApp:
         self._log_event(f"Focused node: {node['name']} {format_position(node)}")
 
     def _show_fixed_star_focus(self, star: dict[str, object]) -> None:
+        self.focused_aspect_bodies = set()
         self.focused_body_kind = "star"
         self.focused_body_name = str(star["name"])
         self.focus_body_var.set(str(star["name"]))
@@ -6175,6 +8606,7 @@ class ElectionalDesktopApp:
         self._log_event(f"Focused fixed star: {star['name']} {format_position(star)}")
 
     def _show_planet_focus(self, planet: dict[str, object]) -> None:
+        self.focused_aspect_bodies = set()
         self.focused_body_kind = "planet"
         self.focused_body_name = str(planet["name"])
         self.focus_body_var.set(str(planet["name"]))
@@ -6196,6 +8628,7 @@ class ElectionalDesktopApp:
             "preset": self.preset_var.get(),
             "zodiac_system": self.zodiac_system_var.get(),
             "house_system": self.house_system_var.get(),
+            "active_aspect_profile": self.active_aspect_profile.id,
             "aspects": {aspect_id: var.get() for aspect_id, var in self.aspect_vars.items()},
             "scan_hours": self.scan_hours_var.get(),
             "step_minutes": self.step_minutes_var.get(),
@@ -6213,6 +8646,7 @@ class ElectionalDesktopApp:
             "avoid_angular_malefics": self.avoid_angular_malefics_var.get(),
             "require_moon_non_void": self.require_moon_non_void_var.get(),
             "avoid_objective_antipatterns": self.avoid_objective_antipatterns_var.get(),
+            "manual_validation_comparison": self.manual_validation_result,
             "display_options": {
                 "show_aspects": self.show_aspects_var.get(),
                 "show_lots": self.show_lots_var.get(),
@@ -6223,7 +8657,8 @@ class ElectionalDesktopApp:
                 "wheel_zoom": self.wheel_zoom,
                 "point_set": get_point_set(self.point_set_var.get()).id,
                 "page_mode": self._current_page_mode_id(),
-                "right_panel_theme": RIGHT_PANEL_THEME_IDS_BY_NAME.get(self.right_panel_theme_var.get(), "astrolabe"),
+                "right_panel_theme": RIGHT_PANEL_THEME_IDS_BY_NAME.get(self.right_panel_theme_var.get(), "classic-natal"),
+                "wheel_view_preset": WHEEL_VIEW_PRESET_IDS_BY_NAME.get(self.wheel_view_preset_var.get(), "full-classic"),
             },
         }
 

@@ -16,6 +16,7 @@ reports/
 .electional-session.json
 .electional-locations.json
 .electional-location-settings.json
+.electional-aspect-profiles.json
 
 # Environment files
 .env

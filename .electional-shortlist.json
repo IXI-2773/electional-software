@@ -1,5 +1,34 @@
 [
   {
+    "addedAt": "2026-06-07T19:58:47.239177+00:00",
+    "aspects": [
+      "Moon trine Mercury (0 deg 20 min orb, separating, +11.36 deg/day)",
+      "Venus conjunction Jupiter (1 deg 57 min orb, applying, -0.98 deg/day, exact in 2d near Tue, Jun 9, 12:59 PM PDT)",
+      "Mercury square Saturn (3 deg 01 min orb, applying, -1.31 deg/day, exact in 2d 9h near Tue, Jun 9, 10:38 PM PDT)"
+    ],
+    "cleanliness": 51,
+    "confidence": 67,
+    "datetime": "2026-06-07T19:58:00+00:00",
+    "flags": [
+      "- Tightening stress: Mercury square Saturn.",
+      "- Last Quarter favors completion, release, or reduction."
+    ],
+    "formattedTime": "Sun, Jun 7, 12:58 PM PDT",
+    "id": "5d02ca68cf56",
+    "latitude": 33.7206,
+    "location": "Indio, California",
+    "longitude": -116.2156,
+    "lunarPhase": "Last Quarter (56% lit, age 21.6 days, waning)",
+    "note": "",
+    "objective": "Launch or publish",
+    "readiness": 42,
+    "score": 64,
+    "tags": [],
+    "timezone": "America/Los_Angeles",
+    "title": "Electional window",
+    "volatility": 38
+  },
+  {
     "addedAt": "2026-05-29T08:13:25.261175+00:00",
     "aspects": [
       "Venus square Saturn (0 deg 13 min orb, separating, +1.10 deg/day)"

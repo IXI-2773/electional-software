@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from .aspects import DEFAULT_ASPECT_PROFILE_ID, aspect_profile_by_id, load_aspect_profiles
 from .locations import corrected_known_location_values, home_location_for_app
 from .point_sets import DEFAULT_POINT_SET_ID, get_point_set
 from .presets import ELECTIONAL_PRESETS
@@ -38,15 +39,16 @@ OBJECTIVES = (
 )
 DEFAULT_DISPLAY_OPTIONS = {
     "show_aspects": True,
-    "show_lots": False,
-    "show_nodes": False,
-    "show_fixed_stars": False,
-    "show_score_overlay": True,
-    "compact_wheel": True,
+    "show_lots": True,
+    "show_nodes": True,
+    "show_fixed_stars": True,
+    "show_score_overlay": False,
+    "compact_wheel": False,
     "wheel_zoom": 0.98,
-    "point_set": DEFAULT_POINT_SET_ID,
+    "point_set": "full-electional",
     "page_mode": "wheel",
-    "right_panel_theme": "astrolabe",
+    "right_panel_theme": "classic-natal",
+    "wheel_view_preset": "full-classic",
 }
 
 
@@ -58,12 +60,12 @@ def infer_point_set_id(display_options: dict[str, Any]) -> str:
         return "full-electional"
     if display_options.get("show_nodes"):
         return "planets-nodes"
-    return DEFAULT_POINT_SET_ID
+    return str(DEFAULT_DISPLAY_OPTIONS["point_set"])
 
 
 def infer_page_mode_id(display_options: dict[str, Any]) -> str:
     page_mode = str(display_options.get("page_mode") or "").strip().lower()
-    if page_mode in {"wheel", "wheel-aspectarian", "analysis", "classical-point-data", "medieval-data", "transit-search"}:
+    if page_mode in {"wheel", "wheel-aspectarian", "analysis", "classical-point-data", "medieval-data", "transit-search", "validation", "reports"}:
         return page_mode
     return "wheel"
 
@@ -72,7 +74,14 @@ def infer_right_panel_theme(display_options: dict[str, Any]) -> str:
     theme = str(display_options.get("right_panel_theme") or "").strip().lower()
     if theme in {"astrolabe", "classic-natal"}:
         return theme
-    return "astrolabe"
+    return "classic-natal"
+
+
+def infer_wheel_view_preset(display_options: dict[str, Any]) -> str:
+    preset = str(display_options.get("wheel_view_preset") or "").strip().lower()
+    if preset in {"clean", "full-classic", "diagnostic"}:
+        return preset
+    return "full-classic"
 
 
 def load_session_state(path: Path = SESSION_PATH) -> dict[str, Any]:
@@ -116,7 +125,10 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
     zodiac_system = get_zodiac_system(str(state.get("zodiac_system") or DEFAULT_ZODIAC_SYSTEM_ID)).name
     house_system = get_house_system(str(state.get("house_system") or DEFAULT_HOUSE_SYSTEM_ID)).name
     aspects = state.get("aspects") if isinstance(state.get("aspects"), dict) else {}
+    aspect_profiles = load_aspect_profiles()
+    active_aspect_profile = aspect_profile_by_id(str(state.get("active_aspect_profile") or DEFAULT_ASPECT_PROFILE_ID), aspect_profiles)
     display_options = state.get("display_options") if isinstance(state.get("display_options"), dict) else {}
+    manual_validation = state.get("manual_validation_comparison") if isinstance(state.get("manual_validation_comparison"), dict) else {}
     try:
         wheel_zoom = float(display_options.get("wheel_zoom", DEFAULT_DISPLAY_OPTIONS["wheel_zoom"]))
     except (TypeError, ValueError):
@@ -134,6 +146,7 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
         "preset": preset if preset in preset_names else ELECTIONAL_PRESETS[1].name,
         "zodiac_system": zodiac_system,
         "house_system": house_system,
+        "active_aspect_profile": active_aspect_profile.id,
         "aspects": {str(key): bool(value) for key, value in aspects.items()},
         "scan_hours": str(state.get("scan_hours") or DEFAULT_SCAN_HOURS),
         "step_minutes": str(state.get("step_minutes") or DEFAULT_STEP_MINUTES),
@@ -159,6 +172,14 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
         "avoid_angular_malefics": bool(state.get("avoid_angular_malefics", False)),
         "require_moon_non_void": bool(state.get("require_moon_non_void", False)),
         "avoid_objective_antipatterns": bool(state.get("avoid_objective_antipatterns", False)),
+        "manual_validation_comparison": {
+            "source": str(manual_validation.get("source") or "CapricornPROMETHEUS"),
+            "inputText": str(manual_validation.get("inputText") or ""),
+            "rows": manual_validation.get("rows", []) if isinstance(manual_validation.get("rows"), list) else [],
+            "parsedCount": int(manual_validation.get("parsedCount", 0) or 0),
+            "maxDeltaDegrees": manual_validation.get("maxDeltaDegrees"),
+            "status": str(manual_validation.get("status") or "Not run"),
+        },
         "display_options": {
             **{
                 key: bool(display_options.get(key, default_value))
@@ -169,5 +190,6 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
             "point_set": infer_point_set_id(display_options),
             "page_mode": infer_page_mode_id(display_options),
             "right_panel_theme": infer_right_panel_theme(display_options),
+            "wheel_view_preset": infer_wheel_view_preset(display_options),
         },
     }

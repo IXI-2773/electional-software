@@ -1334,6 +1334,12 @@ def format_aspect_highlight_dashboard(highlights: Mapping[str, object] | None) -
         ("Local Day", highlights.get("localDay")),
         ("Next 24h", highlights.get("rolling24Hours")),
     )
+    lines: list[str] = []
+    for title, result in sections:
+        lines.append(title)
+        lines.append(format_aspect_highlight(result if isinstance(result, Mapping) else None))
+        lines.append("")
+    return "\n".join(lines).strip()
 
 
 def validation_summary_lines(snapshot: Mapping[str, object], location: object | None = None) -> list[str]:
@@ -1378,12 +1384,6 @@ def validation_summary_lines(snapshot: Mapping[str, object], location: object | 
     if not snapshot.get("traditionalRulesEnabled", True):
         lines.append("- True 13-Sign mode: traditional dignity/rulership scoring is disabled.")
     return lines
-    lines: list[str] = []
-    for title, result in sections:
-        lines.append(title)
-        lines.append(format_aspect_highlight(result if isinstance(result, Mapping) else None))
-        lines.append("")
-    return "\n".join(lines).strip()
 
 
 def format_aspect_timeline(
@@ -1605,13 +1605,6 @@ def format_aspectarian(snapshot: dict[str, object]) -> str:
             by_pair[key] = aspect
 
     lines = ["Aspectarian", "      " + " ".join(f"{abbr:>4}" for abbr in abbreviations)]
-    glyphs = {
-        "Conjunction": "Conj",
-        "Trine": "Tri",
-        "Square": "Sqr",
-        "Opposition": "Opp",
-        "Sextile": "Sex",
-    }
     for row_index, row_name in enumerate(names):
         row = [f"{abbreviations[row_index]:<5}"]
         for column_index, column_name in enumerate(names):
@@ -1622,7 +1615,18 @@ def format_aspectarian(snapshot: dict[str, object]) -> str:
             if not aspect:
                 row.append("   -")
                 continue
-            marker = glyphs.get(str(aspect.get("aspectName")), str(aspect.get("aspectName", ""))[:3].title())
+            fallback_markers = {
+                "Conjunction": "Conj",
+                "Trine": "Tri",
+                "Square": "Sqr",
+                "Opposition": "Opp",
+                "Sextile": "Sex",
+            }
+            marker = str(
+                aspect.get("aspectAbbreviation")
+                or aspect.get("aspectGlyph")
+                or fallback_markers.get(str(aspect.get("aspectName")), str(aspect.get("aspectName", ""))[:3].title())
+            )
             tone = "!" if aspect.get("tone") == "stress" else "+" if aspect.get("tone") == "support" else "*"
             row.append(f"{tone}{marker[:3]:>3}")
         lines.append(" ".join(row))

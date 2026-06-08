@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+import math
 from pathlib import Path
+import struct
 from tempfile import TemporaryDirectory
 import unittest
+import zlib
 from backend.electional.desktop import (
     DETAIL_PAGE_TABS,
     ElectionalDesktopApp,
@@ -13,18 +16,33 @@ from backend.electional.desktop import (
     VIEW_PAGE_QUICK_ACTIONS,
     VIEW_PAGE_TARGETS,
     VIEW_PAGE_STRIP_ACTIONS,
+    WHEEL_VIEW_PRESET_LABELS,
     _polar,
     aspect_curve_points,
+    build_manual_validation_comparison,
     button_health_lines,
-    classic_dial_labels,
+    candidate_board_summary,
+    candidate_metric_badges,
+    classic_dignity_table_text,
     classic_planet_degree_text,
     constellation_arc_segments,
+    analysis_metric_cards,
+    analysis_notice_lines,
     body_marker_offsets,
     fixed_star_contact_count,
+    house_geometry_lines,
+    house_geometry_insight_lines,
+    house_geometry_summary,
     house_label_screen_angle,
+    house_span_label,
+    house_span_rows,
+    left_status_chip_lines,
+    timeline_item_display,
+    timeline_visual_rows,
     compact_time_label,
     compact_judgment_lines,
     location_summary,
+    parse_manual_validation_values,
     planet_abbreviation,
     planet_glyph,
     planet_marker_offsets,
@@ -37,7 +55,17 @@ from backend.electional.desktop import (
     summary_chip_lines,
     uses_classic_wheel_theme,
     wheel_degrees,
+    wheel_degrees_from_xy,
     window_score_color,
+    workflow_next_step_lines,
+    validation_workbench_lines,
+)
+from backend.electional.capricorn_assets import (
+    classify_capricorn_asset,
+    format_capricorn_asset_audit,
+    import_capricorn_aspect_profiles,
+    inventory_capricorn_assets,
+    parse_capricorn_aspect_config,
 )
 from backend.electional.chart import build_snapshot
 from backend.electional.locations import (
@@ -75,6 +103,7 @@ from backend.electional.reporting import (
     constellation_lines,
     election_flag_lines,
     format_aspectarian,
+    format_aspect_highlight_dashboard,
     format_aspect_summary,
     format_dignity_summary,
     format_fixed_star_contact,
@@ -133,15 +162,30 @@ from backend.electional.validation import validate_election_inputs, validate_sea
 
 class DesktopUiHelpersTest(unittest.TestCase):
     def test_top_navigation_uses_current_workspace_labels(self) -> None:
-        self.assertEqual(TOP_NAV_ITEMS, ("Wheel", "Advisor", "Improve", "Decision", "Compare", "Search", "Factors", "Settings", "Map"))
+        self.assertEqual(TOP_NAV_ITEMS, ("Wheel", "Search", "Analysis", "Timeline", "Validation", "Reports"))
         self.assertNotIn("Selected Chart", TOP_NAV_ITEMS)
         self.assertNotIn("Configuration", TOP_NAV_ITEMS)
         self.assertNotIn("Astro Mapping", TOP_NAV_ITEMS)
+        self.assertNotIn("Settings", TOP_NAV_ITEMS)
 
     def test_ribbon_groups_keep_primary_actions_visible(self) -> None:
         labels = [label for _group, items in RIBBON_GROUPS for label in items]
 
-        for expected in ("Show Current", "Find Best", "Advisor", "Improve", "Decision", "Compare", "Factors", "Search Page", "Day Report", "Report", "Map"):
+        for expected in (
+            "Show Current",
+            "Find Best",
+            "Transits/Timeline",
+            "Electional Search",
+            "Void Course",
+            "Heliacal Search",
+            "Out of Bounds",
+            "Aspect Config",
+            "Assets",
+            "Search Page",
+            "Day Report",
+            "Report",
+            "Map",
+        ):
             self.assertIn(expected, labels)
         self.assertIn("Aspects", labels)
         self.assertIn("Aspect Strength", labels)
@@ -149,17 +193,81 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertNotIn("Button Health", labels)
         self.assertLessEqual(len(labels), 25)
         self.assertNotIn("Transits", labels)
-        self.assertNotIn("Electional Search", labels)
         self.assertLessEqual(RIBBON_COLUMNS, 2)
+
+    def test_capricorn_asset_inventory_classifies_safe_import_targets(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Aspect Configurations").mkdir()
+            (root / "Backgrounds").mkdir()
+            (root / "Aspect Configurations" / "Major.asp_conf").write_bytes(b"config")
+            (root / "Backgrounds" / "background.bmp").write_bytes(b"bitmap")
+            (root / "manifest").write_text("manifest", encoding="utf-8")
+
+            inventory = inventory_capricorn_assets(root)
+            audit = format_capricorn_asset_audit(inventory)
+
+        self.assertEqual(classify_capricorn_asset(Path("Major.asp_conf")), "importable-config")
+        self.assertEqual(classify_capricorn_asset(Path("background.bmp")), "reference-only")
+        self.assertTrue(inventory.exists)
+        self.assertEqual(inventory.importable_config_count, 1)
+        self.assertEqual(inventory.reference_only_count, 2)
+        self.assertIn("Safe import policy", audit)
+        self.assertIn("Aspect Configurations", audit)
+
+    def test_capricorn_aspect_import_converts_binary_config_facts(self) -> None:
+        def int_field(field_id: int, value: int) -> bytes:
+            return bytes((0x02, 0x00, field_id, 0x00)) + b"\x00\x00\x00\x00" + struct.pack("<i", value)
+
+        def double_field(field_id: int, degrees: float) -> bytes:
+            return bytes((0x01, 0x00, field_id, 0x00)) + b"\x00\x00\x00\x00" + struct.pack("<d", math.radians(degrees))
+
+        def string_field(field_id: int, text: str) -> bytes:
+            return bytes((0x04, 0x00, field_id, 0x00)) + b"\x00\x00\x00\x00" + text.encode("utf-16le") + b"\x00\x00"
+
+        def record(name: str, abbr: str, active: int, nature: int, angle: float, orb: float) -> bytes:
+            before_name = int_field(0x23, active) + int_field(0x24, 1) + string_field(0x03, name)[:8]
+            return (
+                b"\x00" * (96 - len(before_name))
+                + before_name
+                + name.encode("utf-16le")
+                + b"\x00\x00"
+                + string_field(0x25, abbr)
+                + int_field(0x26, nature)
+                + double_field(0x27, angle)
+                + double_field(0x2B, orb)
+                + b"\x00" * 96
+            )
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            aspect_dir = root / "Aspect Configurations"
+            aspect_dir.mkdir()
+            path = aspect_dir / "Tiny.asp_conf"
+            payload = b"\x00" * 2500 + record("Conjunction", "Cnj", 1, 0, 0, 10) + record("Semisquare", "Sem", 0, 2, 45, 3)
+            path.write_bytes(b"A\x00A\x00" + zlib.compress(payload))
+            profile = parse_capricorn_aspect_config(path)
+            result = import_capricorn_aspect_profiles(root, profile_path=root / "profiles.json")
+
+        by_id = {aspect.id: aspect for aspect in profile.aspects}
+        self.assertEqual(profile.name, "Capricorn Tiny")
+        self.assertTrue(by_id["conjunction"].enabled)
+        self.assertFalse(by_id["semisquare"].enabled)
+        self.assertEqual(by_id["semisquare"].tone, "stress")
+        self.assertAlmostEqual(by_id["semisquare"].angle, 45.0)
+        self.assertAlmostEqual(by_id["conjunction"].default_orb, 10.0)
+        self.assertEqual(result.imported_profiles, 1)
 
     def test_button_health_reports_visible_button_wiring(self) -> None:
         text = "\n".join(button_health_lines(DETAIL_PAGE_TABS))
 
         self.assertIn("Button Health", text)
         self.assertIn("All visible top, ribbon, and page-strip buttons have wired actions", text)
-        self.assertIn("Improve", TOP_NAV_ITEMS)
+        self.assertIn("Validation", TOP_NAV_ITEMS)
         self.assertIn("Angles", VIEW_PAGE_TARGETS)
         self.assertIn("Aspect Strength", VIEW_PAGE_TARGETS)
+        self.assertIn("Validation", VIEW_PAGE_TARGETS)
+        self.assertIn("Reports", VIEW_PAGE_TARGETS)
         self.assertIn("Save Wheel", VIEW_PAGE_STRIP_ACTIONS)
 
     def test_view_page_quick_actions_stay_compact(self) -> None:
@@ -183,13 +291,54 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(planet_glyph("Unknown"), "Un")
         self.assertTrue(uses_classic_wheel_theme("Classic Natal"))
         self.assertFalse(uses_classic_wheel_theme("Astrolabe"))
-        self.assertEqual(classic_dial_labels(), (("10", "4"), ("1", "7"), ("3", "9")))
         self.assertEqual(classic_planet_degree_text({"zodiac": {"degree": 14, "minute": 7}}), "14\u00b007")
         self.assertEqual(classic_planet_degree_text({}), "")
+        self.assertEqual(classic_dignity_table_text({"dignity": {"label": "Unavailable"}}), "n/a")
+        self.assertEqual(classic_dignity_table_text({"dignity": {"label": "Detriment"}}), "Detr.")
+        self.assertEqual(classic_dignity_table_text({"dignity": {"label": "Rulership"}}), "Rulersh")
+        self.assertEqual(WHEEL_VIEW_PRESET_LABELS["full-classic"], "Full Classic")
+
+    def test_manual_validation_parses_and_compares_reference_values(self) -> None:
+        snapshot = {
+            "zodiacSystem": type("Zodiac", (), {"id": "sidereal-lahiri", "name": "Sidereal Lahiri"})(),
+            "houseSystem": type("House", (), {"name": "Topocentric"})(),
+            "ayanamsha": 24.0,
+            "engine": "Astronomy Engine",
+            "positions": [
+                {"name": "Sun", "longitude": 52.1334},
+                {"name": "Moon", "longitude": 144.75},
+            ],
+            "angles": [{"id": "asc", "shortName": "ASC", "longitude": 120.0}],
+            "houseCusps": [{"house": 1, "longitude": 120.0}],
+            "accuracyAudit": {
+                "label": "Swiss verified",
+                "summary": "Swiss integration verified.",
+                "maxPositionDeltaDegrees": 0.0,
+                "maxAngleDeltaDegrees": 0.0,
+                "maxHouseDeltaDegrees": 0.0,
+            },
+        }
+
+        parsed = parse_manual_validation_values("Sun Taurus 22deg08\nASC Leo 00 00", zodiac_system_id="sidereal-lahiri")
+        result = build_manual_validation_comparison(snapshot, "Sun Taurus 22deg08\nASC Leo 00 00", source="CapricornPROMETHEUS")
+        lines = "\n".join(validation_workbench_lines(snapshot, None, result))
+
+        self.assertEqual(len([row for row in parsed if row.get("status") == "parsed"]), 2)
+        self.assertEqual(result["status"], "Pass")
+        self.assertIn("CapricornPROMETHEUS", lines)
+        self.assertIn("Max delta", lines)
+
+    def test_manual_validation_uses_true_13_sign_constellation_starts(self) -> None:
+        parsed = parse_manual_validation_values("Sun Tau 22 00", zodiac_system_id="true-13-sign")
+
+        self.assertAlmostEqual(float(parsed[0]["referenceLongitude"]), 76.0)
 
     def test_wheel_degrees_places_ascendant_on_left_side(self) -> None:
         self.assertEqual(wheel_degrees(110.0, 110.0), 180)
         self.assertEqual(wheel_degrees(290.0, 110.0), 0)
+        self.assertEqual(wheel_degrees_from_xy(100.0, 100.0, 200.0, 100.0), 0)
+        self.assertEqual(wheel_degrees_from_xy(100.0, 100.0, 100.0, 0.0), 90)
+        self.assertEqual(wheel_degrees_from_xy(100.0, 100.0, 0.0, 100.0), 180)
         self.assertEqual(wheel_degrees(20.0, 110.0), 90)
         self.assertEqual(wheel_degrees(200.0, 110.0), 270)
 
@@ -197,6 +346,42 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(house_label_screen_angle(90.0, 120.0, 90.0), 195.0)
         self.assertEqual(house_label_screen_angle(270.0, 300.0, 90.0), 15.0)
         self.assertEqual(house_label_screen_angle(330.0, 0.0, 90.0), 75.0)
+
+    def test_house_geometry_summary_exposes_unequal_house_spans(self) -> None:
+        snapshot = {
+            "houseSystem": type("House", (), {"name": "Topocentric"})(),
+            "houseCusps": [
+                {"house": 1, "longitude": 10.0, "source": "Swiss Ephemeris"},
+                {"house": 2, "longitude": 35.0, "source": "Swiss Ephemeris"},
+                {"house": 3, "longitude": 70.0, "source": "Swiss Ephemeris"},
+                {"house": 4, "longitude": 100.0, "source": "Swiss Ephemeris"},
+                {"house": 5, "longitude": 130.0, "source": "Swiss Ephemeris"},
+                {"house": 6, "longitude": 160.0, "source": "Swiss Ephemeris"},
+                {"house": 7, "longitude": 190.0, "source": "Swiss Ephemeris"},
+                {"house": 8, "longitude": 215.0, "source": "Swiss Ephemeris"},
+                {"house": 9, "longitude": 250.0, "source": "Swiss Ephemeris"},
+                {"house": 10, "longitude": 280.0, "source": "Swiss Ephemeris"},
+                {"house": 11, "longitude": 310.0, "source": "Swiss Ephemeris"},
+                {"house": 12, "longitude": 340.0, "source": "Swiss Ephemeris"},
+            ],
+        }
+
+        rows = house_span_rows(snapshot)
+        summary = house_geometry_summary(snapshot)
+        lines = "\n".join(house_geometry_lines(snapshot))
+        insight = "\n".join(house_geometry_insight_lines(snapshot))
+
+        self.assertEqual(rows[0]["span"], 25.0)
+        self.assertIn("Topocentric", summary)
+        self.assertIn("unequal quadrant/accounted houses", summary)
+        self.assertIn("Swiss Ephemeris", summary)
+        self.assertIn("H01", lines)
+        self.assertIn("25.00 deg", lines)
+        self.assertIn("Widest", insight)
+        self.assertIn("Narrowest", insight)
+        self.assertIn("project the local sky onto the ecliptic", insight)
+        self.assertEqual(house_span_label(rows[0]["span"]), "25.0deg")
+        self.assertEqual(house_span_label(None), "")
 
     def test_real_chart_angles_render_in_expected_quadrants(self) -> None:
         snapshot = build_snapshot("2026-05-26", "09:00", get_location("los-angeles"), "traditional-lilly")
@@ -258,6 +443,190 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("May 26 9:23 PM PDT", compact_time_label(snapshot))
         self.assertIn("Home Base", location_summary(location))
         self.assertIn("America/Los_Angeles", location_summary(location))
+
+    def test_left_status_chip_lines_surface_current_workflow_context(self) -> None:
+        chips = left_status_chip_lines(
+            "2026-06-05",
+            "13:09",
+            "Indio, California",
+            "America/Los_Angeles",
+            "True 13-Sign",
+            "Topocentric",
+            "Low Risk",
+            "Validation: Swiss-backed",
+        )
+
+        self.assertEqual(chips[0], "Time: 2026-06-05 13:09")
+        self.assertIn("Indio, California", chips[1])
+        self.assertIn("True 13-Sign / Topocentric", chips[2])
+        self.assertEqual(chips[3], "Search: Low Risk")
+        self.assertEqual(chips[4], "Validation: Swiss-backed")
+
+    def test_candidate_board_summary_reports_count_mode_and_selection(self) -> None:
+        summary = candidate_board_summary(
+            [{"score": 91}, {"score": 84}],
+            evaluated_count=48,
+            search_mode="low-risk",
+            selected_index=1,
+            displayed_source="selected candidate",
+        )
+
+        self.assertIn("2 candidates", summary)
+        self.assertIn("48 evaluated", summary)
+        self.assertIn("Low Risk", summary)
+        self.assertIn("Selected #2", summary)
+
+    def test_workflow_next_step_lines_guide_user_actions(self) -> None:
+        self.assertIn(
+            "show the current chart",
+            workflow_next_step_lines(
+                has_chart=False,
+                candidate_count=0,
+                selected_index=-1,
+                displayed_source="input chart",
+            )[0],
+        )
+        blocked = workflow_next_step_lines(
+            has_chart=True,
+            candidate_count=0,
+            selected_index=-1,
+            displayed_source="input chart",
+            has_rejections=True,
+        )
+        self.assertIn("loosen", blocked[0])
+        self.assertIn("rejection reasons", blocked[1])
+        pick = workflow_next_step_lines(
+            has_chart=True,
+            candidate_count=3,
+            selected_index=-1,
+            displayed_source="input chart",
+        )
+        self.assertIn("pick a candidate", pick[0])
+        decide = workflow_next_step_lines(
+            has_chart=True,
+            candidate_count=3,
+            selected_index=1,
+            displayed_source="selected candidate",
+        )
+        self.assertIn("window #2", decide[0])
+        self.assertIn("Shortlist", decide[1])
+
+    def test_candidate_metric_badges_surface_quality_and_missing_data(self) -> None:
+        window = {
+            "scoreBreakdown": {
+                "objectiveMatches": 2,
+                "diagnostics": {
+                    "confidence": {"score": 84},
+                    "cleanliness": {"score": 79},
+                    "volatility": {"score": 24},
+                },
+            },
+            "detectedAspects": [
+                {"tone": "support"},
+                {"tone": "support"},
+                {"tone": "stress"},
+            ],
+            "positions": [
+                {"name": "Jupiter", "isAngular": True},
+                {"name": "Mars", "isAngular": False},
+            ],
+            "moonCondition": {"voidOfCourse": {"isVoid": False}},
+            "searchStage": "refined",
+            "searchResolutionMinutes": 10,
+        }
+
+        labels = [label for label, _tone in candidate_metric_badges(window)]
+
+        self.assertIn("Conf 84", labels)
+        self.assertIn("Clean 79", labels)
+        self.assertIn("Vol 24", labels)
+        self.assertIn("Fit 2", labels)
+        self.assertIn("+2 / !1", labels)
+        self.assertIn("Moon OK", labels)
+        self.assertIn("Ang+ Yes", labels)
+        self.assertIn("10m refined", labels)
+        self.assertIn("Conf --", [label for label, _tone in candidate_metric_badges({})])
+
+    def test_aspect_dashboard_formatter_returns_three_highlight_sections(self) -> None:
+        aspect = {
+            "label": "Sun trine Moon",
+            "tone": "support",
+            "orbText": "0 deg 40 min",
+            "phaseLabel": "Applying",
+            "perfectsAtText": "Fri 2:20 PM",
+            "strength": 12.4,
+            "formattedTime": "Fri, Jun 5, 1:09 PM PDT",
+        }
+
+        text = format_aspect_highlight_dashboard({"current": aspect, "localDay": aspect, "rolling24Hours": aspect})
+
+        self.assertIn("Current", text)
+        self.assertIn("Local Day", text)
+        self.assertIn("Next 24h", text)
+        self.assertIn("Sun trine Moon", text)
+        self.assertNotEqual(text, "None")
+
+    def test_timeline_visual_rows_format_support_stress_and_missing_data(self) -> None:
+        support = {
+            "formattedTime": "Fri, Jun 5, 1:09 PM PDT",
+            "label": "Sun trine Moon",
+            "tone": "support",
+            "orbText": "0 deg 40 min",
+            "isApplying": True,
+            "perfectsAtText": "Fri 2:20 PM",
+            "strength": 14.2,
+            "bodies": ["Sun", "Moon"],
+        }
+        stress = {"label": "Mars square Saturn", "tone": "stress", "bodies": ["Mars", "Saturn"]}
+
+        rows = timeline_visual_rows({"timelineByTime": [support, stress]}, limit=4)
+        empty_rows = timeline_visual_rows({}, limit=4)
+
+        self.assertEqual(rows[0]["toneLabel"], "Support")
+        self.assertEqual(rows[0]["phase"], "Applying")
+        self.assertEqual(rows[0]["strength"], "14.2")
+        self.assertEqual(rows[0]["bodies"], ["Sun", "Moon"])
+        self.assertEqual(rows[1]["toneLabel"], "Stress")
+        self.assertEqual(rows[1]["orb"], "orb n/a")
+        self.assertEqual(timeline_item_display(stress)["peak"], "exact time n/a")
+        self.assertEqual(empty_rows, [])
+
+    def test_analysis_helpers_surface_diagnostics_validation_and_rejections(self) -> None:
+        zodiac = type("Zodiac", (), {"name": "True 13-Sign"})()
+        house = type("House", (), {"name": "Topocentric"})()
+        snapshot = {
+            "score": 88,
+            "note": "Strong window.",
+            "traditionalRulesEnabled": False,
+            "zodiacSystem": zodiac,
+            "houseSystem": house,
+            "engine": "Astronomy Engine",
+            "ayanamsha": 24.1,
+            "detectedAspects": [{"tone": "support"}, {"tone": "stress"}],
+            "positions": [{"name": "Jupiter", "isAngular": True}],
+            "scoreBreakdown": {
+                "diagnostics": {
+                    "confidence": {"score": 82, "summary": "Signals agree."},
+                    "cleanliness": {"score": 76, "summary": "Mostly clean."},
+                    "volatility": {"score": 22, "summary": "Stable enough."},
+                }
+            },
+            "accuracyAudit": {"label": "Swiss verified", "summary": "Tolerances pass."},
+        }
+        rejection_summary = {
+            "topReasons": [("major stress present", 3)],
+            "suggestedRelaxations": ["Relax stress temporarily."],
+        }
+
+        cards = analysis_metric_cards(snapshot, [{"score": 88}])
+        notices = analysis_notice_lines(snapshot, rejection_summary)
+        labels = [label for label, _value, _note, _tone in cards]
+
+        self.assertIn("Confidence", labels)
+        self.assertIn(("Support", "1", "Selected supportive aspects in orb.", "support"), cards)
+        self.assertTrue(any("True 13-Sign mode" in line for line in notices))
+        self.assertTrue(any("major stress present" in line for line in notices))
+        self.assertTrue(any("Relax stress temporarily" in line for line in notices))
 
     def test_validation_accepts_am_pm_time_and_custom_location(self) -> None:
         errors = validate_election_inputs("2026-05-26", "09:00 AM", "34.0522", "-118.2437", "America/Los_Angeles")
@@ -1453,11 +1822,13 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertFalse(loaded["display_options"]["show_aspects"])
         self.assertFalse(loaded["display_options"]["show_score_overlay"])
         self.assertTrue(loaded["display_options"]["compact_wheel"])
-        self.assertFalse(loaded["display_options"]["show_fixed_stars"])
+        self.assertTrue(loaded["display_options"]["show_fixed_stars"])
         self.assertEqual(loaded["display_options"]["wheel_zoom"], 0.94)
-        self.assertEqual(loaded["display_options"]["point_set"], "ten-planets")
+        self.assertEqual(loaded["display_options"]["point_set"], "full-electional")
         self.assertEqual(loaded["display_options"]["page_mode"], "wheel")
         self.assertEqual(loaded["display_options"]["right_panel_theme"], "classic-natal")
+        self.assertEqual(loaded["display_options"]["wheel_view_preset"], "full-classic")
+        self.assertEqual(loaded["manual_validation_comparison"]["source"], "CapricornPROMETHEUS")
 
     def test_user_locations_round_trip(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -1523,6 +1894,9 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(high["display_options"]["wheel_zoom"], 1.18)
         self.assertEqual(low["display_options"]["wheel_zoom"], 0.82)
         self.assertEqual(default["display_options"]["wheel_zoom"], 0.98)
+        self.assertEqual(default["display_options"]["right_panel_theme"], "classic-natal")
+        self.assertEqual(default["display_options"]["wheel_view_preset"], "full-classic")
+        self.assertFalse(default["display_options"]["show_score_overlay"])
 
     def test_user_location_upsert_replaces_same_name(self) -> None:
         original = LocationPreset("user-home", "Home Base", 33.0, -118.0, "America/Los_Angeles")

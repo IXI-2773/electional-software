@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from .aspects import detect_aspects
+from .aspects import Aspect, aspect_from_mapping, aspect_profile_by_id, detect_aspects
 from .chart import build_election_report, build_snapshot, build_transit_windows
 from .locations import LocationPreset, get_location
 from .presets import apply_dignities, filter_positions_for_preset, get_preset, summarize_orb
@@ -96,6 +96,26 @@ def search_config_from_payload(payload: dict[str, Any]) -> SearchConfig:
     return config
 
 
+def aspect_definitions_from_payload(payload: dict[str, Any]) -> tuple[Aspect, ...] | None:
+    explicit = payload.get("aspectDefinitions")
+    if isinstance(explicit, list):
+        definitions = [aspect_from_mapping(item) for item in explicit if isinstance(item, dict)]
+        return tuple(definitions) if definitions else None
+    profile_id = payload.get("aspectProfileId")
+    if profile_id:
+        return aspect_profile_by_id(str(profile_id)).aspects
+    return None
+
+
+def selected_aspects_from_payload(payload: dict[str, Any], preset: object, aspect_definitions: tuple[Aspect, ...] | None) -> list[str] | tuple[str, ...]:
+    explicit = payload.get("aspects")
+    if isinstance(explicit, list) and explicit:
+        return [str(item) for item in explicit]
+    if aspect_definitions:
+        return [aspect.id for aspect in aspect_definitions if aspect.enabled]
+    return preset.aspect_ids
+
+
 def decode_json_object(raw_body: bytes) -> dict[str, Any]:
     payload = json.loads(raw_body or b"{}")
     if not isinstance(payload, dict):
@@ -107,8 +127,9 @@ def build_score_response(payload: dict[str, Any]) -> dict[str, Any]:
     preset = get_preset(payload.get("presetId"))
     positions = apply_dignities(payload.get("positions", []), preset)
     preset_positions = filter_positions_for_preset(positions, preset)
-    selected_aspects = payload.get("aspects") or preset.aspect_ids
-    detected = detect_aspects(preset_positions, selected_aspects, preset.aspect_orbs)
+    aspect_definitions = aspect_definitions_from_payload(payload)
+    selected_aspects = selected_aspects_from_payload(payload, preset, aspect_definitions)
+    detected = detect_aspects(preset_positions, selected_aspects, preset.aspect_orbs, aspect_definitions=aspect_definitions)
 
     return {
         "preset": preset.to_json(),
@@ -122,15 +143,19 @@ def build_score_response(payload: dict[str, Any]) -> dict[str, Any]:
 
 def build_chart_response(payload: dict[str, Any]) -> dict[str, Any]:
     location = location_from_payload(payload)
+    preset = get_preset(str(payload.get("presetId") or "traditional-lilly"))
+    aspect_definitions = aspect_definitions_from_payload(payload)
+    selected_aspects = selected_aspects_from_payload(payload, preset, aspect_definitions)
     snapshot = build_snapshot(
         str(payload.get("date") or "2026-05-26"),
         str(payload.get("time") or "09:00"),
         location,
-        str(payload.get("presetId") or "traditional-lilly"),
-        payload.get("aspects"),
+        preset.id,
+        selected_aspects,
         str(payload.get("zodiacSystemId") or payload.get("zodiacSystem") or "sidereal-lahiri"),
         str(payload.get("houseSystemId") or payload.get("houseSystem") or "whole-sign"),
         str(payload.get("objective") or "Launch or publish"),
+        aspect_definitions,
     )
     return {"location": location.to_json(), "snapshot": snapshot}
 
@@ -138,16 +163,20 @@ def build_chart_response(payload: dict[str, Any]) -> dict[str, Any]:
 def build_search_response(payload: dict[str, Any]) -> dict[str, Any]:
     location = location_from_payload(payload)
     config = search_config_from_payload(payload)
+    preset = get_preset(str(payload.get("presetId") or "traditional-lilly"))
+    aspect_definitions = aspect_definitions_from_payload(payload)
+    selected_aspects = selected_aspects_from_payload(payload, preset, aspect_definitions)
     windows = build_transit_windows(
         str(payload.get("date") or "2026-05-26"),
         str(payload.get("time") or "09:00"),
         location,
-        str(payload.get("presetId") or "traditional-lilly"),
-        payload.get("aspects"),
+        preset.id,
+        selected_aspects,
         str(payload.get("zodiacSystemId") or payload.get("zodiacSystem") or "sidereal-lahiri"),
         str(payload.get("houseSystemId") or payload.get("houseSystem") or "whole-sign"),
         config,
         str(payload.get("objective") or "Launch or publish"),
+        aspect_definitions,
     )
     return {"location": location.to_json(), "search": asdict(config), "resultCount": len(windows), "windows": windows}
 
@@ -155,16 +184,20 @@ def build_search_response(payload: dict[str, Any]) -> dict[str, Any]:
 def build_report_response(payload: dict[str, Any]) -> dict[str, Any]:
     location = location_from_payload(payload)
     config = search_config_from_payload(payload)
+    preset = get_preset(str(payload.get("presetId") or "traditional-lilly"))
+    aspect_definitions = aspect_definitions_from_payload(payload)
+    selected_aspects = selected_aspects_from_payload(payload, preset, aspect_definitions)
     report = build_election_report(
         str(payload.get("date") or "2026-05-26"),
         str(payload.get("time") or "09:00"),
         location,
-        str(payload.get("presetId") or "traditional-lilly"),
-        payload.get("aspects"),
+        preset.id,
+        selected_aspects,
         str(payload.get("zodiacSystemId") or payload.get("zodiacSystem") or "sidereal-lahiri"),
         str(payload.get("houseSystemId") or payload.get("houseSystem") or "whole-sign"),
         config,
         str(payload.get("objective") or "Launch or publish"),
+        aspect_definitions,
     )
     windows = report["windows"]
     selected_window = windows[0] if windows else report["snapshot"]

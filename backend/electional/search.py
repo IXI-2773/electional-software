@@ -35,6 +35,11 @@ class SearchConfig:
     avoid_angular_malefics: bool = False
     require_moon_non_void: bool = False
     avoid_objective_antipatterns: bool = False
+    target_aspect_text: str = ""
+    target_aspect_body_text: str = ""
+    target_planet_text: str = ""
+    target_sign_text: str = ""
+    target_house: int | None = None
     quality_mode: str = DEFAULT_SEARCH_QUALITY_MODE
     refine_candidates: bool = True
     refinement_step_minutes: int = 10
@@ -136,6 +141,11 @@ def build_search_config_from_text(
     minimum_cleanliness_text: str = "",
     maximum_volatility_text: str = "",
     search_quality_mode_text: str = "",
+    target_aspect_text: str = "",
+    target_aspect_body_text: str = "",
+    target_planet_text: str = "",
+    target_sign_text: str = "",
+    target_house_text: str = "",
 ) -> SearchConfig:
     from .validation import validate_search_inputs
 
@@ -159,6 +169,9 @@ def build_search_config_from_text(
     minimum_confidence = int(minimum_confidence_text.strip()) if minimum_confidence_text.strip() else None
     minimum_cleanliness = int(minimum_cleanliness_text.strip()) if minimum_cleanliness_text.strip() else None
     maximum_volatility = int(maximum_volatility_text.strip()) if maximum_volatility_text.strip() else None
+    target_house = int(target_house_text.strip()) if target_house_text.strip() else None
+    if target_house is not None and not 1 <= target_house <= 12:
+        raise ValueError("Target house must be between 1 and 12.")
     quality_mode = normalize_search_quality_mode(search_quality_mode_text)
     return SearchConfig(
         end_offset_minutes=scan_hours * 60,
@@ -175,6 +188,11 @@ def build_search_config_from_text(
         avoid_angular_malefics=avoid_angular_malefics,
         require_moon_non_void=require_moon_non_void,
         avoid_objective_antipatterns=avoid_objective_antipatterns,
+        target_aspect_text=target_aspect_text.strip(),
+        target_aspect_body_text=target_aspect_body_text.strip(),
+        target_planet_text=target_planet_text.strip(),
+        target_sign_text=target_sign_text.strip(),
+        target_house=target_house,
         quality_mode=quality_mode,
     )
 
@@ -218,6 +236,19 @@ def format_search_summary(config: SearchConfig) -> str:
         filters.append("Moon non-void")
     if config.avoid_objective_antipatterns:
         filters.append("avoid anti-patterns")
+    if config.target_aspect_text:
+        aspect_target = f"aspect: {config.target_aspect_text}"
+        if config.target_aspect_body_text:
+            aspect_target += f" involving {config.target_aspect_body_text}"
+        filters.append(aspect_target)
+    if config.target_planet_text:
+        placement_bits = []
+        if config.target_sign_text:
+            placement_bits.append(f"in {config.target_sign_text}")
+        if config.target_house is not None:
+            placement_bits.append(f"H{config.target_house}")
+        if placement_bits:
+            filters.append(f"{config.target_planet_text} {' / '.join(placement_bits)}")
     mode_label = SEARCH_QUALITY_MODES.get(normalize_search_quality_mode(config.quality_mode), SEARCH_QUALITY_MODES[DEFAULT_SEARCH_QUALITY_MODE])
     filters.append(f"rank: {mode_label}")
     if config.refine_candidates and config.step_minutes > config.refinement_step_minutes:
@@ -306,6 +337,69 @@ def _position_by_name(window: dict[str, object]) -> dict[str, dict[str, object]]
         for position in positions
         if isinstance(position, dict)
     }
+
+
+def _clean_target_text(value: object) -> str:
+    return str(value or "").strip().lower().replace("_", " ").replace("-", " ")
+
+
+def _target_matches_name(value: object, target: str) -> bool:
+    normalized_target = _clean_target_text(target)
+    if not normalized_target:
+        return True
+    normalized_value = _clean_target_text(value)
+    return normalized_value == normalized_target or normalized_target in normalized_value
+
+
+def has_target_aspect(window: dict[str, object], aspect_text: str = "", body_text: str = "") -> bool:
+    aspect_target = _clean_target_text(aspect_text)
+    body_target = _clean_target_text(body_text)
+    if not aspect_target and not body_target:
+        return True
+    aspects = window.get("detectedAspects", [])
+    for aspect in aspects if isinstance(aspects, list) else []:
+        if not isinstance(aspect, dict):
+            continue
+        aspect_values = (
+            aspect.get("aspectId"),
+            aspect.get("aspectName"),
+            aspect.get("aspectAbbreviation"),
+            aspect.get("label"),
+        )
+        if aspect_target and not any(_target_matches_name(value, aspect_target) for value in aspect_values):
+            continue
+        if body_target:
+            bodies = aspect.get("bodies", [])
+            if not isinstance(bodies, list) or not any(_target_matches_name(body, body_target) for body in bodies):
+                continue
+        return True
+    return False
+
+
+def has_planet_placement(window: dict[str, object], planet_text: str = "", sign_text: str = "", house: int | None = None) -> bool:
+    planet_target = _clean_target_text(planet_text)
+    sign_target = _clean_target_text(sign_text)
+    if not planet_target:
+        return True
+    positions = window.get("positions", [])
+    for planet in positions if isinstance(positions, list) else []:
+        if not isinstance(planet, dict) or not _target_matches_name(planet.get("name"), planet_target):
+            continue
+        if house is not None:
+            try:
+                if int(planet.get("house", 0)) != int(house):
+                    continue
+            except (TypeError, ValueError):
+                continue
+        if sign_target:
+            zodiac = planet.get("zodiac", {})
+            sign_name = zodiac.get("sign") if isinstance(zodiac, dict) else ""
+            constellation = planet.get("constellation", {})
+            constellation_name = constellation.get("name") if isinstance(constellation, dict) else ""
+            if not (_target_matches_name(sign_name, sign_target) or _target_matches_name(constellation_name, sign_target)):
+                continue
+        return True
+    return False
 
 
 def objective_antipattern_notes(window: dict[str, object], objective: str | None) -> list[str]:
@@ -401,6 +495,27 @@ def rejection_reasons(window: dict[str, object], config: SearchConfig) -> list[s
     if config.avoid_objective_antipatterns:
         for note in objective_antipattern_notes(window, str(window.get("objective") or "")):
             reasons.append(note)
+    if (config.target_aspect_text or config.target_aspect_body_text) and not has_target_aspect(
+        window,
+        config.target_aspect_text,
+        config.target_aspect_body_text,
+    ):
+        target = config.target_aspect_text or "any aspect"
+        if config.target_aspect_body_text:
+            target += f" involving {config.target_aspect_body_text}"
+        reasons.append(f"missing target aspect: {target}")
+    if config.target_planet_text and not has_planet_placement(
+        window,
+        config.target_planet_text,
+        config.target_sign_text,
+        config.target_house,
+    ):
+        placement = []
+        if config.target_sign_text:
+            placement.append(f"in {config.target_sign_text}")
+        if config.target_house is not None:
+            placement.append(f"in house {config.target_house}")
+        reasons.append(f"missing target placement: {config.target_planet_text} {' '.join(placement)}".strip())
     return reasons
 
 
@@ -473,6 +588,10 @@ def rejection_relaxation_suggestions(top_reasons: list[tuple[str, int]]) -> list
             suggestion = "Lower Minimum fit or switch objective if the chart is being judged against the wrong goal."
         elif "score" in lowered and "below minimum" in lowered:
             suggestion = "Lower Minimum score temporarily, then use confidence/cleanliness to choose."
+        elif "missing target aspect" in lowered:
+            suggestion = "Clear the target aspect briefly to see nearby windows, then compare which ones have the contact."
+        elif "missing target placement" in lowered:
+            suggestion = "Clear the planet sign/house target or widen the scan; placements can require a different time block."
         if suggestion and suggestion not in suggestions:
             suggestions.append(suggestion)
         if len(suggestions) >= 4:

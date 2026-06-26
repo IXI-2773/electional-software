@@ -86,6 +86,11 @@ def search_config_from_payload(payload: dict[str, Any]) -> SearchConfig:
         avoid_angular_malefics=bool(payload.get("avoidAngularMalefics", False)),
         require_moon_non_void=bool(payload.get("requireMoonNonVoid", False)),
         avoid_objective_antipatterns=bool(payload.get("avoidObjectiveAntipatterns", False)),
+        target_aspect_text=str(payload.get("targetAspect") or payload.get("targetAspectText") or ""),
+        target_aspect_body_text=str(payload.get("targetAspectBody") or payload.get("targetAspectBodyText") or ""),
+        target_planet_text=str(payload.get("targetPlanet") or payload.get("targetPlanetText") or ""),
+        target_sign_text=str(payload.get("targetSign") or payload.get("targetSignText") or ""),
+        target_house=optional_int(payload, "targetHouse"),
         quality_mode=str(payload.get("qualityMode") or payload.get("searchQualityMode") or "balanced"),
     )
     config.offsets()
@@ -93,6 +98,8 @@ def search_config_from_payload(payload: dict[str, Any]) -> SearchConfig:
         raise ValueError("minimumScore must be between 10 and 99.")
     if config.max_results is not None and config.max_results < 1:
         raise ValueError("maxResults must be at least 1.")
+    if config.target_house is not None and not 1 <= config.target_house <= 12:
+        raise ValueError("targetHouse must be between 1 and 12.")
     return config
 
 

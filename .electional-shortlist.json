@@ -1,5 +1,35 @@
 [
   {
+    "addedAt": "2026-06-09T14:01:39.975943+00:00",
+    "aspects": [
+      "Moon trine Jupiter (0 deg 25 min orb, separating, +13.03 deg/day)",
+      "Venus conjunction Jupiter (0 deg 45 min orb, applying, -0.53 deg/day, exact in 1d 9h near Wed, Jun 10, 4:19 AM PDT)",
+      "Venus parallel Jupiter (0 deg 45 min orb, applying, -0.53 deg/day, exact in 1d 9h near Wed, Jun 10, 4:19 AM PDT)",
+      "Venus contraparallel Jupiter (0 deg 45 min orb, applying, -0.53 deg/day, exact in 1d 9h near Wed, Jun 10, 4:19 AM PDT)"
+    ],
+    "cleanliness": 51,
+    "confidence": 66,
+    "datetime": "2026-06-09T01:24:00+00:00",
+    "flags": [
+      "- Tightening stress: Sun sesquisquare Pluto.",
+      "- Last Quarter favors completion, release, or reduction."
+    ],
+    "formattedTime": "Mon, Jun 8, 6:24 PM PDT",
+    "id": "273897206024",
+    "latitude": 33.7206,
+    "location": "Indio, California",
+    "longitude": -116.2156,
+    "lunarPhase": "Last Quarter (43% lit, age 22.8 days, waning)",
+    "note": "",
+    "objective": "Launch or publish",
+    "readiness": 57,
+    "score": 85,
+    "tags": [],
+    "timezone": "America/Los_Angeles",
+    "title": "Electional window",
+    "volatility": 46
+  },
+  {
     "addedAt": "2026-06-07T19:58:47.239177+00:00",
     "aspects": [
       "Moon trine Mercury (0 deg 20 min orb, separating, +11.36 deg/day)",
@@ -51,5 +81,68 @@
     "timezone": "Australia/Sydney",
     "title": "Electional window",
     "volatility": 38
+  },
+  {
+    "addedAt": "2026-06-11T18:56:11.207778+00:00",
+    "aspects": [
+      "Sun sesquisquare Pluto (0 deg 23 min orb, applying, -0.38 deg/day, exact in 9h 20m near Wed, Jun 10, 8:03 PM PDT)",
+      "Mercury square Saturn (0 deg 36 min orb, separating, +1.17 deg/day)",
+      "Venus conjunction Jupiter (0 deg 53 min orb, separating, +0.97 deg/day)",
+      "Venus parallel Jupiter (0 deg 53 min orb, separating, +0.97 deg/day)"
+    ],
+    "cleanliness": 3,
+    "confidence": 30,
+    "datetime": "2026-06-10T17:44:00+00:00",
+    "flags": [
+      "- Tightening support: Sun sextile Moon.",
+      "- Tightening stress: Sun sesquisquare Pluto, Mars semisquare Neptune.",
+      "- Angular malefic pressure: Mars.",
+      "- Waning Crescent favors completion, release, or reduction."
+    ],
+    "formattedTime": "Wed, Jun 10, 10:44 AM PDT",
+    "id": "0008eac3c19c",
+    "latitude": 33.7206,
+    "location": "Indio, California",
+    "longitude": -116.2156,
+    "lunarPhase": "Waning Crescent (26% lit, age 24.5 days, waning)",
+    "note": "",
+    "objective": "Launch or publish",
+    "readiness": 39,
+    "score": 51,
+    "tags": [],
+    "timezone": "America/Los_Angeles",
+    "title": "Electional window",
+    "volatility": 95
+  },
+  {
+    "addedAt": "2026-06-10T00:15:32.810393+00:00",
+    "aspects": [
+      "Mercury square Saturn (0 deg 10 min orb, separating, +1.19 deg/day)",
+      "Venus conjunction Jupiter (0 deg 32 min orb, separating, +0.97 deg/day)",
+      "Venus parallel Jupiter (0 deg 32 min orb, separating, +0.97 deg/day)",
+      "Venus contraparallel Jupiter (0 deg 32 min orb, separating, +0.97 deg/day)"
+    ],
+    "cleanliness": 0,
+    "confidence": 18,
+    "datetime": "2026-06-10T08:59:00+00:00",
+    "flags": [
+      "- Tightening stress: Sun sesquisquare Pluto, Mars semisquare Neptune.",
+      "- Angular malefic pressure: Saturn.",
+      "- Waning Crescent favors completion, release, or reduction."
+    ],
+    "formattedTime": "Wed, Jun 10, 1:59 AM PDT",
+    "id": "eb41878f6988",
+    "latitude": 33.7206,
+    "location": "Indio, California",
+    "longitude": -116.2156,
+    "lunarPhase": "Waning Crescent (29% lit, age 24.1 days, waning)",
+    "note": "",
+    "objective": "Launch or publish",
+    "readiness": 22,
+    "score": 47,
+    "tags": [],
+    "timezone": "America/Los_Angeles",
+    "title": "Electional window",
+    "volatility": 99
   }
 ]

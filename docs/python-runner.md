@@ -18,7 +18,7 @@ This opens:
 - A single Python shell for running project code.
 - A startup tip showing the project path and a useful chart-engine import.
 
-It no longer opens multiple source editor windows by default.
+It first runs the launcher in setup-only mode, so dependencies are refreshed without opening the desktop app or extra source editor windows.
 
 ## Run The App
 
@@ -32,6 +32,13 @@ Or run from PowerShell:
 
 ```powershell
 & ".\.venv\Scripts\python.exe" desktop_app.py
+```
+
+For launcher troubleshooting:
+
+```text
+Run Desktop App.bat --console
+Run Desktop App.bat --setup-only
 ```
 
 ## Spyder Later

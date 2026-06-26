@@ -389,6 +389,71 @@ def retrograde_pressure(positions: Sequence[Mapping[str, object]]) -> float:
     return pressure
 
 
+def planet_strength_breakdown(positions: Sequence[Mapping[str, object]], preset: ElectionalPreset | None = None) -> list[dict[str, object]]:
+    """Score each planet's condition as a readable diagnostic, not a replacement for chart scoring."""
+
+    selected_names = {str(position.get("name")) for position in filter_positions_for_preset(positions, preset)} if preset else set()
+    rows: list[dict[str, object]] = []
+    for planet in positions:
+        name = str(planet.get("name") or "")
+        if not name:
+            continue
+        dignity = planet.get("dignity", {})
+        dignity_score_value = float(dignity.get("score", 0) if isinstance(dignity, Mapping) else 0)
+        angular_bonus = 0.0
+        angle_note = "not angular"
+        closest_angle = planet.get("closestAngle", {})
+        if planet.get("isAngular") and isinstance(closest_angle, Mapping):
+            distance = float(closest_angle.get("distance", ANGULAR_ORB))
+            angular_bonus = max(0.0, (ANGULAR_ORB - distance) / ANGULAR_ORB) * 18.0
+            angle_note = f"{float(distance):.1f} deg from {closest_angle.get('shortName') or closest_angle.get('name') or 'angle'}"
+        retrograde_penalty = RETROGRADE_WEIGHTS.get(name, 1.0) * 4.0 if planet.get("isRetrograde") else 0.0
+        speed = 0.0
+        motion = planet.get("motion", {})
+        if isinstance(motion, Mapping):
+            try:
+                speed = abs(float(motion.get("speedLongitude", motion.get("dailyLongitudeChange", 0.0))))
+            except (TypeError, ValueError):
+                speed = 0.0
+        speed_bonus = min(8.0, speed * 4.0)
+        raw = 50.0 + dignity_score_value * 7.0 + angular_bonus + speed_bonus - retrograde_penalty
+        score = clamp_metric(raw)
+        if score >= 80:
+            band = "Strong"
+        elif score >= 65:
+            band = "Useful"
+        elif score >= 50:
+            band = "Mixed"
+        else:
+            band = "Weak"
+        notes = []
+        if dignity_score_value:
+            notes.append(f"dignity {dignity_score_value:+.1f}")
+        if angular_bonus:
+            notes.append(angle_note)
+        if retrograde_penalty:
+            notes.append("retrograde pressure")
+        if speed_bonus:
+            notes.append(f"motion {speed:.2f} deg/day")
+        if name in selected_names:
+            notes.append("active in model")
+        rows.append(
+            {
+                "planet": name,
+                "score": score,
+                "band": band,
+                "dignity": dignity_score_value,
+                "angularBonus": angular_bonus,
+                "retrogradePenalty": retrograde_penalty,
+                "speedBonus": speed_bonus,
+                "isAngular": bool(planet.get("isAngular")),
+                "isRetrograde": bool(planet.get("isRetrograde")),
+                "note": "; ".join(notes) if notes else "neutral condition",
+            }
+        )
+    return sorted(rows, key=lambda row: int(row["score"]), reverse=True)
+
+
 def applying_tone_counts(detected_aspects: Sequence[Mapping[str, object]]) -> dict[str, int]:
     counts = {"support": 0, "stress": 0}
     for aspect in detected_aspects:
@@ -657,6 +722,7 @@ def score_breakdown_model(
         "scoreImpact": angularity_points,
         "confidence": "solid",
     }
+    diagnostics["planetStrength"] = planet_strength_breakdown(positions, preset)
 
     return ScoreBreakdown(
         base=58,

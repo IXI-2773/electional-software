@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import inspect
 import math
 from pathlib import Path
 import struct
@@ -10,12 +11,16 @@ import zlib
 from backend.electional.desktop import (
     DETAIL_PAGE_TABS,
     ElectionalDesktopApp,
+    LEFT_GUIDED_COLLAPSED_SECTIONS,
+    PAGE_MODE_LABELS,
     RIBBON_COLUMNS,
     RIBBON_GROUPS,
     TOP_NAV_ITEMS,
     VIEW_PAGE_QUICK_ACTIONS,
     VIEW_PAGE_TARGETS,
     VIEW_PAGE_STRIP_ACTIONS,
+    WHEEL_CANVAS_DEFAULT_HEIGHT,
+    WHEEL_CANVAS_DEFAULT_WIDTH,
     WHEEL_VIEW_PRESET_LABELS,
     _polar,
     aspect_curve_points,
@@ -25,11 +30,17 @@ from backend.electional.desktop import (
     candidate_metric_badges,
     classic_dignity_table_text,
     classic_planet_degree_text,
+    compact_aspect_headline,
     constellation_arc_segments,
     analysis_metric_cards,
     analysis_notice_lines,
+    displayed_chart_state_line,
     body_marker_offsets,
     fixed_star_contact_count,
+    format_manual_validation_comparison,
+    guided_workflow_rows,
+    guided_workflow_status_counts,
+    guided_workbench_summary,
     house_geometry_lines,
     house_geometry_insight_lines,
     house_geometry_summary,
@@ -37,18 +48,34 @@ from backend.electional.desktop import (
     house_span_label,
     house_span_rows,
     left_status_chip_lines,
+    location_intelligence_lines,
+    left_section_initially_collapsed,
+    live_sky_body_rows,
+    live_sky_timestamp_line,
+    midpoint_contact_rows,
+    midpoint_page_lines,
+    midpoint_pair_rows,
     timeline_item_display,
     timeline_visual_rows,
     compact_time_label,
     compact_judgment_lines,
+    compact_place_name,
+    tools_ribbon_label,
+    tools_ribbon_status,
+    top_nav_button_metrics,
     location_summary,
+    location_coordinate_summary,
+    manual_validation_result_summary,
     parse_manual_validation_values,
     planet_abbreviation,
     planet_glyph,
     planet_marker_offsets,
+    retrograde_motion_rows,
+    retrograde_page_lines,
     star_abbreviation,
     sign_glyph,
     score_band_label,
+    search_workbench_compact_lines,
     selection_offset_label,
     shift_local_datetime,
     shift_local_datetime_minutes,
@@ -57,8 +84,16 @@ from backend.electional.desktop import (
     wheel_degrees,
     wheel_degrees_from_xy,
     window_score_color,
+    workspace_hub_cards,
     workflow_next_step_lines,
     validation_workbench_lines,
+    validation_quick_read_lines,
+    tk_scaling_for_dpi,
+    wheel_export_postscript_options,
+    wheel_export_scale_label,
+    wheel_export_scale_value,
+    wheel_overlay_summary,
+    wheel_preset_help_text,
 )
 from backend.electional.capricorn_assets import (
     classify_capricorn_asset,
@@ -79,12 +114,21 @@ from backend.electional.locations import (
     get_location,
     load_hidden_builtin_location_ids,
     load_home_location_name,
+    load_recent_locations,
     load_user_locations,
+    remember_recent_location,
     reset_location_defaults,
     save_hidden_builtin_location_ids,
     save_home_location_name,
+    save_recent_locations,
     save_user_locations,
     upsert_user_location,
+)
+from backend.electional.location_search import (
+    expected_timezone_for_coordinates,
+    location_search_result_label,
+    search_city_locations,
+    timezone_warning_for_location,
 )
 from backend.electional.presets import get_preset
 from backend.electional.references import dignity_table_lines, lot_reference_lines, system_reference_lines
@@ -161,12 +205,148 @@ from backend.electional.validation import validate_election_inputs, validate_sea
 
 
 class DesktopUiHelpersTest(unittest.TestCase):
+    def test_desktop_subsystems_live_in_focused_modules(self) -> None:
+        self.assertEqual(ElectionalDesktopApp._build_top_bars.__module__, "backend.electional.desktop_navigation")
+        self.assertEqual(ElectionalDesktopApp._show_aspect_config_dialog.__module__, "backend.electional.desktop_actions")
+        self.assertEqual(ElectionalDesktopApp._build_chart_panel.__module__, "backend.electional.desktop_workspace")
+        self.assertEqual(ElectionalDesktopApp._render_text_panels.__module__, "backend.electional.desktop_pages")
+        self.assertEqual(ElectionalDesktopApp._build_left_controls.__module__, "backend.electional.desktop_left_rail")
+        self.assertEqual(ElectionalDesktopApp._build_right_panel.__module__, "backend.electional.desktop_right_panel")
+        self.assertEqual(ElectionalDesktopApp._draw_wheel.__module__, "backend.electional.desktop_wheel")
+
     def test_top_navigation_uses_current_workspace_labels(self) -> None:
-        self.assertEqual(TOP_NAV_ITEMS, ("Wheel", "Search", "Analysis", "Timeline", "Validation", "Reports"))
+        self.assertEqual(TOP_NAV_ITEMS, ("Guide", "Wheel", "Search", "Analysis", "Timeline", "Validation", "Reports"))
         self.assertNotIn("Selected Chart", TOP_NAV_ITEMS)
         self.assertNotIn("Configuration", TOP_NAV_ITEMS)
         self.assertNotIn("Astro Mapping", TOP_NAV_ITEMS)
         self.assertNotIn("Settings", TOP_NAV_ITEMS)
+
+    def test_open_detail_page_resolves_ribbon_targets_with_feedback(self) -> None:
+        class FakeVar:
+            def __init__(self) -> None:
+                self.value = ""
+
+            def set(self, value: str) -> None:
+                self.value = value
+
+        app = object.__new__(ElectionalDesktopApp)
+        opened_targets: list[str] = []
+        app._focus_detail_page = lambda target: opened_targets.append(target) or True
+        app.status_var = FakeVar()
+        app.workspace_page_summary_var = FakeVar()
+
+        self.assertTrue(app._open_detail_page("Factors"))
+        self.assertEqual(opened_targets, ["Factor Explorer"])
+        self.assertIn("Factor Explorer", app.status_var.value)
+        self.assertIn("Factor Explorer", app.workspace_page_summary_var.value)
+
+    def test_wheel_option_overlay_controls_use_overlay_row(self) -> None:
+        source = inspect.getsource(ElectionalDesktopApp._build_wheel_display_controls)
+
+        self.assertIn("overlay_row", source)
+        self.assertNotIn("option_row", source)
+
+    def test_guided_workflow_rows_track_main_election_path(self) -> None:
+        rows = guided_workflow_rows(
+            objective="Launch or publish",
+            location_name="Indio, California",
+            date_text="2026-06-08",
+            time_text="18:24",
+            scan_hours="12",
+            step_minutes="15",
+            has_chart=True,
+            candidate_count=3,
+            shortlisted_count=0,
+            selected_index=-1,
+            displayed_source="input chart",
+        )
+        by_id = {row["id"]: row for row in rows}
+
+        self.assertEqual(by_id["objective"]["status"], "done")
+        self.assertEqual(by_id["location"]["status"], "done")
+        self.assertEqual(by_id["range"]["status"], "done")
+        self.assertEqual(by_id["times"]["status"], "done")
+        self.assertEqual(by_id["search"]["status"], "done")
+        self.assertEqual(by_id["compare"]["status"], "active")
+        self.assertEqual(by_id["export"]["status"], "pending")
+        self.assertIn("Indio", by_id["location"]["value"])
+        self.assertEqual(guided_workflow_status_counts(rows), {"done": 5, "active": 1, "pending": 1})
+
+    def test_guided_workflow_export_waits_for_real_pick_or_shortlist(self) -> None:
+        waiting_rows = guided_workflow_rows(
+            objective="Launch",
+            location_name="Indio",
+            date_text="2026-06-08",
+            time_text="18:24",
+            scan_hours="12",
+            step_minutes="15",
+            has_chart=True,
+            candidate_count=0,
+            shortlisted_count=0,
+            selected_index=0,
+            displayed_source="input chart",
+        )
+        ready_rows = guided_workflow_rows(
+            objective="Launch",
+            location_name="Indio",
+            date_text="2026-06-08",
+            time_text="18:24",
+            scan_hours="12",
+            step_minutes="15",
+            has_chart=True,
+            candidate_count=3,
+            shortlisted_count=2,
+            selected_index=0,
+            displayed_source="selected candidate",
+        )
+
+        self.assertEqual({row["id"]: row for row in waiting_rows}["export"]["status"], "pending")
+        ready_by_id = {row["id"]: row for row in ready_rows}
+        self.assertEqual(ready_by_id["compare"]["status"], "done")
+        self.assertEqual(ready_by_id["export"]["status"], "active")
+
+    def test_guided_workbench_summary_names_next_active_step(self) -> None:
+        rows = guided_workflow_rows(
+            objective="Launch",
+            location_name="Indio",
+            date_text="2026-06-08",
+            time_text="18:24",
+            scan_hours="12",
+            step_minutes="15",
+            has_chart=True,
+            candidate_count=0,
+            shortlisted_count=0,
+            selected_index=-1,
+            displayed_source="input chart",
+        )
+
+        headline, detail = guided_workbench_summary(rows)
+
+        self.assertIn("steps ready", headline)
+        self.assertIn("Find", detail)
+        self.assertIn("Find best", detail)
+
+    def test_location_intelligence_lines_compact_home_recent_and_timezone(self) -> None:
+        lines = location_intelligence_lines(
+            location_name="Rancho Mirage, CA",
+            timezone_name="America/Los_Angeles",
+            latitude="33.7397",
+            longitude="-116.4128",
+            home_location_name="Indio, California",
+            recent_locations=[
+                LocationPreset("recent-indio", "Indio, CA", 33.7206, -116.2156, "America/Los_Angeles"),
+                LocationPreset("recent-paris", "Paris, France", 48.8566, 2.3522, "Europe/Paris"),
+            ],
+            saved_count=2,
+            timezone_warning="Timezone OK: America/Los_Angeles matches the selected place.",
+        )
+
+        self.assertIn("Rancho Mirage", lines[0])
+        self.assertIn("33.740", lines[1])
+        self.assertIn("Home: Indio", lines[1])
+        self.assertIn("Saved: 2", lines[2])
+        self.assertIn("Recent: Indio", lines[2])
+        self.assertIn("Timezone OK", lines[2])
 
     def test_ribbon_groups_keep_primary_actions_visible(self) -> None:
         labels = [label for _group, items in RIBBON_GROUPS for label in items]
@@ -193,7 +373,28 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertNotIn("Button Health", labels)
         self.assertLessEqual(len(labels), 25)
         self.assertNotIn("Transits", labels)
-        self.assertLessEqual(RIBBON_COLUMNS, 2)
+        self.assertLessEqual(RIBBON_COLUMNS, 3)
+
+    def test_tools_ribbon_toggle_labels_explain_visibility(self) -> None:
+        self.assertEqual(tools_ribbon_label(False), "Show Tools")
+        self.assertEqual(tools_ribbon_label(True), "Hide Tools")
+        self.assertIn("hidden", tools_ribbon_status(False))
+        self.assertIn("visible", tools_ribbon_status(True))
+
+    def test_guided_left_sections_default_advanced_controls_collapsed(self) -> None:
+        self.assertIn("Search Strategy", LEFT_GUIDED_COLLAPSED_SECTIONS)
+        self.assertIn("Safety Filters", LEFT_GUIDED_COLLAPSED_SECTIONS)
+        self.assertTrue(left_section_initially_collapsed("Search Strategy"))
+        self.assertTrue(left_section_initially_collapsed("Aspect Focus"))
+        self.assertFalse(left_section_initially_collapsed("Timing"))
+        self.assertFalse(left_section_initially_collapsed("Actions"))
+
+    def test_top_navigation_uses_readable_button_metrics(self) -> None:
+        metrics = top_nav_button_metrics()
+
+        self.assertGreaterEqual(metrics["padx"], 12)
+        self.assertGreaterEqual(metrics["pady"], 4)
+        self.assertGreaterEqual(metrics["font_size"], 10)
 
     def test_capricorn_asset_inventory_classifies_safe_import_targets(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -268,12 +469,20 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("Aspect Strength", VIEW_PAGE_TARGETS)
         self.assertIn("Validation", VIEW_PAGE_TARGETS)
         self.assertIn("Reports", VIEW_PAGE_TARGETS)
+        self.assertIn("Retrogrades", VIEW_PAGE_TARGETS)
+        self.assertIn("Midpoints", VIEW_PAGE_TARGETS)
+        self.assertIn("Live Sky", VIEW_PAGE_TARGETS)
+        self.assertEqual(PAGE_MODE_LABELS["guide"], "Guide")
+        self.assertEqual(PAGE_MODE_LABELS["retrogrades"], "Retrogrades")
+        self.assertEqual(PAGE_MODE_LABELS["midpoints"], "Midpoints")
+        self.assertEqual(PAGE_MODE_LABELS["live-sky"], "Live Sky")
         self.assertIn("Save Wheel", VIEW_PAGE_STRIP_ACTIONS)
 
     def test_view_page_quick_actions_stay_compact(self) -> None:
         self.assertLessEqual(len(VIEW_PAGE_QUICK_ACTIONS), 5)
         for label in VIEW_PAGE_QUICK_ACTIONS:
             self.assertIn(label, VIEW_PAGE_STRIP_ACTIONS)
+        self.assertIn("Live Sky", VIEW_PAGE_QUICK_ACTIONS)
 
     def test_report_buttons_have_desktop_handlers(self) -> None:
         self.assertTrue(hasattr(ElectionalDesktopApp, "_show_current_report_dialog"))
@@ -297,6 +506,54 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(classic_dignity_table_text({"dignity": {"label": "Detriment"}}), "Detr.")
         self.assertEqual(classic_dignity_table_text({"dignity": {"label": "Rulership"}}), "Rulersh")
         self.assertEqual(WHEEL_VIEW_PRESET_LABELS["full-classic"], "Full Classic")
+
+    def test_wheel_preset_help_and_overlay_summary_explain_display_state(self) -> None:
+        self.assertIn("Clean reading", wheel_preset_help_text("clean"))
+        self.assertIn("reference-style", wheel_preset_help_text("Full Classic"))
+        self.assertIn("Diagnostic", wheel_preset_help_text("diagnostic"))
+        self.assertEqual(
+            wheel_overlay_summary(
+                aspects=False,
+                lots=False,
+                nodes=False,
+                fixed_stars=False,
+                score=False,
+                compact=False,
+            ),
+            "Overlays: none",
+        )
+        summary = wheel_overlay_summary(
+            aspects=True,
+            lots=True,
+            nodes=False,
+            fixed_stars=True,
+            score=False,
+            compact=True,
+        )
+
+        self.assertIn("aspects", summary)
+        self.assertIn("lots", summary)
+        self.assertIn("stars", summary)
+        self.assertIn("compact labels", summary)
+        self.assertNotIn("nodes", summary)
+
+    def test_wheel_quality_helpers_separate_dpi_from_export_size(self) -> None:
+        self.assertAlmostEqual(tk_scaling_for_dpi(96), 1.3333333333333333)
+        self.assertAlmostEqual(tk_scaling_for_dpi(144), 2.0)
+        self.assertEqual(tk_scaling_for_dpi("bad"), 96 / 72)
+        self.assertEqual(wheel_export_scale_value("4x export"), 4.0)
+        self.assertEqual(wheel_export_scale_value("0.5x export"), 1.0)
+        self.assertEqual(wheel_export_scale_value("9x export"), 4.0)
+        self.assertEqual(wheel_export_scale_label(3), "3x export")
+        self.assertEqual(wheel_export_scale_label(2.5), "2.5x export")
+
+    def test_wheel_export_postscript_options_scale_saved_art(self) -> None:
+        options = wheel_export_postscript_options(900, 660, 3)
+
+        self.assertEqual(options["width"], 900)
+        self.assertEqual(options["height"], 660)
+        self.assertEqual(options["pagewidth"], "2700p")
+        self.assertEqual(options["pageheight"], "1980p")
 
     def test_manual_validation_parses_and_compares_reference_values(self) -> None:
         snapshot = {
@@ -322,11 +579,50 @@ class DesktopUiHelpersTest(unittest.TestCase):
         parsed = parse_manual_validation_values("Sun Taurus 22deg08\nASC Leo 00 00", zodiac_system_id="sidereal-lahiri")
         result = build_manual_validation_comparison(snapshot, "Sun Taurus 22deg08\nASC Leo 00 00", source="CapricornPROMETHEUS")
         lines = "\n".join(validation_workbench_lines(snapshot, None, result))
+        quick_read = "\n".join(validation_quick_read_lines(snapshot, None, result))
+        summary = manual_validation_result_summary(result)
 
         self.assertEqual(len([row for row in parsed if row.get("status") == "parsed"]), 2)
         self.assertEqual(result["status"], "Pass")
+        self.assertEqual(summary["matchedCount"], 2)
+        self.assertIn("Manual comparison passed", quick_read)
         self.assertIn("CapricornPROMETHEUS", lines)
         self.assertIn("Max delta", lines)
+
+    def test_manual_validation_summary_counts_review_missing_and_unparsed_rows(self) -> None:
+        snapshot = {
+            "zodiacSystem": type("Zodiac", (), {"id": "sidereal-lahiri", "name": "Sidereal Lahiri"})(),
+            "houseSystem": type("House", (), {"name": "Topocentric"})(),
+            "ayanamsha": 24.0,
+            "engine": "Astronomy Engine",
+            "positions": [{"name": "Sun", "longitude": 52.1334}],
+            "angles": [],
+            "houseCusps": [],
+            "accuracyAudit": {
+                "label": "Swiss verified",
+                "summary": "Swiss integration verified.",
+                "maxPositionDeltaDegrees": 0.0,
+                "maxAngleDeltaDegrees": 0.0,
+                "maxHouseDeltaDegrees": 0.0,
+            },
+        }
+
+        result = build_manual_validation_comparison(
+            snapshot,
+            "Sun Taurus 23deg08\nASC Leo 00 00\nnot a chart row",
+            source="CapricornPROMETHEUS",
+        )
+        summary = manual_validation_result_summary(result)
+        formatted = "\n".join(format_manual_validation_comparison(result))
+        quick_read = "\n".join(validation_quick_read_lines(snapshot, None, result))
+
+        self.assertEqual(result["status"], "Review")
+        self.assertEqual(summary["reviewCount"], 1)
+        self.assertEqual(summary["missingCount"], 1)
+        self.assertEqual(summary["unparsedCount"], 1)
+        self.assertIn("Rows: 0 match, 1 review, 1 missing, 1 unparsed", formatted)
+        self.assertIn("Likely causes", formatted)
+        self.assertIn("Review 2 row", quick_read)
 
     def test_manual_validation_uses_true_13_sign_constellation_starts(self) -> None:
         parsed = parse_manual_validation_values("Sun Tau 22 00", zodiac_system_id="true-13-sign")
@@ -382,6 +678,101 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("project the local sky onto the ecliptic", insight)
         self.assertEqual(house_span_label(rows[0]["span"]), "25.0deg")
         self.assertEqual(house_span_label(None), "")
+
+    def test_retrograde_page_lines_surface_motion_status(self) -> None:
+        snapshot = {
+            "formattedTime": "Sat, Jun 6, 1:09 PM PDT",
+            "positions": [
+                {
+                    "name": "Mercury",
+                    "longitude": 70.0,
+                    "zodiac": {"sign": "Ge", "degree": 10, "minute": 0},
+                    "house": 3,
+                    "isRetrograde": True,
+                    "motion": {"label": "Retrograde", "dailyLongitudeChange": -0.72},
+                },
+                {
+                    "name": "Saturn",
+                    "longitude": 350.0,
+                    "zodiac": {"sign": "Pi", "degree": 20, "minute": 0},
+                    "house": 7,
+                    "motion": {
+                        "label": "Direct",
+                        "dailyLongitudeChange": 0.01,
+                        "station": {"isInStationWindow": True, "phase": "station direct"},
+                    },
+                },
+                {
+                    "name": "Venus",
+                    "longitude": 90.0,
+                    "zodiac": {"sign": "Ca", "degree": 0, "minute": 0},
+                    "house": 4,
+                    "motion": {"label": "Direct", "dailyLongitudeChange": 1.12},
+                },
+            ],
+        }
+
+        rows = retrograde_motion_rows(snapshot)
+        text = "\n".join(retrograde_page_lines(snapshot))
+
+        self.assertEqual(rows[0]["status"], "Retrograde")
+        self.assertEqual(rows[1]["status"], "Station Direct")
+        self.assertEqual(rows[2]["status"], "Direct")
+        self.assertIn("Mercury", text)
+        self.assertIn("Retrograde", text)
+        self.assertIn("Station Direct", text)
+        self.assertIn("-0.720 deg/day", text)
+
+    def test_midpoint_page_lines_surface_exact_midpoint_contacts(self) -> None:
+        snapshot = {
+            "formattedTime": "Sat, Jun 6, 1:09 PM PDT",
+            "positions": [
+                {"name": "Sun", "longitude": 10.0},
+                {"name": "Moon", "longitude": 110.0},
+                {"name": "Mars", "longitude": 60.0},
+                {"name": "Venus", "longitude": 240.75},
+            ],
+        }
+
+        contacts = midpoint_contact_rows(snapshot, orb=0.2)
+        pairs = midpoint_pair_rows(snapshot)
+        text = "\n".join(midpoint_page_lines(snapshot))
+
+        self.assertEqual(contacts[0]["body"], "Mars")
+        self.assertEqual(contacts[0]["pair"], "Sun/Moon")
+        self.assertAlmostEqual(float(contacts[0]["orb"]), 0.0)
+        self.assertIn("Sun/Moon", [row["pair"] for row in pairs])
+        self.assertIn("Mars = \u2609/\u263d Sun/Moon", text)
+        self.assertIn("060.00 deg", text)
+
+    def test_live_sky_rows_add_earth_and_timestamp_mode(self) -> None:
+        location = LocationPreset("indio", "Indio, CA", 33.7206, -116.2156, "America/Los_Angeles")
+        snapshot = {
+            "formattedTime": "Tue, Jun 9, 8:55 AM PDT",
+            "positions": [
+                {
+                    "name": "Sun",
+                    "longitude": 70.0,
+                    "tropicalLongitude": 80.0,
+                    "zodiac": {"sign": "Gemini", "degree": 10, "minute": 0},
+                },
+                {
+                    "name": "Mars",
+                    "longitude": 10.0,
+                    "tropicalLongitude": 20.0,
+                    "distanceAu": 1.6,
+                    "zodiac": {"sign": "Aries", "degree": 20, "minute": 0},
+                },
+            ],
+        }
+
+        rows = live_sky_body_rows(snapshot)
+        by_name = {row["name"]: row for row in rows}
+
+        self.assertEqual(by_name["Earth"]["longitude"], 260.0)
+        self.assertEqual(by_name["Mars"]["radiusFactor"], 0.46)
+        self.assertIn("Manual", live_sky_timestamp_line(snapshot, location, "manual"))
+        self.assertIn("Live", live_sky_timestamp_line(snapshot, location, "live"))
 
     def test_real_chart_angles_render_in_expected_quadrants(self) -> None:
         snapshot = build_snapshot("2026-05-26", "09:00", get_location("los-angeles"), "traditional-lilly")
@@ -443,6 +834,9 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("May 26 9:23 PM PDT", compact_time_label(snapshot))
         self.assertIn("Home Base", location_summary(location))
         self.assertIn("America/Los_Angeles", location_summary(location))
+        self.assertNotIn("33.120", location_summary(location))
+        self.assertIn("33.120", location_coordinate_summary(location))
+        self.assertEqual(compact_place_name("Indio, California"), "Indio, CA")
 
     def test_left_status_chip_lines_surface_current_workflow_context(self) -> None:
         chips = left_status_chip_lines(
@@ -456,11 +850,10 @@ class DesktopUiHelpersTest(unittest.TestCase):
             "Validation: Swiss-backed",
         )
 
-        self.assertEqual(chips[0], "Time: 2026-06-05 13:09")
-        self.assertIn("Indio, California", chips[1])
-        self.assertIn("True 13-Sign / Topocentric", chips[2])
-        self.assertEqual(chips[3], "Search: Low Risk")
-        self.assertEqual(chips[4], "Validation: Swiss-backed")
+        self.assertEqual(chips[0], "Chart: 2026-06-05 13:09")
+        self.assertEqual(chips[1], "Site: Indio, CA | America/Los_Angeles")
+        self.assertEqual(chips[2], "Model: True 13-Sign / Topocentric")
+        self.assertEqual(chips[3], "Search: Low Risk | Swiss-backed")
 
     def test_candidate_board_summary_reports_count_mode_and_selection(self) -> None:
         summary = candidate_board_summary(
@@ -476,9 +869,82 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertIn("Low Risk", summary)
         self.assertIn("Selected #2", summary)
 
+    def test_workspace_hub_cards_prioritize_what_user_should_see(self) -> None:
+        location = LocationPreset("indio-ca", "Indio, California", 33.72, -116.22, "America/Los_Angeles")
+        snapshot = {
+            "formattedTime": "Mon, Jun 8, 2026, 4:12 PM PDT",
+            "score": 91,
+            "detectedAspects": [{"tone": "support"}, {"tone": "stress"}],
+            "scoreBreakdown": {
+                "diagnostics": {
+                    "confidence": {"score": 88},
+                    "cleanliness": {"score": 80},
+                    "volatility": {"score": 18},
+                }
+            },
+        }
+        highlights = {
+            "current": {
+                "label": "Moon trine Jupiter",
+                "tone": "support",
+                "orbText": "0 deg 44 min",
+                "phaseLabel": "Applying",
+                "strength": 17.2,
+            }
+        }
+
+        headline, detail, tone = compact_aspect_headline(highlights)
+        cards = workspace_hub_cards(
+            snapshot,
+            snapshot,
+            location,
+            highlights,
+            [{"score": 91}],
+            selected_index=0,
+            displayed_source="selected candidate",
+            rejection_summary={},
+        )
+        by_title = {title: (head, body, card_tone) for title, head, body, card_tone in cards}
+
+        self.assertEqual(headline, "Moon trine Jupiter")
+        self.assertIn("Applying", detail)
+        self.assertEqual(tone, "support")
+        self.assertNotIn("Viewing", by_title)
+        self.assertEqual(by_title["Strongest Now"][0], "Moon trine Jupiter")
+        self.assertIn("Score 91 / Prime", by_title["Quality"][0])
+        self.assertIn("Conf 88", by_title["Quality"][1])
+
+    def test_displayed_chart_state_line_keeps_header_from_repeating_site_and_time(self) -> None:
+        input_snapshot = {"date": datetime(2026, 6, 8, 18, 0), "formattedTime": "Mon, Jun 8, 6:00 PM PDT"}
+        selected = {"date": datetime(2026, 6, 8, 20, 0), "formattedTime": "Mon, Jun 8, 8:00 PM PDT"}
+
+        current = displayed_chart_state_line(input_snapshot, input_snapshot, displayed_source="input chart", selected_index=0)
+        candidate = displayed_chart_state_line(input_snapshot, selected, displayed_source="selected candidate", selected_index=1)
+
+        self.assertEqual(current, "Current Chart | Selected equals search start")
+        self.assertEqual(candidate, "Candidate #2 | Selected +2h from start")
+
+    def test_search_workbench_compact_lines_keep_console_short_and_actionable(self) -> None:
+        title, summary, detail = search_workbench_compact_lines(
+            profile_name="Major Five",
+            action_note="Last action: Search Page #1",
+            windows=[],
+            selected_time="Mon, Jun 8, 6:24 PM PDT",
+            search_mode="Low Risk",
+            scan_hours="24",
+            step_minutes="60",
+            active_aspects=5,
+            rejection_summary={"topReasons": [("major stress present", 12)]},
+        )
+
+        self.assertEqual(title, "Search Console | Major Five")
+        self.assertIn("No matching candidates", summary)
+        self.assertIn("Low Risk", detail)
+        self.assertIn("major stress present", detail)
+
     def test_workflow_next_step_lines_guide_user_actions(self) -> None:
         self.assertIn(
-            "show the current chart",
+            "Show current chart",
             workflow_next_step_lines(
                 has_chart=False,
                 candidate_count=0,
@@ -493,15 +959,15 @@ class DesktopUiHelpersTest(unittest.TestCase):
             displayed_source="input chart",
             has_rejections=True,
         )
-        self.assertIn("loosen", blocked[0])
-        self.assertIn("rejection reasons", blocked[1])
+        self.assertIn("Loosen", blocked[0])
+        self.assertIn("relax", blocked[1])
         pick = workflow_next_step_lines(
             has_chart=True,
             candidate_count=3,
             selected_index=-1,
             displayed_source="input chart",
         )
-        self.assertIn("pick a candidate", pick[0])
+        self.assertIn("Pick a candidate", pick[0])
         decide = workflow_next_step_lines(
             has_chart=True,
             candidate_count=3,
@@ -509,7 +975,7 @@ class DesktopUiHelpersTest(unittest.TestCase):
             displayed_source="selected candidate",
         )
         self.assertIn("window #2", decide[0])
-        self.assertIn("Shortlist", decide[1])
+        self.assertIn("shortlist", decide[1])
 
     def test_candidate_metric_badges_surface_quality_and_missing_data(self) -> None:
         window = {
@@ -1796,8 +2262,10 @@ class DesktopUiHelpersTest(unittest.TestCase):
                 "display_options": {
                     "show_aspects": False,
                     "show_score_overlay": False,
+                    "show_tools": True,
                     "compact_wheel": True,
                     "wheel_zoom": 0.94,
+                    "wheel_export_scale": 4.0,
                     "right_panel_theme": "classic-natal",
                 },
             }
@@ -1821,11 +2289,13 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertTrue(loaded["avoid_objective_antipatterns"])
         self.assertFalse(loaded["display_options"]["show_aspects"])
         self.assertFalse(loaded["display_options"]["show_score_overlay"])
+        self.assertTrue(loaded["display_options"]["show_tools"])
         self.assertTrue(loaded["display_options"]["compact_wheel"])
         self.assertTrue(loaded["display_options"]["show_fixed_stars"])
         self.assertEqual(loaded["display_options"]["wheel_zoom"], 0.94)
+        self.assertEqual(loaded["display_options"]["wheel_export_scale"], 4.0)
         self.assertEqual(loaded["display_options"]["point_set"], "full-electional")
-        self.assertEqual(loaded["display_options"]["page_mode"], "wheel")
+        self.assertEqual(loaded["display_options"]["page_mode"], "guide")
         self.assertEqual(loaded["display_options"]["right_panel_theme"], "classic-natal")
         self.assertEqual(loaded["display_options"]["wheel_view_preset"], "full-classic")
         self.assertEqual(loaded["manual_validation_comparison"]["source"], "CapricornPROMETHEUS")
@@ -1865,6 +2335,44 @@ class DesktopUiHelpersTest(unittest.TestCase):
 
         self.assertEqual(location.name, "Temple Office")
 
+    def test_city_location_search_finds_indio_and_saved_places(self) -> None:
+        saved = [LocationPreset("user-temple", "Temple Office", 35.0, -120.0, "America/Los_Angeles")]
+        recent = [LocationPreset("recent-la-quinta", "La Quinta, CA", 33.6634, -116.31, "America/Los_Angeles")]
+
+        indio_results = search_city_locations("Indio", saved_locations=saved, recent_locations=recent)
+        saved_results = search_city_locations("Temple", saved_locations=saved, recent_locations=recent)
+        recent_results = search_city_locations("La Quinta", saved_locations=saved, recent_locations=recent)
+        typo_results = search_city_locations("Indoi", saved_locations=saved, recent_locations=recent)
+
+        self.assertEqual(indio_results[0].location.name, "Indio, CA")
+        self.assertEqual(indio_results[0].location.timezone, "America/Los_Angeles")
+        self.assertIn("Indio, CA", location_search_result_label(indio_results[0]))
+        self.assertEqual(saved_results[0].source, "saved")
+        self.assertEqual(recent_results[0].source, "recent")
+        self.assertEqual(typo_results[0].location.name, "Indio, CA")
+
+    def test_timezone_warning_flags_bad_place_zone_pairs(self) -> None:
+        wrong = LocationPreset("bad-indio", "Indio, CA", 33.7206, -116.2156, "America/New_York")
+        right = LocationPreset("good-indio", "Indio, CA", 33.7206, -116.2156, "America/Los_Angeles")
+
+        self.assertEqual(expected_timezone_for_coordinates(33.7206, -116.2156, "Indio, CA"), "America/Los_Angeles")
+        self.assertIn("looks closer", timezone_warning_for_location(wrong))
+        self.assertIn("Timezone OK", timezone_warning_for_location(right))
+
+    def test_recent_locations_round_trip_and_dedupe(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "location-settings.json"
+            indio = LocationPreset("city-indio-ca", "Indio, CA", 33.7206, -116.2156, "America/Los_Angeles")
+            paris = LocationPreset("city-paris-france", "Paris, France", 48.8566, 2.3522, "Europe/Paris")
+
+            save_recent_locations([indio], path)
+            remembered = remember_recent_location(paris, path)
+            remembered = remember_recent_location(indio, path)
+            loaded = load_recent_locations(path)
+
+        self.assertEqual([location.name for location in remembered], ["Indio, CA", "Paris, France"])
+        self.assertEqual([location.name for location in loaded], ["Indio, CA", "Paris, France"])
+
     def test_builtin_locations_can_be_hidden_and_reset_without_deleting_them(self) -> None:
         with TemporaryDirectory() as temp_dir:
             settings_path = Path(temp_dir) / "location-settings.json"
@@ -1896,7 +2404,25 @@ class DesktopUiHelpersTest(unittest.TestCase):
         self.assertEqual(default["display_options"]["wheel_zoom"], 0.98)
         self.assertEqual(default["display_options"]["right_panel_theme"], "classic-natal")
         self.assertEqual(default["display_options"]["wheel_view_preset"], "full-classic")
+        self.assertEqual(default["display_options"]["wheel_export_scale"], 3.0)
         self.assertFalse(default["display_options"]["show_score_overlay"])
+        self.assertFalse(default["display_options"]["show_tools"])
+        self.assertEqual(default["display_options"]["page_mode"], "guide")
+
+    def test_wheel_canvas_defaults_are_large_enough_for_crisp_desktop_rendering(self) -> None:
+        self.assertGreaterEqual(WHEEL_CANVAS_DEFAULT_WIDTH, 1180)
+        self.assertGreaterEqual(WHEEL_CANVAS_DEFAULT_HEIGHT, 860)
+
+    def test_session_state_preserves_new_detail_page_modes(self) -> None:
+        guide = clean_session_state({"display_options": {"page_mode": "guide"}})
+        retrogrades = clean_session_state({"display_options": {"page_mode": "retrogrades"}})
+        midpoints = clean_session_state({"display_options": {"page_mode": "midpoints"}})
+        live_sky = clean_session_state({"display_options": {"page_mode": "live-sky"}})
+
+        self.assertEqual(guide["display_options"]["page_mode"], "guide")
+        self.assertEqual(retrogrades["display_options"]["page_mode"], "retrogrades")
+        self.assertEqual(midpoints["display_options"]["page_mode"], "midpoints")
+        self.assertEqual(live_sky["display_options"]["page_mode"], "live-sky")
 
     def test_user_location_upsert_replaces_same_name(self) -> None:
         original = LocationPreset("user-home", "Home Base", 33.0, -118.0, "America/Los_Angeles")

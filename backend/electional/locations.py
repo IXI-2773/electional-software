@@ -12,6 +12,7 @@ from .validation import validate_election_inputs
 DEFAULT_TIMEZONE = "America/Los_Angeles"
 USER_LOCATIONS_PATH = Path.cwd() / ".electional-locations.json"
 LOCATION_SETTINGS_PATH = Path.cwd() / ".electional-location-settings.json"
+RECENT_LOCATION_LIMIT = 8
 INDIO_LATITUDE = 33.7206
 INDIO_LONGITUDE = -116.2156
 INDIO_TIMEZONE = "America/Los_Angeles"
@@ -175,6 +176,75 @@ def load_location_settings(path: Path = LOCATION_SETTINGS_PATH) -> dict[str, obj
 
 def save_location_settings(settings: dict[str, object], path: Path = LOCATION_SETTINGS_PATH) -> None:
     save_json(path, settings)
+
+
+def _location_from_settings_item(item: object) -> LocationPreset | None:
+    if not isinstance(item, dict):
+        return None
+    try:
+        name = str(item["name"]).strip()
+        latitude = float(item["latitude"])
+        longitude = float(item["longitude"])
+        timezone = str(item["timezone"]).strip()
+        if validate_election_inputs(date.today().isoformat(), "09:00", str(latitude), str(longitude), timezone):
+            return None
+        location = LocationPreset(str(item.get("id") or location_id_from_name(name)), name, latitude, longitude, timezone)
+        return corrected_known_location(location)[0]
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def load_recent_locations(path: Path = LOCATION_SETTINGS_PATH) -> list[LocationPreset]:
+    settings = load_location_settings(path)
+    raw_locations = settings.get("recent_locations", [])
+    if not isinstance(raw_locations, list):
+        return []
+    locations: list[LocationPreset] = []
+    seen_names: set[str] = set()
+    for item in raw_locations:
+        location = _location_from_settings_item(item)
+        if not location:
+            continue
+        key = location.name.lower()
+        if key in seen_names:
+            continue
+        seen_names.add(key)
+        locations.append(location)
+        if len(locations) >= RECENT_LOCATION_LIMIT:
+            break
+    return locations
+
+
+def save_recent_locations(locations: list[LocationPreset], path: Path = LOCATION_SETTINGS_PATH) -> None:
+    settings = load_location_settings(path)
+    unique_locations: list[LocationPreset] = []
+    seen_names: set[str] = set()
+    for location in locations:
+        key = location.name.lower()
+        if key in seen_names:
+            continue
+        seen_names.add(key)
+        unique_locations.append(location)
+        if len(unique_locations) >= RECENT_LOCATION_LIMIT:
+            break
+    if unique_locations:
+        settings["recent_locations"] = [location.to_json() for location in unique_locations]
+    else:
+        settings.pop("recent_locations", None)
+    save_location_settings(settings, path)
+
+
+def remember_recent_location(
+    location: LocationPreset,
+    path: Path = LOCATION_SETTINGS_PATH,
+    *,
+    limit: int = RECENT_LOCATION_LIMIT,
+) -> list[LocationPreset]:
+    current = load_recent_locations(path)
+    remaining = [saved for saved in current if saved.name.lower() != location.name.lower()]
+    updated = [location, *remaining][:limit]
+    save_recent_locations(updated, path)
+    return updated
 
 
 def load_home_location_name(path: Path = LOCATION_SETTINGS_PATH) -> str | None:

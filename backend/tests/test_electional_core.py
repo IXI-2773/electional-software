@@ -25,7 +25,8 @@ from backend.electional.presets import (
     get_preset,
     summarize_orb,
 )
-from backend.electional.scoring import angle_testimony, score_breakdown, score_breakdown_model, score_window
+from backend.electional.scoring import angle_testimony, planet_strength_breakdown, score_breakdown, score_breakdown_model, score_window
+from backend.electional.search import SearchConfig, format_search_summary, has_planet_placement, has_target_aspect, rejection_reasons
 from backend.electional.timing import timing_profile
 
 
@@ -52,6 +53,52 @@ def position(
 
 
 class ElectionalCoreTest(unittest.TestCase):
+    def test_search_targets_match_aspects_and_planet_placements(self) -> None:
+        window = {
+            "detectedAspects": [
+                {
+                    "aspectId": "trine",
+                    "aspectName": "Trine",
+                    "aspectAbbreviation": "Tri",
+                    "bodies": ["Sun", "Jupiter"],
+                    "label": "Sun trine Jupiter",
+                }
+            ],
+            "positions": [
+                {"name": "Venus", "house": 10, "zodiac": {"sign": "Gemini"}},
+                {"name": "Mars", "house": 7, "zodiac": {"sign": "Aries"}},
+            ],
+            "score": 80,
+            "scoreBreakdown": {"objectiveMatches": 2},
+        }
+
+        self.assertTrue(has_target_aspect(window, "trine", "Jupiter"))
+        self.assertTrue(has_planet_placement(window, "Venus", "Gemini", 10))
+        self.assertFalse(has_planet_placement(window, "Venus", "Taurus", 10))
+
+        config = SearchConfig(target_aspect_text="square", target_planet_text="Venus", target_sign_text="Taurus", target_house=10)
+        reasons = rejection_reasons(window, config)
+
+        self.assertIn("missing target aspect: square", reasons)
+        self.assertTrue(any("missing target placement: Venus" in reason for reason in reasons))
+        self.assertIn("aspect: square", format_search_summary(config))
+        self.assertIn("Venus in Taurus / H10", format_search_summary(config))
+
+    def test_planet_strength_breakdown_surfaces_condition_scores(self) -> None:
+        preset = get_preset("traditional-lilly")
+        strong = position("Venus", 80, "Gemini", is_angular=True, distance=1, daily_change=1.2)
+        strong["dignity"] = {"score": 2}
+        weak = position("Mars", 20, "Aries", is_retrograde=True, daily_change=0.1)
+        weak["dignity"] = {"score": -1}
+
+        rows = planet_strength_breakdown([weak, strong], preset)
+        by_name = {row["planet"]: row for row in rows}
+
+        self.assertGreater(by_name["Venus"]["score"], by_name["Mars"]["score"])
+        self.assertEqual(by_name["Venus"]["band"], "Strong")
+        self.assertIn("motion", by_name["Venus"]["note"])
+        self.assertIn("retrograde pressure", by_name["Mars"]["note"])
+
     def test_default_aspect_profile_contains_major_five(self) -> None:
         profile = default_aspect_profile()
 

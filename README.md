@@ -7,7 +7,7 @@ A private work-in-progress application for electional astrology: transits, aspec
 - Python is now the primary application runtime.
 - The primary interface is a native Python desktop application.
 - The desktop UI requires no browser and no browser JavaScript.
-- The desktop UI supports preset cities, custom latitude/longitude/timezone entries, and built-in validation.
+- The desktop UI supports city search, recent locations, timezone sanity warnings, home-location setup, preset cities, and custom latitude/longitude/timezone entries.
 - Custom locations can be saved, reused from the Location preset dropdown, marked as Home, and forgotten later.
 - Ranked candidate windows are selectable in the desktop UI and can be applied back to the input time.
 - Promising candidate windows can be shortlisted, compared in a dedicated tab, copied, cleared, or saved as a shortlist report.
@@ -130,6 +130,15 @@ For a normal no-console launch, double-click:
 `Run Desktop App.vbs`
 
 `Run Desktop App.bat` remains available for setup troubleshooting. Once dependencies are ready, it starts the desktop application with `pythonw.exe` and closes the Command Prompt immediately.
+
+Troubleshooting modes:
+
+```text
+Run Desktop App.bat --console
+Run Desktop App.bat --setup-only
+```
+
+Use `--console` when you want to see startup errors. Use `--setup-only` to rebuild or refresh `.venv` dependencies without opening the app.
 
 Open the project Python runner:
 

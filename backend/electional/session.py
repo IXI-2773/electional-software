@@ -43,12 +43,14 @@ DEFAULT_DISPLAY_OPTIONS = {
     "show_nodes": True,
     "show_fixed_stars": True,
     "show_score_overlay": False,
+    "show_tools": False,
     "compact_wheel": False,
     "wheel_zoom": 0.98,
     "point_set": "full-electional",
-    "page_mode": "wheel",
+    "page_mode": "guide",
     "right_panel_theme": "classic-natal",
     "wheel_view_preset": "full-classic",
+    "wheel_export_scale": 3.0,
 }
 
 
@@ -65,9 +67,22 @@ def infer_point_set_id(display_options: dict[str, Any]) -> str:
 
 def infer_page_mode_id(display_options: dict[str, Any]) -> str:
     page_mode = str(display_options.get("page_mode") or "").strip().lower()
-    if page_mode in {"wheel", "wheel-aspectarian", "analysis", "classical-point-data", "medieval-data", "transit-search", "validation", "reports"}:
+    if page_mode in {
+        "guide",
+        "wheel",
+        "wheel-aspectarian",
+        "analysis",
+        "classical-point-data",
+        "medieval-data",
+        "transit-search",
+        "retrogrades",
+        "midpoints",
+        "live-sky",
+        "validation",
+        "reports",
+    }:
         return page_mode
-    return "wheel"
+    return "guide"
 
 
 def infer_right_panel_theme(display_options: dict[str, Any]) -> str:
@@ -133,6 +148,10 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
         wheel_zoom = float(display_options.get("wheel_zoom", DEFAULT_DISPLAY_OPTIONS["wheel_zoom"]))
     except (TypeError, ValueError):
         wheel_zoom = float(DEFAULT_DISPLAY_OPTIONS["wheel_zoom"])
+    try:
+        wheel_export_scale = float(display_options.get("wheel_export_scale", DEFAULT_DISPLAY_OPTIONS["wheel_export_scale"]))
+    except (TypeError, ValueError):
+        wheel_export_scale = float(DEFAULT_DISPLAY_OPTIONS["wheel_export_scale"])
 
     return {
         "date": date_text,
@@ -187,6 +206,7 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(default_value, bool)
             },
             "wheel_zoom": max(0.82, min(1.18, wheel_zoom)),
+            "wheel_export_scale": max(1.0, min(4.0, wheel_export_scale)),
             "point_set": infer_point_set_id(display_options),
             "page_mode": infer_page_mode_id(display_options),
             "right_panel_theme": infer_right_panel_theme(display_options),

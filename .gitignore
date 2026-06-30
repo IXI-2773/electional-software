@@ -1,38 +1,77 @@
-﻿# OS files
-.DS_Store
-Thumbs.db
-
-# Editor settings
-.vscode/
-.idea/
-*.swp
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-reports/
-.electional-session.json
-.electional-locations.json
-.electional-location-settings.json
-.electional-aspect-profiles.json
-
-# Environment files
-.env
-.env.*
-
-# Dependencies
-node_modules/
-
 # Python
-__pycache__/
-*.pyc
 .venv/
 venv/
-
-# Build output
-dist/
-build/
-out/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
 coverage/
+htmlcov/
+
+# Build / package output
+build/
+dist/
+*.egg-info/
+
+# Logs / temp
+*.log
+*.tmp
+*.bak
+*.old
+.cache/
+tmp/
+temp/
+
+# Archives / backups
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+backup/
+backups/
+old/
+archive/
+archives/
+
+# Large or raw data
+data/raw/
+data/cache/
+data/tmp/
+data/downloads/
+*.csv
+*.xlsx
+*.xls
+*.pdf
+
+# Keep clean samples
+!data/samples/
+!data/samples/**
+!data/README.md
+
+# Generated reports/output
+reports/
+output/
+outputs/
+exports/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Secrets
+.env
+.env.*
+*.key
+*.pem
+secrets/
+credentials/
+
+# Local app/session state
+.electional-*.json

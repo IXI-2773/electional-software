@@ -1,276 +1,235 @@
-"""Pure-Python electional rule evaluations."""
+"""Compatibility wrapper for electional rule imports.
 
-from __future__ import annotations
+New code should import from backend.electional.engine.rules.
+"""
 
-from typing import Mapping, Sequence
+from .engine.rules import *  # noqa: F401,F403
 
-from .aspects import angular_distance, format_orb
-from .judgment import judgment_rule_factors
+import hashlib
+import json
+import os
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, Mapping
 
-NAKSHATRAS = (
-    "Ashwini",
-    "Bharani",
-    "Krittika",
-    "Rohini",
-    "Mrigashira",
-    "Ardra",
-    "Punarvasu",
-    "Pushya",
-    "Ashlesha",
-    "Magha",
-    "Purva Phalguni",
-    "Uttara Phalguni",
-    "Hasta",
-    "Chitra",
-    "Swati",
-    "Vishakha",
-    "Anuradha",
-    "Jyeshtha",
-    "Mula",
-    "Purva Ashadha",
-    "Uttara Ashadha",
-    "Shravana",
-    "Dhanishta",
-    "Shatabhisha",
-    "Purva Bhadrapada",
-    "Uttara Bhadrapada",
-    "Revati",
-)
+from .source_documents import SOURCE_DOCUMENT_ROOT
+from .source_knowledge import ensure_source_knowledge_dirs
 
-TITHI_NAMES = (
-    "Pratipada",
-    "Dvitiya",
-    "Tritiya",
-    "Chaturthi",
-    "Panchami",
-    "Shashthi",
-    "Saptami",
-    "Ashtami",
-    "Navami",
-    "Dashami",
-    "Ekadashi",
-    "Dwadashi",
-    "Trayodashi",
-    "Chaturdashi",
-    "Purnima",
-    "Pratipada",
-    "Dvitiya",
-    "Tritiya",
-    "Chaturthi",
-    "Panchami",
-    "Shashthi",
-    "Saptami",
-    "Ashtami",
-    "Navami",
-    "Dashami",
-    "Ekadashi",
-    "Dwadashi",
-    "Trayodashi",
-    "Chaturdashi",
-    "Amavasya",
-)
-
-SOLAR_RULE_BODIES = {"Mercury", "Venus", "Mars", "Jupiter", "Saturn"}
+RULE_REPOSITORY_DIR = "rules"
+ACTIVE_RULE_INDEX = "active_rule_index.json"
+RULE_SCHEMA_VERSION = "canonical_mutable_rule_v1"
+ALLOWED_RULE_STATUSES = {"active", "inactive", "rolled_back"}
 
 
-def nakshatra_for_longitude(longitude: float) -> dict[str, object]:
-    span = 360 / 27
-    normalized = longitude % 360
-    index = int(normalized // span)
-    position = normalized - index * span
-    pada = int(position // (span / 4)) + 1
-    return {
-        "name": NAKSHATRAS[index],
-        "index": index + 1,
-        "pada": min(4, pada),
-        "degreeIntoNakshatra": position,
-    }
+def ensure_mutable_rule_repository(root: Path | str = SOURCE_DOCUMENT_ROOT) -> Path:
+    base = ensure_source_knowledge_dirs(root)
+    (base / RULE_REPOSITORY_DIR).mkdir(parents=True, exist_ok=True)
+    index_path = base / "indexes" / ACTIVE_RULE_INDEX
+    if not index_path.exists():
+        _atomic_write_json(index_path, {"entries": [], "updated_at_utc": _now()})
+    return base
 
 
-def tithi_from_phase(phase_angle: float) -> dict[str, object]:
-    normalized = phase_angle % 360
-    index = int(normalized // 12)
-    paksha = "Shukla" if index < 15 else "Krishna"
-    return {
-        "name": TITHI_NAMES[index],
-        "number": index + 1,
-        "paksha": paksha,
-        "phaseAngle": normalized,
-    }
+def load_rule(rule_id: str, *, root: Path | str = SOURCE_DOCUMENT_ROOT) -> dict[str, Any] | None:
+    payload = _read_json(_rule_path(ensure_mutable_rule_repository(root), rule_id))
+    return payload if isinstance(payload, dict) else None
 
 
-def lunar_rule_context(positions: Sequence[Mapping[str, object]], lunar_phase: Mapping[str, object]) -> dict[str, object]:
-    moon = next((planet for planet in positions if planet.get("name") == "Moon"), None)
-    if not moon:
-        return {}
-    return {
-        "nakshatra": nakshatra_for_longitude(float(moon["longitude"])),
-        "tithi": tithi_from_phase(float(lunar_phase.get("phaseAngle", 0))),
-    }
+def list_rules(
+    *,
+    status: str | None = None,
+    active_only: bool = False,
+    root: Path | str = SOURCE_DOCUMENT_ROOT,
+) -> list[dict[str, Any]]:
+    base = ensure_mutable_rule_repository(root)
+    items: list[dict[str, Any]] = []
+    for path in sorted((base / RULE_REPOSITORY_DIR).glob("*.json")):
+        payload = _read_json(path)
+        if not isinstance(payload, dict):
+            continue
+        item_status = str(payload.get("status") or "")
+        if active_only and item_status != "active":
+            continue
+        if status is not None and item_status != status:
+            continue
+        items.append(payload)
+    return items
 
 
-def solar_condition_for_body(body: Mapping[str, object], sun: Mapping[str, object]) -> dict[str, object]:
-    separation = angular_distance(float(body["longitude"]), float(sun["longitude"]))
-    name = str(body["name"])
-    if separation <= 0.283333:
-        return {
-            "id": f"{name.lower()}-cazimi",
-            "category": "solar-condition",
-            "severity": "support",
-            "title": f"{name} cazimi",
-            "body": name,
-            "scoreImpact": 5.0,
-            "detail": f"{name} is in the heart of the Sun ({format_orb(separation)}), a rare empowerment condition.",
-        }
-    if separation <= 8.5:
-        return {
-            "id": f"{name.lower()}-combust",
-            "category": "solar-condition",
-            "severity": "warning",
-            "title": f"{name} combust",
-            "body": name,
-            "scoreImpact": -5.0,
-            "detail": f"{name} is combust the Sun ({format_orb(separation)}), weakening its ability to act cleanly.",
-        }
-    if separation <= 15:
-        return {
-            "id": f"{name.lower()}-under-beams",
-            "category": "solar-condition",
-            "severity": "caution",
-            "title": f"{name} under beams",
-            "body": name,
-            "scoreImpact": -2.0,
-            "detail": f"{name} is under the Sun's beams ({format_orb(separation)}), reducing visibility and clarity.",
-        }
-    return {
-        "id": f"{name.lower()}-clear-of-beams",
-        "category": "solar-condition",
-        "severity": "info",
-        "title": f"{name} clear of beams",
-        "body": name,
-        "scoreImpact": 0.0,
-        "detail": f"{name} is clear of the Sun's beams ({format_orb(separation)}).",
-    }
+def validate_mutable_rule_record(payload: Mapping[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    if str(payload.get("rule_id") or "").strip() == "":
+        blockers.append("rule_id_required")
+    if str(payload.get("rule_type") or "").strip() == "":
+        blockers.append("unsupported_rule_type")
+    if str(payload.get("target") or "").strip() == "":
+        blockers.append("unsupported_target")
+    if str(payload.get("scope") or "").strip() == "":
+        blockers.append("unsupported_scope")
+    if str(payload.get("operator") or "").strip() == "":
+        blockers.append("unsupported_operator")
+    status = str(payload.get("status") or "active")
+    if status not in ALLOWED_RULE_STATUSES:
+        blockers.append("unsupported_rule_status")
+    condition = payload.get("condition")
+    if not isinstance(condition, Mapping):
+        blockers.append("condition_required")
+    else:
+        if str(condition.get("field") or "").strip() == "":
+            blockers.append("condition_field_required")
+        if str(condition.get("operator") or "").strip() == "":
+            blockers.append("condition_operator_required")
+        if condition.get("value") is None:
+            blockers.append("condition_value_required")
+    priority = payload.get("priority")
+    if isinstance(priority, bool) or not isinstance(priority, int) or not (0 <= priority <= 100):
+        blockers.append("priority_out_of_range")
+    enabled = payload.get("enabled")
+    if not isinstance(enabled, bool):
+        blockers.append("enabled_flag_required")
+    return blockers
 
 
-def evaluate_electional_rules(
-    positions: Sequence[Mapping[str, object]],
-    lunar_phase: Mapping[str, object],
-    zodiac_system_id: str,
-    planetary_hour: Mapping[str, object] | None = None,
-    constellation_context: Mapping[str, object] | None = None,
-    judgment_contexts: Mapping[str, Mapping[str, object]] | None = None,
-    traditional_rules_enabled: bool = True,
-) -> dict[str, object]:
-    by_name = {str(planet.get("name")): planet for planet in positions}
-    sun = by_name.get("Sun")
-    solar_rules = []
-    if sun:
-        for name in ("Mercury", "Venus", "Mars", "Jupiter", "Saturn"):
-            body = by_name.get(name)
-            if body:
-                solar_rules.append(solar_condition_for_body(body, sun))
+def save_rule(
+    payload: Mapping[str, Any],
+    *,
+    root: Path | str = SOURCE_DOCUMENT_ROOT,
+) -> dict[str, Any]:
+    base = ensure_mutable_rule_repository(root)
+    normalized = dict(payload)
+    normalized.setdefault("schema_version", RULE_SCHEMA_VERSION)
+    normalized.setdefault("created_at_utc", _now())
+    normalized["updated_at_utc"] = _now()
+    blockers = validate_mutable_rule_record(normalized)
+    if blockers:
+        raise ValueError(",".join(blockers))
+    path = _rule_path(base, str(normalized.get("rule_id")))
+    existing = _read_json(path)
+    if isinstance(existing, dict):
+        if _stable_rule_payload(existing) == _stable_rule_payload(normalized):
+            return existing
+        raise ValueError("conflicting_rule_record")
+    before_index = _read_json(base / "indexes" / ACTIVE_RULE_INDEX)
+    try:
+        _atomic_write_json(path, normalized)
+        _update_active_rule_index(base)
+    except Exception:
+        _restore_json(path, existing)
+        _restore_json(base / "indexes" / ACTIVE_RULE_INDEX, before_index)
+        raise
+    return normalized
 
-    lunar_context = lunar_rule_context(positions, lunar_phase)
-    rules = [rule for rule in solar_rules if rule["severity"] != "info"]
-    phase_name = str(lunar_phase.get("name", ""))
-    if phase_name in {"New Moon", "Full Moon"}:
-        rules.append(
+
+def update_rule(rule_id: str, updates: Mapping[str, Any], *, root: Path | str = SOURCE_DOCUMENT_ROOT) -> dict[str, Any]:
+    base = ensure_mutable_rule_repository(root)
+    existing = load_rule(rule_id, root=base)
+    if existing is None:
+        raise FileNotFoundError(rule_id)
+    updated = dict(existing)
+    updated.update(dict(updates))
+    updated["rule_id"] = rule_id
+    updated["updated_at_utc"] = _now()
+    blockers = validate_mutable_rule_record(updated)
+    if blockers:
+        raise ValueError(",".join(blockers))
+    path = _rule_path(base, rule_id)
+    before_index = _read_json(base / "indexes" / ACTIVE_RULE_INDEX)
+    try:
+        _atomic_write_json(path, updated)
+        _update_active_rule_index(base)
+    except Exception:
+        _restore_json(path, existing)
+        _restore_json(base / "indexes" / ACTIVE_RULE_INDEX, before_index)
+        raise
+    return updated
+
+
+def active_rule_index_state(*, root: Path | str = SOURCE_DOCUMENT_ROOT) -> dict[str, Any]:
+    base = ensure_mutable_rule_repository(root)
+    index_payload = _read_json(base / "indexes" / ACTIVE_RULE_INDEX)
+    return index_payload if isinstance(index_payload, dict) else {"entries": [], "updated_at_utc": _now()}
+
+
+def active_rule_index_hash(*, root: Path | str = SOURCE_DOCUMENT_ROOT) -> str:
+    return _hash_payload(active_rule_index_state(root=root))
+
+
+def _update_active_rule_index(root: Path) -> None:
+    entries = []
+    for item in list_rules(root=root, active_only=True):
+        entries.append(
             {
-                "id": "lunation-turning-point",
-                "category": "moon",
-                "severity": "caution",
-                "title": f"{phase_name} turning point",
-                "body": "Moon",
-                "scoreImpact": -1.0,
-                "detail": f"{phase_name} is powerful but unstable for elections that need steady development.",
+                "rule_id": item.get("rule_id"),
+                "rule_type": item.get("rule_type"),
+                "target": item.get("target"),
+                "scope": item.get("scope"),
+                "priority": item.get("priority"),
+                "updated_at_utc": item.get("updated_at_utc"),
             }
         )
+    _atomic_write_json(root / "indexes" / ACTIVE_RULE_INDEX, {"entries": entries, "updated_at_utc": _now()})
 
-    if isinstance(planetary_hour, Mapping) and planetary_hour.get("available"):
-        hour_ruler = str(planetary_hour.get("hourRuler", ""))
-        impact = float(planetary_hour.get("scoreImpact", 0))
-        if impact:
-            severity = "support" if impact > 0 else "caution"
-            rules.append(
-                {
-                    "id": f"planetary-hour-{hour_ruler.lower()}",
-                    "category": "planetary-hour",
-                    "severity": severity,
-                    "title": f"{hour_ruler} planetary hour",
-                    "body": hour_ruler,
-                    "scoreImpact": impact,
-                    "detail": (
-                        f"The selected moment falls in the {hour_ruler} planetary hour "
-                        f"during the {planetary_hour.get('period')} period."
-                    ),
-                }
-            )
 
-    if isinstance(constellation_context, Mapping):
-        rising = constellation_context.get("rising", {})
-        if isinstance(rising, Mapping):
-            tempo = rising.get("tempo", {})
-            if isinstance(tempo, Mapping) and float(tempo.get("scoreImpact", 0)):
-                impact = float(tempo.get("scoreImpact", 0))
-                label = str(tempo.get("label", "tempo"))
-                rules.append(
-                    {
-                        "id": f"ascensional-tempo-{label}",
-                        "category": "ascensional-proportion",
-                        "severity": "support" if impact > 0 else "caution",
-                        "title": f"Ascendant rising tempo: {label}",
-                        "body": "ASC",
-                        "scoreImpact": impact,
-                        "detail": (
-                            f"The Ascendant is moving about {float(rising.get('ascendantSpeedDegPerHour', 0)):.1f} deg/hour; "
-                            f"{tempo.get('summary', 'ascensional tempo noted')}."
-                        ),
-                    }
-                )
-            span_context = rising.get("spanContext", {})
-            asc_constellation = rising.get("ascendantConstellation", {})
-            if isinstance(span_context, Mapping) and float(span_context.get("scoreImpact", 0)):
-                impact = float(span_context.get("scoreImpact", 0))
-                label = str(span_context.get("label", "span"))
-                rules.append(
-                    {
-                        "id": f"ascendant-constellation-span-{label}",
-                        "category": "constellation-proportion",
-                        "severity": "support" if impact > 0 else "caution",
-                        "title": f"ASC constellation span: {label}",
-                        "body": "ASC",
-                        "scoreImpact": impact,
-                        "detail": (
-                            f"The Ascendant is in {asc_constellation.get('name', 'its constellation')} "
-                            f"({float(asc_constellation.get('spanDegrees', 0)):.1f} deg wide); "
-                            f"{span_context.get('summary', 'constellation span noted')}."
-                        ),
-                    }
-                )
+def _rule_path(root: Path, rule_id: str) -> Path:
+    return root / RULE_REPOSITORY_DIR / f"{_safe_id(rule_id)}.json"
 
-    if traditional_rules_enabled and isinstance(judgment_contexts, Mapping):
-        rules.extend(judgment_rule_factors(judgment_contexts))
 
+def _stable_rule_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     return {
-        "zodiacSystemId": zodiac_system_id,
-        "traditionalRulesEnabled": traditional_rules_enabled,
-        "traditionalRulesNote": (
-            "Traditional rulership and dignity rules are disabled in True 13-Sign mode."
-            if not traditional_rules_enabled
-            else ""
-        ),
-        "lunarContext": lunar_context,
-        "planetaryHour": dict(planetary_hour or {}),
-        "constellationContext": dict(constellation_context or {}),
-        "judgmentContexts": dict(judgment_contexts or {}),
-        "solarConditions": solar_rules,
-        "rules": rules,
-        "scoreImpact": sum(float(rule.get("scoreImpact", 0)) for rule in rules),
+        "rule_id": payload.get("rule_id"),
+        "rule_type": payload.get("rule_type"),
+        "target": payload.get("target"),
+        "scope": payload.get("scope"),
+        "condition": payload.get("condition"),
+        "operator": payload.get("operator"),
+        "value": payload.get("value"),
+        "priority": payload.get("priority"),
+        "enabled": payload.get("enabled"),
+        "status": payload.get("status"),
+        "source_proposal_id": payload.get("source_proposal_id"),
+        "source_promotion_receipt_id": payload.get("source_promotion_receipt_id"),
+        "source_rule_activation_review_id": payload.get("source_rule_activation_review_id"),
+        "source_revision": payload.get("source_revision"),
+        "activation_receipt_id": payload.get("activation_receipt_id"),
     }
 
 
-def rule_score(rule_evaluations: Mapping[str, object] | None) -> float:
-    if not isinstance(rule_evaluations, Mapping):
-        return 0.0
-    return float(rule_evaluations.get("scoreImpact", 0))
+def _read_json(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f".{path.name}.tmp")
+    with temp_path.open("w", encoding="utf-8") as handle:
+        json.dump(dict(payload), handle, indent=2, sort_keys=True, default=str)
+        handle.write("\n")
+        handle.flush()
+        try:
+            os.fsync(handle.fileno())
+        except OSError:
+            pass
+    os.replace(temp_path, path)
+
+
+def _restore_json(path: Path, payload: Any) -> None:
+    if payload is None:
+        if path.exists():
+            path.unlink()
+        return
+    _atomic_write_json(path, payload)
+
+
+def _hash_payload(payload: Any) -> str:
+    return "sha256:" + hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+def _safe_id(value: str) -> str:
+    return "".join(char if char.isalnum() or char in {"_", "-", "."} else "_" for char in str(value).strip()) or "object"
+
+
+def _now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")

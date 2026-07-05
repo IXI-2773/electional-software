@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .locations import LocationPreset
-from .reporting import election_flag_lines, format_aspect_summary, format_lunar_phase
+from .reports.text_report import election_flag_lines, format_aspect_summary, format_lunar_phase
 from .storage import load_json_list, save_json
 
 SHORTLIST_PATH = Path.cwd() / ".electional-shortlist.json"

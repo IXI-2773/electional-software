@@ -10,6 +10,8 @@ from pathlib import Path
 import re
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from .quarantine import quarantine_aspect_profile
+
 
 @dataclass(frozen=True)
 class Aspect:
@@ -118,6 +120,17 @@ ASPECTS: tuple[Aspect, ...] = (
 
 ASPECT_BY_ID = {aspect.id: aspect for aspect in ASPECTS}
 BUILT_IN_ASPECT_IDS = tuple(aspect.id for aspect in ASPECTS)
+EXPECTED_MAJOR_ASPECT_ANGLES = {
+    "conjunction": 0.0,
+    "opp": 180.0,
+    "opposition": 180.0,
+    "sqr": 90.0,
+    "square": 90.0,
+    "tri": 120.0,
+    "trine": 120.0,
+    "sex": 60.0,
+    "sextile": 60.0,
+}
 DEFAULT_ASPECT_PROFILE_ID = "major-five"
 ASPECT_PROFILE_PATH = Path.cwd() / ".electional-aspect-profiles.json"
 ASPECT_PHASE_EPSILON = 0.02
@@ -210,7 +223,25 @@ def validate_aspect(aspect: Aspect, seen_ids: set[str] | None = None) -> list[st
         errors.append(f"{aspect.name}: orb must be between 0 and 30 degrees.")
     if aspect.tone not in {"support", "stress", "mixed"}:
         errors.append(f"{aspect.name}: tone must be support, stress, or mixed.")
+    expected_angle = expected_major_aspect_angle(aspect)
+    if expected_angle is not None and abs(float(aspect.angle) - expected_angle) > 1.0:
+        errors.append(
+            f"{aspect.name}: expected angle near {expected_angle:g} degrees, got {float(aspect.angle):g}; "
+            "profile looks corrupted or import-incomplete."
+        )
     return errors
+
+
+def expected_major_aspect_angle(aspect: Aspect) -> float | None:
+    keys = {
+        sanitize_aspect_id(aspect.id),
+        sanitize_aspect_id(aspect.name),
+        sanitize_aspect_id(aspect.abbreviation),
+    }
+    for key in keys:
+        if key in EXPECTED_MAJOR_ASPECT_ANGLES:
+            return EXPECTED_MAJOR_ASPECT_ANGLES[key]
+    return None
 
 
 def normalize_aspect_profile(profile: AspectProfile) -> AspectProfile:
@@ -267,7 +298,10 @@ def load_aspect_profiles(path: Path = ASPECT_PROFILE_PATH) -> list[AspectProfile
     profiles = [default_aspect_profile()]
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except OSError:
+        return profiles
+    except json.JSONDecodeError as exc:
+        quarantine_aspect_profile({"source": str(path), "raw": path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""}, [f"JSON decode failed: {exc}"])
         return profiles
     profile_payloads: object = payload.get("profiles", []) if isinstance(payload, dict) else payload
     if not isinstance(profile_payloads, Sequence) or isinstance(profile_payloads, (str, bytes)):
@@ -278,7 +312,9 @@ def load_aspect_profiles(path: Path = ASPECT_PROFILE_PATH) -> list[AspectProfile
         profile = aspect_profile_from_mapping(item)
         if profile.id == DEFAULT_ASPECT_PROFILE_ID:
             continue
-        if validate_aspect_profile(profile):
+        errors = validate_aspect_profile(profile)
+        if errors:
+            quarantine_aspect_profile(profile.to_json(), errors)
             continue
         profiles.append(profile)
     return profiles
@@ -305,6 +341,9 @@ def aspect_definition_signature(aspect_definitions: Iterable[Aspect | Mapping[st
             item if isinstance(item, Aspect) else aspect_from_mapping(item)
             for item in aspect_definitions
         )
+        errors = validate_aspect_profile(AspectProfile("explicit", "Explicit Aspect Definitions", "", aspects))
+        if errors:
+            raise ValueError("Invalid aspect profile: " + "; ".join(errors))
     return tuple(
         (
             aspect.id,

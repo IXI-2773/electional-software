@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Mapping
 
-from .chart import format_position
-from .reporting import format_motion_summary
+from .engine.chart import format_position
+from .reports.text_report import format_motion_summary
 
 
 PLANET_LABELS = {

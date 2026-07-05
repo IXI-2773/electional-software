@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 import math
 from pathlib import Path
 import re
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 import traceback
@@ -30,17 +31,17 @@ from .capricorn_assets import (
     import_capricorn_aspect_profiles,
     inventory_capricorn_assets,
 )
-from .chart import build_election_report, build_snapshot_for_moment, clear_snapshot_cache, format_angle, format_position, snapshot_cache_info
+from .engine.chart import build_election_report, build_snapshot_for_moment, clear_snapshot_cache, format_angle, format_position, snapshot_cache_info
 from .constellations import ECLIPTIC_CONSTELLATION_SPANS
 from .desktop_live_sky import LIVE_SKY_BODY_COLORS, LIVE_SKY_ORBIT_ORDER, live_sky_body_rows, live_sky_timestamp_line
 from .desktop_motion_pages import midpoint_contact_rows, midpoint_page_lines, midpoint_pair_rows, retrograde_motion_rows, retrograde_page_lines
-from .desktop_actions import DesktopActionsMixin, bind_desktop_globals as bind_actions_globals
-from .desktop_navigation import DesktopNavigationMixin, bind_desktop_globals as bind_navigation_globals
+from .ui.panels.actions import DesktopActionsMixin, bind_desktop_globals as bind_actions_globals
+from .ui.panels.navigation import DesktopNavigationMixin, bind_desktop_globals as bind_navigation_globals
 from .desktop_pages import DesktopPagesMixin, bind_desktop_globals as bind_pages_globals
 from .desktop_workspace import DesktopWorkspaceMixin, bind_desktop_globals as bind_workspace_globals
-from .desktop_left_rail import DesktopLeftRailMixin, bind_desktop_globals as bind_left_rail_globals
+from .ui.panels.left_rail import DesktopLeftRailMixin, bind_desktop_globals as bind_left_rail_globals
 from .desktop_right_panel import DesktopRightPanelMixin, bind_desktop_globals as bind_right_panel_globals
-from .desktop_wheel import DesktopWheelMixin, bind_desktop_globals as bind_wheel_globals
+from .ui.panels.wheel import DesktopWheelMixin, bind_desktop_globals as bind_wheel_globals
 from .desktop_validation import (
     build_manual_validation_comparison,
     format_manual_validation_comparison,
@@ -81,7 +82,7 @@ from .location_search import (
 from .point_sets import POINT_SET_NAMES, PointSet, get_point_set, visible_lots_for_point_set, visible_planets_for_point_set
 from .presets import ELECTIONAL_PRESETS, RULERS
 from .references import dignity_table_lines, lot_reference_lines, system_reference_lines
-from .reporting import (
+from .reports.text_report import (
     build_analysis_page,
     build_classical_point_data_page,
     build_comparison_export_text,
@@ -105,6 +106,8 @@ from .reporting import (
     format_lunar_phase,
     format_motion_summary,
     format_planet_focus,
+    planet_strength_lines,
+    planet_strength_workbench_lines,
     format_score_breakdown,
     format_window_label,
     factor_explorer_lines,
@@ -119,7 +122,7 @@ from .reporting import (
     validation_summary_lines,
 )
 from .screening import moon_void_course_summary, solar_elongation_summary
-from .search import (
+from .engine.search import (
     DEFAULT_MAX_RESULTS,
     DEFAULT_MAXIMUM_VOLATILITY,
     DEFAULT_MINIMUM_CLEANLINESS,
@@ -131,9 +134,16 @@ from .search import (
     SEARCH_PRESET_NAMES,
     SEARCH_QUALITY_MODE_NAMES,
     SearchConfig,
+    aspect_peak_lines,
     build_search_config_from_text,
+    ELECTION_STRATEGY_NAMES,
+    election_alert_lines,
+    election_strategy_values,
+    exact_search_query_summary,
     format_search_summary,
+    parse_exact_search_query,
     search_preset_values,
+    why_not_time_lines,
 )
 from .session import OBJECTIVES, clean_session_state, load_session_state, save_session_state
 from .shortlist import add_shortlist_entry, build_shortlist_entry, format_shortlist_entries, load_shortlist, save_shortlist
@@ -251,7 +261,7 @@ WHEEL_PRESET_HELP = {
 }
 HOME_LOCATION_DEFAULT_LABEL = "Local timezone default"
 LEFT_GUIDED_COLLAPSED_SECTIONS = ("Location", "Election Model", "Search Strategy", "Safety Filters", "Aspect Focus")
-TOP_NAV_BUTTON_METRICS = {"padx": 14, "pady": 5, "font_size": 10}
+TOP_NAV_BUTTON_METRICS = {"padx": 11, "pady": 3, "font_size": 9}
 SEARCH_TARGET_PLANETS = ("", "Sun", "Moon", "Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto")
 SEARCH_TARGET_SIGNS = (
     "",
@@ -318,6 +328,7 @@ DETAIL_PAGE_TABS = (
     "Pick Compare",
     "Pick Tools",
     "Button Health",
+    "PDF Intake",
     "Log",
 )
 TOP_NAV_PAGE_TARGETS = {
@@ -978,6 +989,8 @@ def button_health_lines(available_pages: tuple[str, ...] | list[str] | None = No
         f"Ribbon buttons: {len(ribbon_labels)}",
         f"View page shortcuts: {len(VIEW_PAGE_STRIP_ACTIONS)}",
         f"Detail pages: {len(pages)}",
+        f"Ribbon columns: {RIBBON_COLUMNS}",
+        "Advanced tools default: hidden",
         "",
     ]
     if not problems:
@@ -1273,6 +1286,15 @@ def location_summary(location: LocationPreset | None) -> str:
     return f"{compact_place_name(location.name)} | {location.timezone}"
 
 
+def canonical_location_summary(location: LocationPreset | None) -> str:
+    if not location:
+        return "Site: waiting"
+    return (
+        f"Site: {compact_place_name(location.name)} | "
+        f"{location.timezone} | {location.latitude:.3f}, {location.longitude:.3f}"
+    )
+
+
 def location_coordinate_summary(location: LocationPreset | None) -> str:
     if not location:
         return "Coordinates waiting"
@@ -1435,6 +1457,26 @@ def candidate_metric_badges(window: Mapping[str, object]) -> list[tuple[str, str
         (benefic_label, "support" if "Yes" in benefic_label else "neutral"),
         (malefic_label, "stress" if "Ang" in malefic_label and "Clear" not in malefic_label else "support"),
     ]
+    multi = window.get("multiObjective", {})
+    if isinstance(multi, Mapping):
+        badges.insert(0, (f"Power {multi.get('power', '--')}", "support"))
+        badges.insert(1, (f"Safety {multi.get('safety', '--')}", "cleanliness"))
+        badges.insert(2, (f"Stable {multi.get('stability', '--')}", "stage"))
+        badges.insert(3, (f"Risk {multi.get('risk', '--')}", "stress" if multi.get("risk") == "High" else "volatility" if multi.get("risk") == "Medium" else "support"))
+    fragility = window.get("fragility")
+    if not isinstance(fragility, Mapping):
+        stability_payload = window.get("windowStability", {})
+        fragility = stability_payload.get("fragility", {}) if isinstance(stability_payload, Mapping) else {}
+    if isinstance(fragility, Mapping) and fragility.get("band"):
+        band = str(fragility.get("band"))
+        tone = "support" if band == "Low" else "volatility" if band == "Medium" else "stress"
+        badges.append((f"Frag {band}", tone))
+    cluster = window.get("windowCluster", {})
+    if isinstance(cluster, Mapping) and cluster.get("index"):
+        badges.append((f"Cluster {cluster.get('index')}", "stage"))
+    role = str(window.get("tradeoffRole") or "").strip()
+    if role:
+        badges.append((role, "stage"))
     stage = str(window.get("searchStage") or "").strip()
     resolution = window.get("searchResolutionMinutes")
     if stage:
@@ -1557,7 +1599,13 @@ def displayed_chart_state_line(
     selected_index: int,
 ) -> str:
     offset = selection_offset_label(dict(input_snapshot), dict(selected_window))
-    source = "Current Chart" if displayed_source == "input chart" else f"Candidate #{selected_index + 1}"
+    source_key = str(displayed_source or "").lower()
+    if source_key == "preview":
+        source = "Preview Chart"
+    elif source_key == "input chart":
+        source = "Current Chart"
+    else:
+        source = f"Candidate #{selected_index + 1}"
     return f"{source} | {offset}"
 
 
@@ -1584,7 +1632,11 @@ def search_workbench_compact_lines(
         strongest = ""
         if isinstance(aspects, list) and aspects:
             strongest = f" | strongest {aspects[0].get('label', 'aspect')}"
-        detail = f"{action_note} | {search_mode} | {scan_hours}h/{step_minutes}m | {active_aspects} aspects{strongest}"
+        cluster_text = ""
+        cluster = top.get("windowCluster", {}) if isinstance(top, dict) else {}
+        if isinstance(cluster, Mapping) and cluster.get("index"):
+            cluster_text = f" | cluster {cluster.get('index')}: {cluster.get('type', 'window')}"
+        detail = f"{action_note} | {search_mode} | {scan_hours}h/{step_minutes}m | {active_aspects} aspects{strongest}{cluster_text}"
         return title, summary, detail
     blockers: list[str] = []
     if isinstance(rejection_summary, Mapping):
@@ -1693,9 +1745,9 @@ def location_intelligence_lines(
     if len(warning) > 84:
         warning = warning[:81].rstrip() + "..."
     return (
-        f"Place: {place} | {timezone}",
-        f"Coords: {coordinate_text} | Home: {compact_place_name(home)}",
-        f"Saved: {saved_count} | Recent: {recent} | {warning}",
+        f"{place} | {timezone} | {coordinate_text}",
+        f"Home: {compact_place_name(home)} | Recent: {recent}",
+        f"Saved: {saved_count} | {warning}",
     )
 
 
@@ -1892,6 +1944,9 @@ class ElectionalDesktopApp(DesktopNavigationMixin, DesktopActionsMixin, DesktopW
         self.timeline_report_text_cache = ""
         self.search_workbench_run_count = 0
         self.search_workbench_last_action = "waiting"
+        self.background_job_active = False
+        self.background_job_name = ""
+        self.background_job_token: object | None = None
         self.location_search_results: list[LocationSearchResult] = []
         self.location_search_result_labels: dict[str, LocationSearchResult] = {}
         self._moon_drag_state: dict[str, object] = {}
@@ -1914,7 +1969,7 @@ class ElectionalDesktopApp(DesktopNavigationMixin, DesktopActionsMixin, DesktopW
         self.show_nodes_var = tk.BooleanVar(value=bool(display_options.get("show_nodes", True)))
         self.show_fixed_stars_var = tk.BooleanVar(value=bool(display_options.get("show_fixed_stars", True)))
         self.show_score_overlay_var = tk.BooleanVar(value=bool(display_options.get("show_score_overlay", True)))
-        self.show_tools_var = tk.BooleanVar(value=bool(display_options.get("show_tools", False)))
+        self.show_tools_var = tk.BooleanVar(value=False)
         self.compact_wheel_var = tk.BooleanVar(value=bool(display_options.get("compact_wheel", False)))
         self.point_set_var = tk.StringVar(value=get_point_set(display_options.get("point_set")).name)
         self.page_mode_var = tk.StringVar(value=PAGE_MODE_LABELS.get(str(display_options.get("page_mode") or "guide"), "Guide"))
@@ -2216,7 +2271,62 @@ class ElectionalDesktopApp(DesktopNavigationMixin, DesktopActionsMixin, DesktopW
 
 
 
-    def calculate(self, *, show_input_chart: bool = False) -> None:
+    def _run_background_job(
+        self,
+        name: str,
+        worker: Callable[[], object],
+        on_success: Callable[[object], None],
+        *,
+        error_title: str = "Background job failed",
+        error_context: str = "Desktop background job failed",
+    ) -> bool:
+        if self.background_job_active:
+            active = self.background_job_name or "another task"
+            self.status_var.set(f"{active} is still running. Please wait for it to finish before starting {name}.")
+            return False
+        token = object()
+        self.background_job_active = True
+        self.background_job_name = name
+        self.background_job_token = token
+        self.status_var.set(f"{name} running in background...")
+        self._log_event(f"Background job started: {name}")
+
+        def run() -> None:
+            try:
+                result = worker()
+            except Exception as exc:  # pragma: no cover - desktop resilience path.
+                debug_path = record_desktop_exception(error_context)
+                error_text = str(exc)
+
+                def fail() -> None:
+                    if self.background_job_token is not token:
+                        return
+                    self.background_job_active = False
+                    self.background_job_name = ""
+                    self.background_job_token = None
+                    detail = f"\n\nDebug trace: {debug_path}" if debug_path else ""
+                    self.status_var.set(f"{name} failed: {error_text}")
+                    self._log_event(f"Background job failed: {name}: {error_text}")
+                    messagebox.showerror(error_title, f"{error_text}{detail}")
+
+                self.root.after(0, fail)
+                return
+
+            def finish() -> None:
+                if self.background_job_token is not token:
+                    return
+                self.background_job_active = False
+                self.background_job_name = ""
+                self.background_job_token = None
+                on_success(result)
+                self._log_event(f"Background job finished: {name}")
+
+            self.root.after(0, finish)
+
+        threading.Thread(target=run, name=name.lower().replace(" ", "-"), daemon=True).start()
+        return True
+
+    def _prepare_calculation_inputs(self) -> dict[str, object] | None:
         preset = self.presets_by_name.get(self.preset_var.get(), ELECTIONAL_PRESETS[1])
         zodiac_system = get_zodiac_system(self.zodiac_system_var.get())
         house_system = get_house_system(self.house_system_var.get())
@@ -2227,7 +2337,7 @@ class ElectionalDesktopApp(DesktopNavigationMixin, DesktopActionsMixin, DesktopW
             self._refresh_left_status_chips()
             self.status_var.set("Validation: failed. Select at least one aspect focus.")
             messagebox.showerror("Electional validation failed", "Select at least one aspect focus before calculating.")
-            return
+            return None
         errors = validate_election_inputs(
             self.date_var.get(),
             self.time_var.get(),
@@ -2253,7 +2363,7 @@ class ElectionalDesktopApp(DesktopNavigationMixin, DesktopActionsMixin, DesktopW
             self._refresh_left_status_chips()
             self.status_var.set("Validation: failed. Fix the highlighted input values and calculate again.")
             messagebox.showerror("Electional validation failed", message)
-            return
+            return None
 
         location = build_custom_location(
             self.location_name_var.get(),
@@ -2286,31 +2396,45 @@ class ElectionalDesktopApp(DesktopNavigationMixin, DesktopActionsMixin, DesktopW
             target_house_text=self.target_house_var.get(),
         )
         self._update_search_summary()
+        return {
+            "date_text": self.date_var.get(),
+            "time_text": normalized_time,
+            "location": location,
+            "preset": preset,
+            "selected_aspects": selected_aspects,
+            "zodiac_system": zodiac_system,
+            "house_system": house_system,
+            "search_config": search_config,
+            "objective": self.objective_var.get(),
+            "election_strategy": self.election_strategy_var.get(),
+            "aspect_definitions": aspect_definitions,
+            "aspect_profile_name": self.active_aspect_profile.name,
+        }
 
-        try:
-            report = build_election_report(
-                self.date_var.get(),
-                normalized_time,
-                location,
-                preset.id,
-                selected_aspects,
-                zodiac_system.id,
-                house_system.id,
-                search_config,
-                self.objective_var.get(),
-                aspect_definitions,
-            )
-        except Exception as exc:  # pragma: no cover - exercised manually through the desktop UI.
-            debug_path = record_desktop_exception("Electional calculation failed")
-            self._log_event(f"Calculation failed: {exc}")
-            detail = f"\n\nDebug trace: {debug_path}" if debug_path else ""
-            messagebox.showerror("Electional calculation failed", f"{exc}{detail}")
-            return
+    def _build_report_from_prepared(self, prepared: Mapping[str, object]) -> dict[str, object]:
+        return build_election_report(
+            str(prepared["date_text"]),
+            str(prepared["time_text"]),
+            prepared["location"],
+            prepared["preset"].id,
+            list(prepared["selected_aspects"]),
+            prepared["zodiac_system"].id,
+            prepared["house_system"].id,
+            prepared["search_config"],
+            str(prepared["objective"]),
+            prepared["aspect_definitions"],
+        )
 
+    def _apply_calculation_report(self, report: Mapping[str, object], prepared: Mapping[str, object], *, show_input_chart: bool) -> None:
         snapshot = report["snapshot"]
         windows = report["windows"]
         selected_window = snapshot if show_input_chart else (windows[0] if windows else snapshot)
         selected_index = -1 if selected_window is snapshot else 0
+        location = prepared["location"]
+        search_config = prepared["search_config"]
+        zodiac_system = prepared["zodiac_system"]
+        house_system = prepared["house_system"]
+        selected_aspects = list(prepared["selected_aspects"])
         self.current_location = location
         self.input_snapshot = snapshot
         self.current_windows = list(windows)
@@ -2326,7 +2450,7 @@ class ElectionalDesktopApp(DesktopNavigationMixin, DesktopActionsMixin, DesktopW
         self.current_search_summary = (
             f"{format_search_summary(search_config)} Mode: {search_mode}; evaluated {evaluated_count} "
             f"({searched_count} coarse + {refined_count} refined); deep-built {deep_count}. "
-            f"Aspect profile: {self.active_aspect_profile.name}; active aspects {len(selected_aspects)}.{cache_text}"
+            f"Aspect profile: {prepared.get('aspect_profile_name', self.active_aspect_profile.name)}; active aspects {len(selected_aspects)}.{cache_text}"
         )
         self.current_rejection_summary = dict(report.get("rejectionSummary") or {})
         self.current_searched_window_count = evaluated_count
@@ -2335,7 +2459,7 @@ class ElectionalDesktopApp(DesktopNavigationMixin, DesktopActionsMixin, DesktopW
         self.displayed_chart_source = "input chart" if show_input_chart or not windows else "selected candidate"
         self.current_aspect_highlights = self._build_displayed_aspect_highlights(selected_window, location)
 
-        self.title_var.set(f"{self.objective_var.get()} election timing")
+        self.title_var.set(f"{prepared['objective']} election timing")
         self.natal_summary.configure(text=f"Score {selected_window['score']} | {score_band_label(int(selected_window['score']))}")
         self.score_var.set(str(selected_window["score"]))
         self.score_band_var.set(f"{score_band_label(int(selected_window['score']))} window")
@@ -2376,6 +2500,47 @@ class ElectionalDesktopApp(DesktopNavigationMixin, DesktopActionsMixin, DesktopW
         self._render_text_panels(selected_window, windows, location)
         self._apply_current_theme()
         self._save_session()
+
+    def calculate(self, *, show_input_chart: bool = False) -> None:
+        prepared = self._prepare_calculation_inputs()
+        if prepared is None:
+            return
+        try:
+            report = self._build_report_from_prepared(prepared)
+        except Exception as exc:  # pragma: no cover - exercised manually through the desktop UI.
+            debug_path = record_desktop_exception("Electional calculation failed")
+            self._log_event(f"Calculation failed: {exc}")
+            detail = f"\n\nDebug trace: {debug_path}" if debug_path else ""
+            messagebox.showerror("Electional calculation failed", f"{exc}{detail}")
+            return
+        self._apply_calculation_report(report, prepared, show_input_chart=show_input_chart)
+
+    def calculate_in_background(
+        self,
+        *,
+        show_input_chart: bool = False,
+        job_name: str = "Electional calculation",
+        on_complete: Callable[[], None] | None = None,
+    ) -> bool:
+        prepared = self._prepare_calculation_inputs()
+        if prepared is None:
+            return False
+
+        def worker() -> object:
+            return self._build_report_from_prepared(prepared)
+
+        def finish(result: object) -> None:
+            self._apply_calculation_report(result, prepared, show_input_chart=show_input_chart)
+            if on_complete is not None:
+                on_complete()
+
+        return self._run_background_job(
+            job_name,
+            worker,
+            finish,
+            error_title="Electional calculation failed",
+            error_context="Electional background calculation failed",
+        )
 
 
 
@@ -2494,6 +2659,7 @@ class ElectionalDesktopApp(DesktopNavigationMixin, DesktopActionsMixin, DesktopW
             "target_planet": self.target_planet_var.get(),
             "target_sign": self.target_sign_var.get(),
             "target_house": self.target_house_var.get(),
+            "exact_search_query": self.exact_search_query_var.get(),
             "avoid_major_stress": self.avoid_major_stress_var.get(),
             "require_applying_support": self.require_applying_support_var.get(),
             "require_angular_benefic": self.require_angular_benefic_var.get(),
@@ -2501,6 +2667,12 @@ class ElectionalDesktopApp(DesktopNavigationMixin, DesktopActionsMixin, DesktopW
             "require_moon_non_void": self.require_moon_non_void_var.get(),
             "avoid_objective_antipatterns": self.avoid_objective_antipatterns_var.get(),
             "manual_validation_comparison": self.manual_validation_result,
+            "scrub_preview": {
+                "offsetMinutes": int(self.time_scrub_minutes_var.get()) if hasattr(self, "time_scrub_minutes_var") else 0,
+                "active": bool(hasattr(self, "time_scrub_minutes_var") and int(self.time_scrub_minutes_var.get()) != 0),
+                "baseDate": str(getattr(self, "time_scrub_base_date", "") or ""),
+                "baseTime": str(getattr(self, "time_scrub_base_time", "") or ""),
+            },
             "display_options": {
                 "show_aspects": self.show_aspects_var.get(),
                 "show_lots": self.show_lots_var.get(),
@@ -2556,3 +2728,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

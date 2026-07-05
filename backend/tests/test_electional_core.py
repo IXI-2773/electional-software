@@ -26,7 +26,18 @@ from backend.electional.presets import (
     summarize_orb,
 )
 from backend.electional.scoring import angle_testimony, planet_strength_breakdown, score_breakdown, score_breakdown_model, score_window
-from backend.electional.search import SearchConfig, format_search_summary, has_planet_placement, has_target_aspect, rejection_reasons
+from backend.electional.search import (
+    SearchConfig,
+    candidate_debate_lines,
+    candidate_debate_payload,
+    classify_search_results_by_threshold,
+    format_search_summary,
+    has_planet_placement,
+    has_target_aspect,
+    rank_search_windows,
+    rejection_reasons,
+    threshold_classification,
+)
 from backend.electional.timing import timing_profile
 
 
@@ -52,7 +63,149 @@ def position(
     return payload
 
 
+def candidate_window(
+    label: str,
+    score: int,
+    *,
+    confidence: int = 82,
+    cleanliness: int = 82,
+    volatility: int = 20,
+    readiness: int = 80,
+    moon_dignity: int = 0,
+    matter_impact: float = 0.0,
+    natal_fit: int = 60,
+    stability: str = "stable",
+    fragility: str = "Low",
+    angular_malefic: bool = False,
+    moon_void: bool = False,
+) -> dict:
+    positions = [
+        {
+            **position("Moon", 45, "Taurus", is_angular=moon_dignity > 0, distance=4),
+            "dignity": {"score": moon_dignity},
+        }
+    ]
+    if angular_malefic:
+        positions.append(position("Mars", 120, "Leo", is_angular=True, distance=2))
+    else:
+        positions.append(position("Venus", 45, "Taurus", is_angular=True, distance=4))
+    return {
+        "formattedTime": label,
+        "score": score,
+        "scoreBreakdown": {
+            "objectiveMatches": 2,
+            "diagnostics": {
+                "confidence": {"score": confidence},
+                "cleanliness": {"score": cleanliness},
+                "volatility": {"score": volatility},
+                "readiness": {"score": readiness},
+            },
+        },
+        "detectedAspects": [{"tone": "support", "isApplying": True, "orb": 0.8}],
+        "positions": positions,
+        "moonCondition": {"voidOfCourse": {"isVoid": moon_void}},
+        "matterLordContext": {"scoreImpact": matter_impact},
+        "natalCompatibilityScore": natal_fit,
+        "windowStability": {"classification": stability, "samples": [{"score": score}] * 6},
+        "fragility": {"band": fragility},
+    }
+
+
 class ElectionalCoreTest(unittest.TestCase):
+    def test_candidate_debate_compares_candidates_in_both_directions(self) -> None:
+        first = candidate_window("Candidate A time", 88, moon_dignity=3, matter_impact=2.0, natal_fit=82, confidence=82)
+        second = candidate_window("Candidate B time", 84, confidence=92, cleanliness=94, volatility=10, stability="stable")
+
+        payload = candidate_debate_payload([first, second], SearchConfig(max_results=2))
+        text = "\n".join(candidate_debate_lines([first, second], SearchConfig(max_results=2)))
+
+        self.assertEqual(payload["mode"], "Candidate Debate")
+        self.assertEqual(payload["matchups"][0]["first"], "Candidate A")
+        self.assertIn("stronger Moon condition", payload["matchups"][0]["firstAdvantages"])
+        self.assertIn("better Lord of Matter placement", payload["matchups"][0]["firstAdvantages"])
+        self.assertIn("higher natal/profection compatibility", payload["matchups"][0]["firstAdvantages"])
+        self.assertIn("Candidate B beats Candidate A because:", text)
+        self.assertIn("safer", text)
+        self.assertIn("Final recommendation:", text)
+
+    def test_candidate_debate_recommends_safe_candidate_over_aggressive_tradeoff(self) -> None:
+        aggressive = candidate_window(
+            "Aggressive",
+            96,
+            confidence=76,
+            cleanliness=58,
+            volatility=58,
+            readiness=90,
+            moon_dignity=2,
+            matter_impact=1.5,
+            natal_fit=78,
+            stability="fragile",
+            fragility="High",
+        )
+        safe = candidate_window(
+            "Safe",
+            83,
+            confidence=94,
+            cleanliness=95,
+            volatility=8,
+            readiness=78,
+            natal_fit=62,
+            stability="stable",
+            fragility="Low",
+        )
+
+        lines = candidate_debate_lines([aggressive, safe], SearchConfig(max_results=2))
+        text = "\n".join(lines)
+
+        self.assertIn("Use Candidate B for practical reliability.", text)
+        self.assertIn("Use Candidate A only if exact timing and aggressive strength matter.", text)
+        self.assertIn("wider stable window", text)
+        self.assertIn("less malefic angular pressure", text)
+
+    def test_strict_threshold_rejects_below_b_hard_failures_and_low_confidence(self) -> None:
+        weak = candidate_window("Weak", 79, confidence=66, angular_malefic=True)
+
+        classification = threshold_classification(weak, "strict")
+        ranked = rank_search_windows([weak], SearchConfig(threshold_mode="strict"))
+
+        self.assertFalse(classification["accepted"])
+        self.assertIn("grade C+ below B", classification["reasons"])
+        self.assertIn("angular malefic present", classification["reasons"])
+        self.assertIn("data confidence 66 below strict minimum 70", classification["reasons"])
+        self.assertEqual(ranked, [])
+
+    def test_practical_threshold_accepts_c_plus_with_high_confidence_and_warns_on_fragility(self) -> None:
+        practical = candidate_window("Practical", 76, confidence=84, cleanliness=82, fragility="Medium")
+
+        classification = threshold_classification(practical, "practical")
+        ranked = rank_search_windows([practical], SearchConfig(threshold_mode="practical"))
+
+        self.assertTrue(classification["accepted"])
+        self.assertEqual(classification["grade"], "C+")
+        self.assertIn("medium fragility", classification["warnings"][0])
+        self.assertEqual(len(ranked), 1)
+
+    def test_emergency_threshold_returns_least_bad_fallback(self) -> None:
+        poor = candidate_window("Poor", 62, confidence=57, cleanliness=55, volatility=70)
+        least_bad = candidate_window("Least bad", 72, confidence=74, cleanliness=78, volatility=28)
+
+        payload = classify_search_results_by_threshold([poor, least_bad], "emergency")
+        ranked = rank_search_windows([poor, least_bad], SearchConfig(threshold_mode="emergency"))
+
+        self.assertEqual(payload["status"], "emergency_only")
+        self.assertTrue(payload["emergencyCandidate"]["emergencyOnly"])
+        self.assertEqual(payload["emergencyCandidate"]["formattedTime"], "Least bad")
+        self.assertIn("No clean election was found", payload["explanation"])
+        self.assertEqual(ranked[0]["formattedTime"], "Least bad")
+
+    def test_threshold_classification_reports_no_candidate_when_none_exist(self) -> None:
+        payload = classify_search_results_by_threshold([], "emergency")
+
+        self.assertEqual(payload["status"], "no_candidates")
+        self.assertEqual(payload["accepted"], [])
+        self.assertNotIn("emergencyCandidate", payload)
+        self.assertIn("No candidate windows were available", payload["explanation"])
+
     def test_search_targets_match_aspects_and_planet_placements(self) -> None:
         window = {
             "detectedAspects": [

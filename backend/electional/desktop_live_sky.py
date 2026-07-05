@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Mapping
 
-from .chart import format_position
+from .engine.chart import format_position
 
 
 LIVE_SKY_ORBIT_ORDER = {

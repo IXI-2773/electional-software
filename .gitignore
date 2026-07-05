@@ -12,6 +12,9 @@ __pycache__/
 coverage/
 htmlcov/
 
+# Frontend dependencies
+node_modules/
+
 # Build / package output
 build/
 dist/
@@ -23,6 +26,7 @@ dist/
 *.bak
 *.old
 .cache/
+.DS_Store
 tmp/
 temp/
 
@@ -37,6 +41,8 @@ backups/
 old/
 archive/
 archives/
+old_backups/
+old-backups/
 
 # Large or raw data
 data/raw/
@@ -47,6 +53,12 @@ data/downloads/
 *.xlsx
 *.xls
 *.pdf
+
+# Model or generated analysis artifacts
+model_outputs/
+model-output/
+models/output/
+*.model
 
 # Keep clean samples
 !data/samples/
@@ -60,7 +72,6 @@ outputs/
 exports/
 
 # OS/editor junk
-.DS_Store
 Thumbs.db
 .vscode/
 .idea/

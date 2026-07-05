@@ -159,7 +159,15 @@ class DesktopPagesMixin:
         self._analysis_text_section("Moon Timing", judgment_context_lines(snapshot, "moonCondition"))
         self._analysis_text_section("Planet Conditions", judgment_context_lines(snapshot, "planetConditionContext"))
         self._analysis_text_section("House Geometry", house_geometry_insight_lines(snapshot))
-        self._analysis_text_section("Houses And Angles", [*angle_testimony_lines(snapshot), *judgment_context_lines(snapshot, "houseRulerContext")])
+        self._analysis_text_section(
+            "Houses And Angles",
+            [
+                *angle_testimony_lines(snapshot),
+                *judgment_context_lines(snapshot, "houseRulerContext"),
+                "",
+                *judgment_context_lines(snapshot, "matterLordContext"),
+            ],
+        )
         self._analysis_text_section("Search, Validation, And Rejections", analysis_notice_lines(snapshot, self.current_rejection_summary, location))
         self._analysis_text_section("Accuracy Validation", validation_workbench_lines(snapshot, location, self.manual_validation_result))
 
@@ -628,7 +636,18 @@ class DesktopPagesMixin:
         if self.page_mode_var.get() == PAGE_MODE_LABELS["live-sky"]:
             self.live_sky_snapshot = snapshot
             self._update_live_sky("chart")
-        self._set_text(self.house_rulers_text, self._context_page_text("House Rulers", judgment_context_lines(snapshot, "houseRulerContext"), snapshot))
+        self._set_text(
+            self.house_rulers_text,
+            self._context_page_text(
+                "House Rulers",
+                [
+                    *judgment_context_lines(snapshot, "houseRulerContext"),
+                    "",
+                    *judgment_context_lines(snapshot, "matterLordContext"),
+                ],
+                snapshot,
+            ),
+        )
         self._set_text(self.reception_text, self._context_page_text("Reception", judgment_context_lines(snapshot, "receptionContext"), snapshot))
         planet_strength_rows = (
             snapshot.get("scoreBreakdown", {})
@@ -637,21 +656,12 @@ class DesktopPagesMixin:
             if isinstance(snapshot.get("scoreBreakdown", {}), dict)
             else []
         )
-        planet_strength_lines = ["Planet Strength Detail"]
-        if isinstance(planet_strength_rows, list) and planet_strength_rows:
-            for row in planet_strength_rows[:12]:
-                if not isinstance(row, Mapping):
-                    continue
-                planet_strength_lines.append(
-                    f"- {row.get('planet')}: {row.get('score')} {row.get('band')} | {row.get('note')}"
-                )
-        else:
-            planet_strength_lines.append("- Planet strength diagnostics are unavailable for this chart.")
+        planet_strength_detail_lines = planet_strength_workbench_lines(snapshot, limit=12)
         self._set_text(
             self.planet_condition_text,
             self._context_page_text(
                 "Planet Conditions",
-                [*planet_strength_lines, "", *judgment_context_lines(snapshot, "planetConditionContext")],
+                [*planet_strength_detail_lines, "", *judgment_context_lines(snapshot, "planetConditionContext")],
                 snapshot,
             ),
         )

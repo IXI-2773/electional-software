@@ -30,7 +30,62 @@ OBJECTIVE_TOPICS: dict[str, dict[str, object]] = {
     "Relationship timing": {"houses": (7,), "planets": ("Venus", "Moon"), "label": "relationship"},
     "Travel departure": {"houses": (9,), "planets": ("Mercury", "Jupiter"), "label": "travel"},
     "Money or business": {"houses": (2, 11), "planets": ("Jupiter", "Venus"), "label": "money or business"},
+    "Exam / certification": {"houses": (9,), "planets": ("Mercury", "Jupiter"), "label": "exam"},
+    "Legal / dispute": {"houses": (7, 9, 10), "planets": ("Jupiter", "Mars", "Saturn"), "label": "legal dispute"},
+    "Message / contact": {"houses": (3,), "planets": ("Mercury", "Moon"), "label": "message / contact"},
     "Health or surgery caution": {"houses": (1, 6, 8), "planets": ("Mars", "Saturn"), "label": "health caution"},
+}
+OBJECTIVE_MATTER_TOPICS: dict[str, dict[str, object]] = {
+    "Launch or publish": {
+        "houses": (10,),
+        "natural": ("Sun", "Mercury"),
+        "label": "public launch / visibility",
+    },
+    "Meeting or negotiation": {
+        "houses": (7,),
+        "natural": ("Mercury", "Venus"),
+        "label": "agreement / counterpart",
+    },
+    "Creative work": {
+        "houses": (5,),
+        "natural": ("Venus", "Sun"),
+        "label": "creative production",
+    },
+    "Relationship timing": {
+        "houses": (7,),
+        "natural": ("Venus", "Moon"),
+        "label": "relationship matter",
+    },
+    "Travel departure": {
+        "houses": (9,),
+        "natural": ("Mercury", "Jupiter"),
+        "label": "long-distance travel",
+    },
+    "Money or business": {
+        "houses": (2, 11),
+        "natural": ("Venus", "Jupiter", "Mercury"),
+        "label": "money, profit, and gains",
+    },
+    "Health or surgery caution": {
+        "houses": (1, 6, 8),
+        "natural": ("Mars", "Saturn"),
+        "label": "health/surgery caution",
+    },
+    "Exam / certification": {
+        "houses": (9,),
+        "natural": ("Mercury", "Jupiter"),
+        "label": "exam or certification",
+    },
+    "Legal / dispute": {
+        "houses": (7, 9, 10),
+        "natural": ("Jupiter", "Mars", "Saturn"),
+        "label": "legal dispute / judgment",
+    },
+    "Message / contact": {
+        "houses": (3,),
+        "natural": ("Mercury", "Moon"),
+        "label": "message, contact, and exchange",
+    },
 }
 
 DEFAULT_OBJECTIVE = "Launch or publish"
@@ -70,6 +125,24 @@ OBJECTIVE_ASPECT_PRIORITIES: dict[str, dict[str, object]] = {
         "cautionBodies": {"Mars", "Saturn"},
         "supportSummary": "profit, agreement, and growth",
         "cautionSummary": "loss pressure, scarcity, or conflict",
+    },
+    "Exam / certification": {
+        "supportBodies": {"Mercury", "Jupiter", "Moon"},
+        "cautionBodies": {"Saturn", "Mars", "Sun"},
+        "supportSummary": "clarity, judgment, and successful review",
+        "cautionSummary": "delay, pressure, or mental blockage",
+    },
+    "Legal / dispute": {
+        "supportBodies": {"Jupiter", "Mercury", "Moon"},
+        "cautionBodies": {"Mars", "Saturn"},
+        "supportSummary": "authority, fairness, and strategic advantage",
+        "cautionSummary": "conflict, obstruction, or punitive pressure",
+    },
+    "Message / contact": {
+        "supportBodies": {"Mercury", "Moon", "Venus"},
+        "cautionBodies": {"Saturn", "Mars"},
+        "supportSummary": "clear exchange and responsiveness",
+        "cautionSummary": "delay, argument, or blocked communication",
     },
     "Health or surgery caution": {
         "supportBodies": {"Jupiter", "Venus", "Moon"},
@@ -433,6 +506,302 @@ def house_ruler_context(
         **_context(f"{objective}: evaluated {len(rulers)} topic house ruler(s).", factors),
         "objective": objective,
         "rulers": rulers,
+    }
+
+
+def matter_lord_context(
+    positions: Sequence[Mapping[str, object]],
+    angles: Sequence[Mapping[str, object]],
+    house_cusps: Sequence[Mapping[str, object]],
+    detected_aspects: Sequence[Mapping[str, object]],
+    objective: str = DEFAULT_OBJECTIVE,
+    planetary_hour: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Evaluate Lord of ASC, Moon, Lord(s) of Matter, natural significators, and hour/year lords."""
+
+    by_name = _position_by_name(positions)
+    topic = OBJECTIVE_MATTER_TOPICS.get(objective, OBJECTIVE_MATTER_TOPICS.get(DEFAULT_OBJECTIVE, {}))
+    ascendant = next((angle for angle in angles if angle.get("id") == "asc"), None)
+    asc_sign = str((ascendant or {}).get("zodiac", {}).get("sign", ""))
+    asc_lord = RULERS.get(asc_sign)
+    matter_houses = tuple(int(house) for house in topic.get("houses", ()))
+    natural = tuple(str(name) for name in topic.get("natural", ()))
+    hour_lord = str((planetary_hour or {}).get("hourRuler") or "")
+    year_lord = "Sun"
+
+    matter_lords = []
+    factors: list[dict[str, object]] = []
+
+    def score_body(name: str, role: str, weight: float = 1.0, house: int | None = None) -> dict[str, object] | None:
+        planet = by_name.get(name)
+        if not planet:
+            return None
+        score = _planet_factor_score(planet) * weight
+        aspect_support = 0
+        aspect_stress = 0
+        for aspect in detected_aspects:
+            bodies = aspect.get("bodies", [])
+            if not isinstance(bodies, list) or name not in [str(body) for body in bodies]:
+                continue
+            if aspect.get("tone") == "support":
+                aspect_support += 1
+                if aspect.get("isApplying"):
+                    score += 0.35 * weight
+            elif aspect.get("tone") == "stress":
+                aspect_stress += 1
+                if aspect.get("isApplying"):
+                    score -= 0.45 * weight
+        detail = (
+            f"{role}: {name} in H{planet.get('house', 'n/a')}; {_dignity_label(planet)}"
+            + ("; angular" if planet.get("isAngular") else "")
+            + ("; retrograde" if planet.get("isRetrograde") else "")
+            + f"; aspects +{aspect_support}/!{aspect_stress}."
+        )
+        factors.append(
+            _factor(
+                f"matter-{_slug(role)}-{_slug(name)}",
+                "lord-of-matter",
+                f"{role}: {name}",
+                detail,
+                score,
+                _severity_for_score(score),
+                name,
+            )
+        )
+        return {
+            "role": role,
+            "house": house,
+            "name": name,
+            "sign": planet.get("zodiac", {}).get("sign") if isinstance(planet.get("zodiac"), Mapping) else "",
+            "planetHouse": planet.get("house"),
+            "dignity": planet.get("dignity"),
+            "isAngular": bool(planet.get("isAngular")),
+            "isRetrograde": bool(planet.get("isRetrograde")),
+            "supportAspects": aspect_support,
+            "stressAspects": aspect_stress,
+            "scoreImpact": round(score, 2),
+        }
+
+    if asc_lord:
+        item = score_body(asc_lord, "Lord of ASC", 1.0, 1)
+        if item:
+            matter_lords.append(item)
+    moon_item = score_body("Moon", "Moon", 1.0)
+    if moon_item:
+        matter_lords.append(moon_item)
+    for house in matter_houses:
+        sign = _cusp_sign(house_cusps, house) or ""
+        ruler = RULERS.get(sign)
+        if not ruler:
+            continue
+        item = score_body(ruler, f"Lord of Matter H{house}", 1.25, house)
+        if item:
+            item["matterSign"] = sign
+            matter_lords.append(item)
+    for name in natural:
+        item = score_body(name, "Natural significator", 0.9)
+        if item:
+            matter_lords.append(item)
+    if hour_lord:
+        hour_item = score_body(hour_lord, "Lord of Hour", 0.55)
+        if hour_item:
+            matter_lords.append(hour_item)
+    year_item = score_body(str(year_lord), "Lord of Year", 0.35)
+    if year_item:
+        matter_lords.append(year_item)
+
+    # De-duplicate repeated roles for the same body while preserving role detail in factors.
+    unique_lords: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in matter_lords:
+        key = (str(item.get("role")), str(item.get("name")))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_lords.append(item)
+
+    return {
+        **_context(
+            f"{objective}: Lord of Matter uses house(s) {', '.join(str(h) for h in matter_houses) or 'n/a'} "
+            f"for {topic.get('label', 'the matter')}.",
+            factors,
+        ),
+        "objective": objective,
+        "matterHouses": list(matter_houses),
+        "naturalSignificators": list(natural),
+        "hourLord": hour_lord,
+        "yearLord": year_lord,
+        "lords": unique_lords,
+    }
+
+
+def _planetary_affliction_notes(planet: Mapping[str, object] | None) -> list[str]:
+    if not isinstance(planet, Mapping):
+        return []
+    notes: list[str] = []
+    if planet.get("isRetrograde"):
+        notes.append("retrograde")
+    solar = planet.get("solarCondition")
+    if isinstance(solar, Mapping):
+        phase = str(solar.get("phase") or "")
+        if phase in {"combust", "under beams"}:
+            notes.append(phase)
+    if _dignity_score(planet) <= -4:
+        notes.append("debilitated dignity")
+    return notes
+
+
+def _body_aspect_counts(
+    detected_aspects: Sequence[Mapping[str, object]],
+    name: str,
+    *,
+    target_bodies: Sequence[str] = (),
+) -> tuple[int, int, int]:
+    support = 0
+    stress = 0
+    applying_support = 0
+    targets = {str(body) for body in target_bodies if body}
+    for aspect in detected_aspects:
+        bodies = aspect.get("bodies", [])
+        if not isinstance(bodies, list):
+            continue
+        body_names = {str(body) for body in bodies}
+        if name not in body_names:
+            continue
+        if targets and not body_names.intersection(targets):
+            continue
+        if aspect.get("tone") == "support":
+            support += 1
+            if aspect.get("isApplying"):
+                applying_support += 1
+        elif aspect.get("tone") == "stress":
+            stress += 1
+    return support, stress, applying_support
+
+
+def _objective_planet_factor(
+    factors: list[dict[str, object]],
+    by_name: Mapping[str, Mapping[str, object]],
+    detected_aspects: Sequence[Mapping[str, object]],
+    name: str,
+    title: str,
+    *,
+    weight: float = 1.0,
+    target_bodies: Sequence[str] = (),
+) -> float:
+    planet = by_name.get(name)
+    if not planet:
+        return 0.0
+    support, stress, applying_support = _body_aspect_counts(detected_aspects, name, target_bodies=target_bodies)
+    score = _planet_factor_score(planet) * weight + applying_support * 0.35 * weight - stress * 0.25 * weight
+    details = [f"{name} in H{planet.get('house', 'n/a')}", _dignity_label(planet)]
+    if planet.get("isAngular"):
+        details.append("angular")
+    afflictions = _planetary_affliction_notes(planet)
+    if afflictions:
+        details.append(", ".join(afflictions))
+    details.append(f"aspects +{support}/!{stress}")
+    factors.append(
+        _factor(
+            f"objective-{_slug(title)}-{_slug(name)}",
+            "objective-analyzer",
+            title,
+            "; ".join(details) + ".",
+            score,
+            _severity_for_score(score),
+            name,
+        )
+    )
+    return score
+
+
+def objective_analyzer_context(
+    positions: Sequence[Mapping[str, object]],
+    house_cusps: Sequence[Mapping[str, object]],
+    detected_aspects: Sequence[Mapping[str, object]],
+    objective: str = DEFAULT_OBJECTIVE,
+    reception: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    by_name = _position_by_name(positions)
+    factors: list[dict[str, object]] = []
+    notes: list[str] = []
+    objective_key = str(objective).lower()
+    analyzer_name = "Objective Analyzer"
+
+    if "exam" in objective_key or "cert" in objective_key:
+        analyzer_name = "Exam Analyzer"
+        _objective_planet_factor(factors, by_name, detected_aspects, "Mercury", "Mercury strength", weight=1.35, target_bodies=("Moon", "Jupiter", "Saturn"))
+        ninth_ruler = _house_ruler(house_cusps, 9)
+        if ninth_ruler:
+            _objective_planet_factor(factors, by_name, detected_aspects, ninth_ruler, "9th-house ruler", weight=1.15, target_bodies=("Moon", "Jupiter", "Saturn"))
+        _objective_planet_factor(factors, by_name, detected_aspects, "Jupiter", "Jupiter judgment support", weight=0.95, target_bodies=("Moon", "Mercury"))
+        moon_support, moon_stress, moon_apply = _body_aspect_counts(detected_aspects, "Moon", target_bodies=("Mercury", "Jupiter"))
+        moon_score = moon_apply * 0.7 - moon_stress * 0.4
+        factors.append(_factor("objective-exam-moon", "objective-analyzer", "Moon to Mercury/Jupiter", f"Moon contacts to Mercury/Jupiter: +{moon_support}/!{moon_stress}; applying support {moon_apply}.", moon_score, _severity_for_score(moon_score), "Moon"))
+        mercury = by_name.get("Mercury")
+        if isinstance(mercury, Mapping):
+            afflictions = _planetary_affliction_notes(mercury)
+            if afflictions:
+                notes.append(f"Mercury caution: {', '.join(afflictions)}.")
+        notes.append("Natal/profection support is not fully modeled yet; treat that part as unavailable.")
+    elif "legal" in objective_key or "dispute" in objective_key:
+        analyzer_name = "Legal / Dispute Analyzer"
+        seventh_ruler = _house_ruler(house_cusps, 7)
+        ninth_ruler = _house_ruler(house_cusps, 9)
+        tenth_ruler = _house_ruler(house_cusps, 10)
+        scores: dict[int, float] = {}
+        for house, ruler, label in ((7, seventh_ruler, "7th-house ruler"), (9, ninth_ruler, "9th-house ruler"), (10, tenth_ruler, "10th-house ruler")):
+            if ruler:
+                scores[house] = _objective_planet_factor(factors, by_name, detected_aspects, ruler, label, weight=1.15 if house == 10 else 1.0, target_bodies=("Moon", "Jupiter", "Mars", "Saturn"))
+        _objective_planet_factor(factors, by_name, detected_aspects, "Jupiter", "Authority / judge significator", weight=1.05, target_bodies=("Moon",))
+        if any(name in by_name and by_name[name].get("isAngular") for name in ("Mars", "Saturn")):
+            factors.append(_factor("objective-legal-malefic", "objective-analyzer", "Mars/Saturn angular damage", "Mars or Saturn is angular, which can harden conflict or punitive outcomes.", -1.9, "caution", "Mars"))
+        if 7 in scores and 10 in scores and scores[7] > scores[10] + 0.75:
+            factors.append(_factor("objective-legal-opponent", "objective-analyzer", "Opponent strength", "The 7th-house side currently looks stronger than the 10th-house authority side.", -1.1, "caution"))
+    elif "money" in objective_key or "business" in objective_key:
+        analyzer_name = "Money Analyzer"
+        second_ruler = _house_ruler(house_cusps, 2)
+        eleventh_ruler = _house_ruler(house_cusps, 11)
+        if second_ruler:
+            _objective_planet_factor(factors, by_name, detected_aspects, second_ruler, "2nd-house ruler", weight=1.2, target_bodies=("Moon", "Venus", "Jupiter"))
+        if eleventh_ruler:
+            _objective_planet_factor(factors, by_name, detected_aspects, eleventh_ruler, "11th-house ruler", weight=1.1, target_bodies=("Moon", "Venus", "Jupiter"))
+        _objective_planet_factor(factors, by_name, detected_aspects, "Venus", "Venus value signal", weight=1.0, target_bodies=("Moon", "Jupiter"))
+        _objective_planet_factor(factors, by_name, detected_aspects, "Jupiter", "Jupiter gain signal", weight=1.0, target_bodies=("Moon", "Venus"))
+        moon_support, moon_stress, moon_apply = _body_aspect_counts(detected_aspects, "Moon", target_bodies=("Venus", "Jupiter"))
+        score = moon_apply * 0.75 - moon_stress * 0.4
+        factors.append(_factor("objective-money-moon", "objective-analyzer", "Moon applying to benefic", f"Moon contacts to Venus/Jupiter: +{moon_support}/!{moon_stress}; applying support {moon_apply}.", score, _severity_for_score(score), "Moon"))
+        for name in (second_ruler, eleventh_ruler, "Venus", "Jupiter"):
+            planet = by_name.get(name or "")
+            if isinstance(planet, Mapping) and int(planet.get("house", 0) or 0) == 8:
+                factors.append(_factor(f"objective-money-8th-{_slug(name)}", "objective-analyzer", "8th-house trap", f"{name} is in the 8th house, which can redirect value into obligation, debt, or loss pressure.", -1.35, "caution", str(name)))
+    elif "message" in objective_key or "contact" in objective_key:
+        analyzer_name = "Message / Contact Analyzer"
+        third_ruler = _house_ruler(house_cusps, 3)
+        if third_ruler:
+            _objective_planet_factor(factors, by_name, detected_aspects, third_ruler, "3rd-house ruler", weight=1.2, target_bodies=("Moon", "Mercury", "Saturn"))
+        _objective_planet_factor(factors, by_name, detected_aspects, "Mercury", "Mercury clarity", weight=1.35, target_bodies=("Moon", "Venus", "Saturn", "Mars"))
+        moon_support, moon_stress, moon_apply = _body_aspect_counts(detected_aspects, "Moon", target_bodies=("Mercury",))
+        moon_score = moon_apply * 0.7 - moon_stress * 0.4
+        factors.append(_factor("objective-message-moon", "objective-analyzer", "Moon applying support", f"Moon-to-Mercury contacts: +{moon_support}/!{moon_stress}; applying support {moon_apply}.", moon_score, _severity_for_score(moon_score), "Moon"))
+        if isinstance(reception, Mapping):
+            reception_score = float(reception.get("scoreImpact", 0) or 0)
+            factors.append(_factor("objective-message-reception", "objective-analyzer", "Reception", f"Reception context score impact {reception_score:+.1f}.", reception_score * 0.55, _severity_for_score(reception_score), "Mercury"))
+        mercury = by_name.get("Mercury")
+        afflictions = _planetary_affliction_notes(mercury)
+        if afflictions:
+            factors.append(_factor("objective-message-affliction", "objective-analyzer", "Mercury affliction", f"Mercury shows {', '.join(afflictions)}.", -1.15, "caution", "Mercury"))
+    else:
+        topic = OBJECTIVE_TOPICS.get(objective, OBJECTIVE_TOPICS[DEFAULT_OBJECTIVE])
+        for planet_name in topic.get("planets", ()):
+            _objective_planet_factor(factors, by_name, detected_aspects, str(planet_name), f"{topic.get('label', 'objective').title()} significator", weight=1.0)
+        notes.append("Use the specialized analyzers for exam, legal, money, or message objectives when those are the real matter.")
+
+    return {
+        **_context(f"{analyzer_name}: {len(factors)} focused factor(s) reviewed for {objective}.", factors, "focused"),
+        "objective": objective,
+        "analyzer": analyzer_name,
+        "sourceNote": " ".join(notes).strip(),
     }
 
 
@@ -1046,11 +1415,14 @@ def build_judgment_contexts(
     detected_aspects: Sequence[Mapping[str, object]],
     lunar_phase: Mapping[str, object],
     objective: str = DEFAULT_OBJECTIVE,
+    planetary_hour: Mapping[str, object] | None = None,
 ) -> dict[str, dict[str, object]]:
     significators = significator_context(positions, angles, house_cusps, objective)
     moon = moon_condition_context(positions, detected_aspects, lunar_phase)
     house_rulers = house_ruler_context(positions, house_cusps, objective)
+    matter_lords = matter_lord_context(positions, angles, house_cusps, detected_aspects, objective, planetary_hour)
     reception = reception_context(positions, detected_aspects, significators)
+    objective_analyzer = objective_analyzer_context(positions, house_cusps, detected_aspects, objective, reception)
     relevant_names = [str(point.get("name")) for point in significators.get("points", []) if isinstance(point, Mapping)]
     planet_condition = planet_condition_context(positions, relevant_names)
     declination = declination_context(positions, significators)
@@ -1059,7 +1431,9 @@ def build_judgment_contexts(
         "significatorContext": significators,
         "moonCondition": moon,
         "houseRulerContext": house_rulers,
+        "matterLordContext": matter_lords,
         "receptionContext": reception,
+        "objectiveAnalyzer": objective_analyzer,
         "planetConditionContext": planet_condition,
         "declinationContext": declination,
         "advancedAspectContext": advanced_aspects,

@@ -7,10 +7,10 @@ from html import escape
 from math import cos, radians, sin
 from typing import Mapping
 
-from .chart import build_snapshot, build_transit_windows, format_angle, format_position
+from .engine.chart import build_snapshot, build_transit_windows, format_angle, format_position
 from .locations import LOCATION_PRESETS, get_location
 from .presets import ELECTIONAL_PRESETS, get_preset, summarize_orb
-from .reporting import format_aspect_summary, format_lunar_phase
+from .reports.text_report import format_aspect_summary, format_lunar_phase
 
 
 OBJECTIVES = {

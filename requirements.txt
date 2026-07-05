@@ -2,3 +2,4 @@ astronomy-engine==2.1.19
 pysweph==2.10.3.6
 tzdata==2025.2
 
+pypdf==4.3.1

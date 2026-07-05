@@ -10,7 +10,7 @@ from .aspects import DEFAULT_ASPECT_PROFILE_ID, aspect_profile_by_id, load_aspec
 from .locations import corrected_known_location_values, home_location_for_app
 from .point_sets import DEFAULT_POINT_SET_ID, get_point_set
 from .presets import ELECTIONAL_PRESETS
-from .search import (
+from .engine.search import (
     DEFAULT_MAX_RESULTS,
     DEFAULT_MAXIMUM_VOLATILITY,
     DEFAULT_MINIMUM_CLEANLINESS,
@@ -35,6 +35,9 @@ OBJECTIVES = (
     "Relationship timing",
     "Travel departure",
     "Money or business",
+    "Exam / certification",
+    "Legal / dispute",
+    "Message / contact",
     "Health or surgery caution",
 )
 DEFAULT_DISPLAY_OPTIONS = {
@@ -144,6 +147,7 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
     active_aspect_profile = aspect_profile_by_id(str(state.get("active_aspect_profile") or DEFAULT_ASPECT_PROFILE_ID), aspect_profiles)
     display_options = state.get("display_options") if isinstance(state.get("display_options"), dict) else {}
     manual_validation = state.get("manual_validation_comparison") if isinstance(state.get("manual_validation_comparison"), dict) else {}
+    scrub_preview = state.get("scrub_preview") if isinstance(state.get("scrub_preview"), dict) else {}
     try:
         wheel_zoom = float(display_options.get("wheel_zoom", DEFAULT_DISPLAY_OPTIONS["wheel_zoom"]))
     except (TypeError, ValueError):
@@ -162,6 +166,7 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
         "longitude": longitude,
         "timezone": timezone,
         "objective": objective if objective in OBJECTIVES else OBJECTIVES[0],
+        "election_strategy": str(state.get("election_strategy") or "Manual"),
         "preset": preset if preset in preset_names else ELECTIONAL_PRESETS[1].name,
         "zodiac_system": zodiac_system,
         "house_system": house_system,
@@ -191,6 +196,12 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
         "avoid_angular_malefics": bool(state.get("avoid_angular_malefics", False)),
         "require_moon_non_void": bool(state.get("require_moon_non_void", False)),
         "avoid_objective_antipatterns": bool(state.get("avoid_objective_antipatterns", False)),
+        "target_aspect": str(state.get("target_aspect") or ""),
+        "target_aspect_body": str(state.get("target_aspect_body") or ""),
+        "target_planet": str(state.get("target_planet") or ""),
+        "target_sign": str(state.get("target_sign") or ""),
+        "target_house": str(state.get("target_house") or ""),
+        "exact_search_query": str(state.get("exact_search_query") or ""),
         "manual_validation_comparison": {
             "source": str(manual_validation.get("source") or "CapricornPROMETHEUS"),
             "inputText": str(manual_validation.get("inputText") or ""),
@@ -198,6 +209,12 @@ def clean_session_state(state: dict[str, Any]) -> dict[str, Any]:
             "parsedCount": int(manual_validation.get("parsedCount", 0) or 0),
             "maxDeltaDegrees": manual_validation.get("maxDeltaDegrees"),
             "status": str(manual_validation.get("status") or "Not run"),
+        },
+        "scrub_preview": {
+            "offsetMinutes": int(scrub_preview.get("offsetMinutes", 0) or 0),
+            "active": bool(scrub_preview.get("active", False)),
+            "baseDate": str(scrub_preview.get("baseDate") or ""),
+            "baseTime": str(scrub_preview.get("baseTime") or ""),
         },
         "display_options": {
             **{

@@ -12,12 +12,12 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .aspects import Aspect, aspect_from_mapping, aspect_profile_by_id, detect_aspects
-from .chart import build_election_report, build_snapshot, build_transit_windows
+from .engine.chart import build_election_report, build_snapshot, build_transit_windows
 from .locations import LocationPreset, get_location
 from .presets import apply_dignities, filter_positions_for_preset, get_preset, summarize_orb
-from .reporting import build_report_text
-from .scoring import score_breakdown, score_window
-from .search import SearchConfig
+from .reports.text_report import build_report_text
+from .engine.scoring import score_breakdown, score_window
+from .engine.search import SearchConfig
 from .web import render_app
 
 

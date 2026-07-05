@@ -10,7 +10,8 @@ import struct
 import zlib
 from typing import Iterable, Mapping
 
-from .aspects import Aspect, AspectProfile, aspect_profile_by_id, load_aspect_profiles, sanitize_aspect_id, save_aspect_profiles
+from .aspects import Aspect, AspectProfile, aspect_profile_by_id, load_aspect_profiles, sanitize_aspect_id, save_aspect_profiles, validate_aspect_profile
+from .quarantine import quarantine_aspect_profile
 
 
 DEFAULT_CAPRICORN_FOLDER = "CapricornPROMETHEUS1.5"
@@ -401,7 +402,13 @@ def import_capricorn_aspect_profiles(
         scanned += 1
         try:
             profile = parse_capricorn_aspect_config(path)
-        except (OSError, ValueError, zlib.error, struct.error):
+        except (OSError, ValueError, zlib.error, struct.error) as exc:
+            quarantine_aspect_profile({"source": str(path)}, [f"Capricorn aspect parse failed: {exc}"])
+            skipped.append(path.name)
+            continue
+        errors = validate_aspect_profile(profile)
+        if errors:
+            quarantine_aspect_profile({**profile.to_json(), "source": str(path)}, errors)
             skipped.append(path.name)
             continue
         by_id[profile.id] = profile

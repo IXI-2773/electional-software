@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import csv
+import json
+from io import StringIO
 from datetime import datetime, timedelta, timezone
 from typing import Mapping, Sequence
 
@@ -66,6 +69,20 @@ def calendar_event_from_entry(
         description_parts.append("Flags: " + "; ".join(str(flag).lstrip("- ") for flag in flags[:5]))
     if aspects:
         description_parts.append("Aspects: " + "; ".join(str(aspect) for aspect in aspects[:5]))
+    tactical = entry.get("tacticalAnalysis")
+    if isinstance(tactical, Mapping):
+        command = tactical.get("final_command", {})
+        action = tactical.get("action_moment", {})
+        traps = tactical.get("timing_traps", {})
+        if isinstance(command, Mapping):
+            description_parts.append(f"Command: {command.get('command', 'n/a')}")
+            description_parts.append(f"Best minute: {(command.get('use_window') or {}).get('best_minute', 'n/a') if isinstance(command.get('use_window'), Mapping) else 'n/a'}")
+            description_parts.append(f"Primary risk: {'; '.join(str(item) for item in command.get('risk_reasons', [])[:2]) if isinstance(command.get('risk_reasons'), list) else 'n/a'}")
+        if isinstance(action, Mapping):
+            description_parts.append(f"Action moment: {action.get('elected_moment', 'n/a')}")
+        trap_items = traps.get("traps") if isinstance(traps, Mapping) else None
+        if isinstance(trap_items, list) and trap_items:
+            description_parts.append("Timing traps: " + "; ".join(str(item.get("title")) for item in trap_items[:3] if isinstance(item, Mapping)))
 
     lines = [
         "BEGIN:VEVENT",
@@ -96,3 +113,60 @@ def calendar_from_entries(
     lines.extend(calendar_event_from_entry(entry, duration_minutes=duration_minutes) for entry in entries)
     lines.append("END:VCALENDAR")
     return "\r\n".join(lines) + "\r\n"
+
+
+def strategic_calendar_json(payload: Mapping[str, object]) -> str:
+    return json.dumps({"strategic_calendar": payload}, indent=2, sort_keys=True, default=str)
+
+
+def strategic_calendar_csv(entries: Sequence[Mapping[str, object]]) -> str:
+    fields = [
+        "start",
+        "end",
+        "best_minute",
+        "objective_type",
+        "grade",
+        "command",
+        "rarity_score",
+        "practicality_score",
+        "control_score",
+        "primary_support",
+        "primary_risk",
+        "tags",
+    ]
+    buffer = StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fields, lineterminator="\n")
+    writer.writeheader()
+    for entry in entries:
+        row = {field: entry.get(field, "") for field in fields}
+        tags = row.get("tags")
+        if isinstance(tags, list):
+            row["tags"] = ";".join(str(tag) for tag in tags)
+        writer.writerow(row)
+    return buffer.getvalue()
+
+
+def strategic_calendar_ics(entries: Sequence[Mapping[str, object]], *, location: str = "") -> str:
+    event_entries = []
+    for index, entry in enumerate(entries):
+        start = entry.get("start") or entry.get("best_minute")
+        if not start:
+            continue
+        event_entries.append(
+            {
+                "id": f"strategic-{index}-{entry.get('command', 'window')}",
+                "datetime": start,
+                "score": entry.get("grade", ""),
+                "objective": entry.get("objective_type", "Objective"),
+                "location": location,
+                "note": (
+                    f"Best minute: {entry.get('best_minute', 'n/a')}\n"
+                    f"Command: {entry.get('command', 'n/a')}\n"
+                    f"Primary support: {entry.get('primary_support', 'n/a')}\n"
+                    f"Primary risk: {entry.get('primary_risk', 'n/a')}"
+                ),
+                "flags": entry.get("tags", []),
+                "aspects": [],
+            }
+        )
+    return calendar_from_entries(event_entries, duration_minutes=30)

@@ -118,23 +118,37 @@ After editing:
 
 
 
-\## Commands
+## Commands
 
 Use these when relevant:
 
-## Fast Test Lanes
+### Fast Test Lanes
 
 Use targeted tests before full tests:
 
 ```bash
 scripts/test-fast.bat
 scripts/test-full.bat
-
-```bash
-
 python -m pytest -q
-
-python desktop\_app.py
-
+python desktop_app.py
 pip install -r requirements.txt
+```
+
+
+## Context Control
+
+Ignore these unless explicitly asked:
+- `.venv/`
+- `.git/`
+- `__pycache__/`
+- `data/raw/`
+- `data/cache/`
+- `reports/`
+- archives such as `.zip`, `.7z`, `.rar`
+- generated files, logs, backups, and temp files
+
+Use `data/samples/` for tests and parser work.
+
+Do not scan large raw PDFs, CSVs, archives, or generated reports unless the task specifically requires it.
+If raw data is needed, ask first and explain why.
 

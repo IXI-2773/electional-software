@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from .aspects import Aspect, angular_distance, aspect_map_from_definitions, format_orb
-from .chart import build_snapshot_for_moment, format_position
+from .engine.chart import build_snapshot_for_moment, format_position
 from .judgment import solar_visibility_diagnostic
 from .locations import LocationPreset
 

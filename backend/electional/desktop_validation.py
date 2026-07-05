@@ -65,6 +65,33 @@ STANDARD_SIGN_STARTS = {
     "pis": 330.0,
     "psc": 330.0,
     "pi": 330.0,
+    "♈": 0.0,
+    "♉": 30.0,
+    "♊": 60.0,
+    "♋": 90.0,
+    "♌": 120.0,
+    "♍": 150.0,
+    "♎": 180.0,
+    "♏": 210.0,
+    "♐": 240.0,
+    "♑": 270.0,
+    "♒": 300.0,
+    "♓": 330.0,
+}
+
+MANUAL_VALIDATION_GLYPH_TARGETS = {
+    "☉": ("Sun", "sun"),
+    "☽": ("Moon", "moon"),
+    "☾": ("Moon", "moon"),
+    "☿": ("Mercury", "mercury"),
+    "♀": ("Venus", "venus"),
+    "♂": ("Mars", "mars"),
+    "♃": ("Jupiter", "jupiter"),
+    "♄": ("Saturn", "saturn"),
+    "♅": ("Uranus", "uranus"),
+    "♆": ("Neptune", "neptune"),
+    "♇": ("Pluto", "pluto"),
+    "⊕": ("Part of Fortune", "part of fortune"),
 }
 
 MANUAL_VALIDATION_TARGETS = (
@@ -136,6 +163,9 @@ def _manual_validation_target_from_line(line: str) -> tuple[str, str] | None:
     if house_match:
         house_no = int(house_match.group(1))
         return (f"House {house_no}", f"h{house_no}")
+    for glyph, target in MANUAL_VALIDATION_GLYPH_TARGETS.items():
+        if glyph in line:
+            return target
     lowered = line.lower()
     for alias, label, key in MANUAL_VALIDATION_TARGETS:
         if re.search(rf"\b{re.escape(alias)}\b", lowered):
@@ -147,7 +177,7 @@ def parse_manual_validation_values(text: str, *, zodiac_system_id: str = "") -> 
     starts = manual_validation_sign_starts(zodiac_system_id)
     sign_pattern = "|".join(sorted((re.escape(key) for key in starts), key=len, reverse=True))
     value_pattern = re.compile(
-        rf"\b(?P<sign>{sign_pattern})\b\s*"
+        rf"(?<![A-Za-z])(?P<sign>{sign_pattern})(?![A-Za-z])\s*"
         rf"(?P<degree>\d{{1,2}})(?:\s*(?:deg|d|\u00b0|:|'|\s)\s*(?P<minute>\d{{1,2}}))?",
         re.IGNORECASE,
     )

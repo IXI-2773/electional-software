@@ -5,6 +5,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from backend.electional.chart import build_election_report, build_snapshot, build_transit_windows, clear_snapshot_cache, snapshot_cache_info
+from backend.electional.aspects import Aspect, aspect_definition_signature
+from backend.electional.engine.confidence import apply_calculation_confidence_penalty, build_calculation_confidence
+from backend.electional.engine.chart import build_snapshot as engine_build_snapshot
+from backend.electional.engine.moon import build_moon_condition
+from backend.electional.engine.profections import annual_profection
 from backend.electional.ephemeris import format_zodiac_position, get_planet_positions, get_zodiac_position_for_system, lunar_phase_from_positions, signed_longitude_delta
 from backend.electional.fixed_stars import detect_fixed_star_contacts, fixed_star_positions
 from backend.electional.houses import calculate_angles, calculate_house_cusps, house_number
@@ -13,13 +18,122 @@ from backend.electional.locations import LocationPreset, get_location, load_user
 from backend.electional.lunar_nodes import calculate_lunar_nodes, mean_node_tropical_longitude, true_node_tropical_longitude
 from backend.electional.planetary_hours import day_ruler_for_moment, planetary_hour_context
 from backend.electional.professional import calculation_backend_status, engine_name
+from backend.electional.quarantine import quarantine_record
 from backend.electional.rules import evaluate_electional_rules, nakshatra_for_longitude, solar_condition_for_body, tithi_from_phase
 from backend.electional.search import SearchConfig
+from backend.electional.reports.decision_sheet import build_decision_brief_page as decision_sheet_brief
 from backend.electional.systems import ayanamsha_for_system, get_zodiac_system
 from backend.electional.time_utils import normalize_time_text, zoned_time_to_utc
+from backend.electional.ui.desktop_app import ElectionalDesktopApp
 
 
 class PythonChartEngineTest(unittest.TestCase):
+    def test_new_architecture_entrypoints_remain_importable(self) -> None:
+        self.assertIs(engine_build_snapshot, build_snapshot)
+        self.assertTrue(callable(decision_sheet_brief))
+        self.assertTrue(callable(ElectionalDesktopApp))
+        self.assertEqual(annual_profection(25).house, 2)
+
+    def test_calculation_confidence_penalties_reduce_confidence_metric(self) -> None:
+        location = LocationPreset("bad-tz", "Indio, CA", 33.7206, -116.2156, "America/New_York")
+        trust = build_calculation_confidence(
+            backend_status={"fallbackActive": True},
+            accuracy_audit={"status": "fallback", "verified": False},
+            location=location,
+            house_cusps=[{"source": "Python fallback"}],
+            moon_condition={"voidOfCourse": {"confidence": "approximate"}},
+            fixed_star_contacts=[{"precision": "longitude-only"}],
+        )
+        breakdown = {
+            "diagnostics": {
+                "confidence": {"score": 80, "band": "High", "summary": "Signals agree."}
+            }
+        }
+
+        adjusted = apply_calculation_confidence_penalty(breakdown, trust)
+        confidence = adjusted["diagnostics"]["confidence"]
+
+        self.assertEqual(trust["penalty"], 60)
+        self.assertEqual(confidence["score"], 20)
+        self.assertEqual(confidence["rawScoreBeforeCalculationPenalty"], 80)
+        self.assertTrue(trust["hardWarnings"])
+
+    def test_moon_condition_reports_next_final_speed_and_geometry(self) -> None:
+        positions = [
+            {"name": "Sun", "longitude": 20.0},
+            {
+                "name": "Moon",
+                "longitude": 42.0,
+                "latitude": 4.2,
+                "declination": 23.1,
+                "house": 10,
+                "zodiac": {"sign": "Taurus", "degree": 12, "minute": 0},
+                "motion": {"dailyLongitudeChange": 14.2},
+                "isAngular": True,
+            },
+            {"name": "Jupiter", "longitude": 162.0},
+            {"name": "Venus", "longitude": 102.0},
+        ]
+        aspects = [
+            {
+                "label": "Moon trine Jupiter",
+                "bodies": ["Moon", "Jupiter"],
+                "tone": "support",
+                "isApplying": True,
+                "daysToExact": 0.3,
+                "timeToExactText": "7h 12m",
+                "timingMethod": "ephemeris refined",
+                "orb": 0.5,
+                "orbText": "0 deg 30 min",
+            },
+            {
+                "label": "Moon sextile Venus",
+                "bodies": ["Moon", "Venus"],
+                "tone": "support",
+                "isApplying": True,
+                "daysToExact": 0.9,
+                "timeToExactText": "21h 36m",
+                "orb": 1.0,
+                "orbText": "1 deg 00 min",
+            },
+        ]
+
+        condition = build_moon_condition(positions, aspects, {"name": "Waxing"})
+
+        self.assertFalse(condition["voidOfCourse"]["isVoid"])
+        self.assertEqual(condition["nextAspect"]["label"], "Moon trine Jupiter")
+        self.assertEqual(condition["finalAspectBeforeSignExit"]["label"], "Moon sextile Venus")
+        self.assertEqual(condition["moon"]["speedClass"], "fast")
+        self.assertEqual(condition["moon"]["cadency"], "angular")
+        self.assertAlmostEqual(float(condition["moon"]["latitude"]), 4.2)
+        self.assertAlmostEqual(float(condition["moon"]["declination"]), 23.1)
+
+    def test_invalid_explicit_aspect_definition_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Opposition: expected angle near 180"):
+            aspect_definition_signature(
+                [
+                    Aspect(
+                        id="opposition",
+                        name="Opposition",
+                        angle=0.0,
+                        default_orb=6.0,
+                        tone="stress",
+                        meaning="corrupt import",
+                    )
+                ]
+            )
+
+    def test_quarantine_record_preserves_bad_payload_for_review(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "bad_locations.json"
+
+            record = quarantine_record(path, "location", {"name": "Bad", "latitude": 999}, ["Latitude invalid"])
+
+            self.assertTrue(path.exists())
+            self.assertEqual(record["category"], "location")
+            self.assertIn("Latitude invalid", record["errors"])
+            self.assertIn("Bad", path.read_text(encoding="utf-8"))
+
     def test_timezone_conversion_uses_iana_zone(self) -> None:
         moment = zoned_time_to_utc("2026-05-26", "09:00", "America/Los_Angeles")
 
@@ -510,7 +624,7 @@ class PythonChartEngineTest(unittest.TestCase):
         self.assertTrue(all("declination" in planet for planet in snapshot["positions"]))
         self.assertTrue(all("constellation" in planet for planet in snapshot["positions"]))
         self.assertTrue(any("anglePhase" in planet["closestAngle"] for planet in snapshot["positions"]))
-        self.assertEqual(len(windows), 6)
+        self.assertEqual(len(windows), 11)
         self.assertGreaterEqual(windows[0]["score"], windows[-1]["score"])
 
     def test_full_snapshot_includes_refined_angle_timing(self) -> None:
@@ -591,7 +705,7 @@ class PythonChartEngineTest(unittest.TestCase):
         snapshot = report["snapshot"]
         windows = report["windows"]
 
-        self.assertEqual(len(windows), 6)
+        self.assertEqual(len(windows), 11)
         self.assertEqual(report["snapshot"]["date"], snapshot["date"])
         self.assertIn("engine", windows[0])
         self.assertIn("formattedTime", windows[0])
@@ -650,11 +764,11 @@ class PythonChartEngineTest(unittest.TestCase):
         config = SearchConfig(end_offset_minutes=24 * 60, step_minutes=60, max_results=5)
         report = build_election_report("2026-05-26", "09:00", location, "traditional-lilly", search_config=config)
 
-        self.assertEqual(report["searchMode"], "fast/deep + refined")
+        self.assertEqual(report["searchMode"], "fast/deep + refined + 1-minute + exact transitions")
         self.assertEqual(report["searchedWindowCount"], 25)
         self.assertGreater(report["evaluatedWindowCount"], report["searchedWindowCount"])
         self.assertGreater(report["refinedWindowCount"], 0)
-        self.assertLess(report["deepWindowCount"], report["searchedWindowCount"])
+        self.assertGreater(report["deepWindowCount"], report["searchedWindowCount"])
         self.assertTrue(all(window["calculationMode"] == "full" for window in report["windows"]))
 
 

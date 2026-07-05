@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from .storage import load_json_dict, load_json_list, save_json
+from .quarantine import quarantine_location
 from .validation import validate_election_inputs
 
 DEFAULT_TIMEZONE = "America/Los_Angeles"
@@ -108,13 +109,16 @@ def load_user_locations(path: Path = USER_LOCATIONS_PATH) -> list[LocationPreset
             latitude = float(item["latitude"])
             longitude = float(item["longitude"])
             timezone = str(item["timezone"]).strip()
-            if validate_election_inputs(date.today().isoformat(), "09:00", str(latitude), str(longitude), timezone):
+            errors = validate_election_inputs(date.today().isoformat(), "09:00", str(latitude), str(longitude), timezone)
+            if errors:
+                quarantine_location(item, errors)
                 continue
             location = LocationPreset(str(item.get("id") or location_id_from_name(name)), name, latitude, longitude, timezone)
             location, corrected = corrected_known_location(location)
             corrected_any = corrected_any or corrected
             locations.append(location)
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError) as exc:
+            quarantine_location(item, [f"Location parse failed: {exc}"])
             continue
     if corrected_any and path.exists():
         save_user_locations(locations, path)
@@ -180,17 +184,21 @@ def save_location_settings(settings: dict[str, object], path: Path = LOCATION_SE
 
 def _location_from_settings_item(item: object) -> LocationPreset | None:
     if not isinstance(item, dict):
+        quarantine_location(item, ["Location settings item is not an object."])
         return None
     try:
         name = str(item["name"]).strip()
         latitude = float(item["latitude"])
         longitude = float(item["longitude"])
         timezone = str(item["timezone"]).strip()
-        if validate_election_inputs(date.today().isoformat(), "09:00", str(latitude), str(longitude), timezone):
+        errors = validate_election_inputs(date.today().isoformat(), "09:00", str(latitude), str(longitude), timezone)
+        if errors:
+            quarantine_location(item, errors)
             return None
         location = LocationPreset(str(item.get("id") or location_id_from_name(name)), name, latitude, longitude, timezone)
         return corrected_known_location(location)[0]
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError) as exc:
+        quarantine_location(item, [f"Location settings parse failed: {exc}"])
         return None
 
 

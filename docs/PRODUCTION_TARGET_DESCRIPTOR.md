@@ -1,0 +1,47 @@
+Phase 9U.0 adds a local, immutable, read-only descriptor for one intended production target.
+
+Implemented behavior:
+
+- Scope:
+  - one intended production target per descriptor
+  - metadata only
+  - no rule authorization logic
+  - no target connectivity
+  - no production mutation
+- Storage:
+  - `data/source_documents/production_target_descriptors/`
+  - `data/source_documents/indexes/production_target_descriptor_index.json`
+- Public functions:
+  - `validate_production_target_descriptor`
+  - `register_production_target_descriptor`
+  - `load_production_target_descriptor`
+  - `get_production_target_descriptor_fingerprint`
+  - `get_production_target_descriptor_health`
+  - `format_production_target_descriptor_report`
+- Validation:
+  - schema version must be `production_target_descriptor_v1`
+  - environment class must be exactly `production`
+  - target kind must be `intended_production_deployment_target`
+  - access mode must be `metadata_only_read_only`
+  - authorization scope must be `later_production_deployment_only`
+  - adapter manifest and capability snapshots must be present
+  - manifest, capability, and descriptor fingerprints must match deterministic recomputation
+  - no operational entrypoints may be exposed
+  - deployment, activation, production scoring, and live Fast Lane execution flags must all remain false
+- Fingerprints:
+  - deterministic adapter-manifest fingerprint
+  - deterministic adapter-capability fingerprint
+  - deterministic descriptor fingerprint
+  - registration is immutable per target ID
+- Registration:
+  - first valid write stores one descriptor and updates one local index
+  - identical re-registration is idempotent
+  - conflicting re-registration for the same target ID is blocked
+- Loading and health:
+  - loading is read-only
+  - health validates stored descriptors and checks index consistency
+  - missing or stale index is reported without touching descriptor records
+- Safety:
+  - no production apply, commit, rollback, transaction, activation, scoring, or Fast Lane execution entrypoints are exposed
+  - no connection to a production target is attempted
+  - descriptors are local metadata for later production-authorization phases only

@@ -22,6 +22,25 @@ from .evidence_handoff_review import build_evidence_handoff_review_workspace, cr
 from .proposal_promotion import build_proposal_promotion_workspace, format_proposal_promotion_report, get_proposal_promotion_health, promote_approved_proposal, save_proposal_promotion_decision
 from .proposal_rule_activation import activate_rule_from_promoted_proposal, build_proposal_rule_activation_workspace, format_proposal_rule_activation_report, rollback_proposal_rule_activation, save_proposal_rule_activation_decision
 from .rule_activation_revalidation import build_rule_activation_revalidation_workspace, complete_rule_activation_revalidation, format_rule_activation_revalidation_report, run_rule_runtime_contract_validation, save_rule_activation_revalidation_decision
+from .rule_supersession import build_rule_supersession_workspace, format_rule_supersession_report, rollback_rule_supersession, save_rule_supersession_decision, supersede_certified_rule
+from .rule_effectiveness_analysis import build_rule_effectiveness_backtest_plan, build_rule_effectiveness_workspace, format_rule_effectiveness_report, get_rule_effectiveness_health, run_rule_effectiveness_backtest
+from .rule_effectiveness_recommendation import build_rule_effectiveness_recommendation_workspace, create_rule_action_candidate_from_recommendation, format_rule_effectiveness_recommendation_report, generate_rule_effectiveness_recommendation, save_rule_effectiveness_recommendation_decision
+from .rule_batch_analysis import build_rule_batch_plan, build_rule_batch_workspace, cancel_rule_batch_run, format_rule_batch_report, run_rule_batch_analysis
+from .autonomous_pdf_certification import build_autonomous_pdf_plan, build_autonomous_pdf_workspace, cancel_autonomous_pdf_pipeline, format_autonomous_pdf_report, get_autonomous_pdf_health, run_autonomous_pdf_pipeline
+from .autonomous_pdf_benchmark import build_autonomous_pdf_benchmark_workspace, format_autonomous_pdf_benchmark_report, get_autonomous_pdf_benchmark_health, run_autonomous_pdf_benchmark, validate_autonomous_pdf_benchmark_manifest
+from .autonomous_pdf_remediation import build_autonomous_pdf_remediation_workspace, format_autonomous_pdf_remediation_report, review_autonomous_pdf_remediation_case, run_autonomous_pdf_remediation_triage, verify_autonomous_pdf_remediation
+from .autonomous_pdf_corrective_action import build_autonomous_pdf_corrective_action_plan, build_autonomous_pdf_corrective_action_workspace, close_autonomous_pdf_corrective_action, execute_autonomous_pdf_corrective_action, format_autonomous_pdf_corrective_action_report, verify_autonomous_pdf_corrective_action
+from .certified_rule_replay_adapter import build_certified_rule_replay_plan, build_certified_rule_replay_workspace, format_certified_rule_replay_report, get_certified_rule_replay_health, run_certified_rule_replay, validate_certified_rule_replay_eligibility
+from .certified_rule_objective_preview import build_certified_rule_objective_preview_plan, build_certified_rule_objective_preview_workspace, format_certified_rule_objective_preview_report, get_certified_rule_objective_preview_health, run_certified_rule_objective_preview, validate_certified_rule_objective_preview_eligibility
+from .certified_rule_scoring_preview import build_certified_rule_scoring_preview_plan, build_certified_rule_scoring_preview_workspace, format_certified_rule_scoring_preview_report, get_certified_rule_scoring_preview_health, run_certified_rule_scoring_preview, validate_certified_rule_scoring_preview_eligibility
+from .certified_rule_fast_lane_preview import build_certified_rule_fast_lane_preview_plan, build_certified_rule_fast_lane_preview_workspace, format_certified_rule_fast_lane_preview_report, get_certified_rule_fast_lane_preview_health, run_certified_rule_fast_lane_preview, validate_certified_rule_fast_lane_preview_eligibility
+from .certified_rule_integration_authorization import build_certified_rule_integration_authorization_plan, build_certified_rule_integration_authorization_workspace, format_certified_rule_integration_authorization_report, save_certified_rule_integration_authorization_decision, validate_certified_rule_integration_authorization_eligibility
+from .certified_rule_release_candidate import build_certified_rule_release_candidate_plan, build_certified_rule_release_candidate_workspace, format_certified_rule_release_candidate_report, qualify_certified_rule_release_candidate, validate_certified_rule_release_candidate_eligibility
+from .certified_rule_controlled_integration import build_certified_rule_controlled_integration_plan, build_certified_rule_controlled_integration_workspace, execute_certified_rule_controlled_integration, format_certified_rule_controlled_integration_report, get_certified_rule_controlled_integration_health, validate_certified_rule_controlled_integration_eligibility
+from .certified_rule_production_authorization import build_certified_rule_production_authorization_plan, build_certified_rule_production_authorization_workspace, format_certified_rule_production_authorization_report, get_certified_rule_production_authorization_health, save_certified_rule_production_authorization_decision, validate_certified_rule_production_authorization_eligibility
+from .certified_rule_production_deployment import build_certified_rule_production_deployment_plan, build_certified_rule_production_deployment_workspace, execute_certified_rule_production_deployment, format_certified_rule_production_deployment_report, get_certified_rule_production_deployment_health, validate_certified_rule_production_deployment_eligibility
+from .certified_rule_post_deployment_acceptance import build_certified_rule_post_deployment_acceptance_plan, build_certified_rule_post_deployment_acceptance_workspace, format_certified_rule_post_deployment_acceptance_report, get_certified_rule_post_deployment_acceptance_health, save_certified_rule_post_deployment_acceptance_decision, validate_certified_rule_post_deployment_acceptance_eligibility
+from .api import build_deployed_rule_effectiveness_readiness_plan, build_deployed_rule_effectiveness_readiness_workspace, build_deployed_rule_operational_snapshot, build_deployed_rule_operational_telemetry_workspace, format_deployed_rule_effectiveness_readiness_report, format_deployed_rule_operational_telemetry_report, get_deployed_rule_effectiveness_readiness_health, get_deployed_rule_effectiveness_readiness_manifest, get_deployed_rule_operational_telemetry_health, list_deployed_rule_operational_events, load_deployed_rule_effectiveness_readiness_result, record_deployed_rule_effectiveness_readiness_result, validate_deployed_rule_effectiveness_readiness_eligibility, validate_deployed_rule_operational_telemetry_eligibility
 from .topic_taxonomy import build_taxonomy_search_expansion, format_topic_taxonomy_report, load_controlled_topic, resolve_controlled_topic_label, save_controlled_topic, validate_topic_taxonomy
 from .taxonomy_topic_search import build_taxonomy_topic_search_plan, format_taxonomy_topic_search_report, get_taxonomy_topic_search_health, resolve_taxonomy_search_query, search_taxonomy_aware_topic_content, get_taxonomy_topic_search_summary
 from .locator_migration_planner import audit_document_locator_contracts, build_locator_migration_plan, format_locator_migration_report, get_locator_migration_health, load_locator_migration_plan, preview_locator_correction
@@ -830,6 +849,176 @@ class DesktopRightPanelMixin:
         self.rule_revalidation_note_var = tk.StringVar(value="")
         self.rule_revalidation_completion_confirmation_var = tk.StringVar(value="")
         self.rule_revalidation_receipt_id_var = tk.StringVar(value="")
+        self.rule_supersession_old_rule_id_var = tk.StringVar(value="")
+        self.rule_supersession_proposal_id_var = tk.StringVar(value="")
+        self.rule_supersession_review_id_var = tk.StringVar(value="")
+        self.rule_supersession_decision_var = tk.StringVar(value="approve")
+        self.rule_supersession_note_var = tk.StringVar(value="")
+        self.rule_supersession_receipt_id_var = tk.StringVar(value="")
+        self.rule_supersession_confirmation_var = tk.StringVar(value="")
+        self.rule_supersession_rollback_confirmation_var = tk.StringVar(value="")
+        self.rule_supersession_ack_scope_var = tk.BooleanVar(value=False)
+        self.rule_effectiveness_rule_id_var = tk.StringVar(value="")
+        self.rule_effectiveness_dataset_id_var = tk.StringVar(value="")
+        self.rule_effectiveness_comparison_rule_id_var = tk.StringVar(value="")
+        self.rule_effectiveness_max_records_var = tk.StringVar(value="200")
+        self.rule_effectiveness_regenerate_var = tk.BooleanVar(value=False)
+        self.rule_effectiveness_recommendation_analysis_id_var = tk.StringVar(value="")
+        self.rule_effectiveness_recommendation_policy_id_var = tk.StringVar(value="default_v1")
+        self.rule_effectiveness_recommendation_id_var = tk.StringVar(value="")
+        self.rule_effectiveness_recommendation_decision_var = tk.StringVar(value="accept")
+        self.rule_effectiveness_recommendation_note_var = tk.StringVar(value="")
+        self.rule_effectiveness_recommendation_review_id_var = tk.StringVar(value="")
+        self.rule_effectiveness_recommendation_action_candidate_id_var = tk.StringVar(value="")
+        self.rule_effectiveness_recommendation_queue_confirmation_var = tk.StringVar(value="")
+        self.rule_batch_document_id_var = tk.StringVar(value="")
+        self.rule_batch_source_revision_var = tk.StringVar(value="")
+        self.rule_batch_dataset_id_var = tk.StringVar(value="")
+        self.rule_batch_policy_id_var = tk.StringVar(value="default_v1")
+        self.rule_batch_rule_ids_var = tk.StringVar(value="")
+        self.rule_batch_include_active_var = tk.BooleanVar(value=True)
+        self.rule_batch_max_rules_var = tk.StringVar(value="10")
+        self.rule_batch_max_records_var = tk.StringVar(value="200")
+        self.rule_batch_plan_id_var = tk.StringVar(value="")
+        self.rule_batch_run_id_var = tk.StringVar(value="")
+        self.rule_batch_stop_after_items_var = tk.StringVar(value="")
+        self.rule_batch_cancellation_reason_var = tk.StringVar(value="")
+        self.autonomous_pdf_document_id_var = tk.StringVar(value="")
+        self.autonomous_pdf_source_revision_var = tk.StringVar(value="")
+        self.autonomous_pdf_max_pages_var = tk.StringVar(value="300")
+        self.autonomous_pdf_max_harvest_candidates_var = tk.StringVar(value="50")
+        self.autonomous_pdf_max_proposal_candidates_var = tk.StringVar(value="20")
+        self.autonomous_pdf_max_rule_candidates_var = tk.StringVar(value="10")
+        self.autonomous_pdf_max_certified_rules_var = tk.StringVar(value="5")
+        self.autonomous_pdf_plan_id_var = tk.StringVar(value="")
+        self.autonomous_pdf_run_id_var = tk.StringVar(value="")
+        self.autonomous_pdf_stop_after_stage_var = tk.StringVar(value="")
+        self.autonomous_pdf_confirmation_var = tk.StringVar(value="AUTO_RUN")
+        self.autonomous_pdf_cancellation_reason_var = tk.StringVar(value="")
+        self.autonomous_pdf_benchmark_id_var = tk.StringVar(value="")
+        self.autonomous_pdf_benchmark_run_id_var = tk.StringVar(value="")
+        self.autonomous_pdf_benchmark_result_id_var = tk.StringVar(value="")
+        self.autonomous_pdf_benchmark_receipt_id_var = tk.StringVar(value="")
+        self.autonomous_pdf_benchmark_confirmation_var = tk.StringVar(value="BENCHMARK")
+        self.autonomous_pdf_remediation_plan_id_var = tk.StringVar(value="")
+        self.autonomous_pdf_remediation_case_id_var = tk.StringVar(value="")
+        self.autonomous_pdf_remediation_new_result_id_var = tk.StringVar(value="")
+        self.autonomous_pdf_remediation_review_decision_var = tk.StringVar(value="accept_for_targeted_fix")
+        self.autonomous_pdf_remediation_review_note_var = tk.StringVar(value="")
+        self.autonomous_pdf_remediation_confirmation_var = tk.StringVar(value="")
+        self.autonomous_pdf_remediation_status_var = tk.StringVar(value="Document ID: unknown\nSource Revision: unknown\nOriginal Release Classification: unknown\nPlan Status: unknown\nTotal Case Count: 0\nCritical Case Count: 0\nHigh Case Count: 0\nUnresolved Case Count: 0\nReviewed Case Count: 0\nResolved Case Count: 0\nPersisting Case Count: 0\nRegressed Case Count: 0\nRecommended Action: Load one benchmark result to start remediation.")
+        self.autonomous_pdf_corrective_action_id_var = tk.StringVar(value="")
+        self.autonomous_pdf_corrective_action_type_var = tk.StringVar(value="close_no_action")
+        self.autonomous_pdf_corrective_action_payload_var = tk.StringVar(value="{}")
+        self.autonomous_pdf_corrective_action_confirmation_var = tk.StringVar(value="")
+        self.autonomous_pdf_corrective_action_status_var = tk.StringVar(value="Document ID: unknown\nSource Revision: unknown\nReview Decision: unknown\nRoot-Cause Classification: unknown\nAction Type: unknown\nAction Status: unknown\nVerification Required: No\nVerification Outcome: none\nClosure Status: open\nRemaining Blockers: none\nRecommended Action: Load one remediation case to start corrective action.")
+        self.certified_rule_replay_rule_id_var = tk.StringVar(value="")
+        self.certified_rule_replay_dataset_id_var = tk.StringVar(value="")
+        self.certified_rule_replay_max_records_var = tk.StringVar(value="10000")
+        self.certified_rule_replay_plan_id_var = tk.StringVar(value="")
+        self.certified_rule_replay_result_id_var = tk.StringVar(value="")
+        self.certified_rule_replay_receipt_id_var = tk.StringVar(value="")
+        self.certified_rule_replay_confirmation_var = tk.StringVar(value="RUN_REPLAY")
+        self.certified_rule_replay_status_var = tk.StringVar(value="Document ID: unknown\nSource Revision: unknown\nRule Status: unknown\nCertification Status: unknown\nDataset Fingerprint Status: unknown\nReplay Status: unknown\nTotal Records: 0\nEvaluated Records: 0\nMatch Count: 0\nNo-Match Count: 0\nUnsupported Count: 0\nError Count: 0\nReplay Coverage: null\nCompatibility Rate: null\nRecommended Action: Load one rule workspace to start replay.")
+        self.certified_rule_objective_preview_rule_id_var = tk.StringVar(value="")
+        self.certified_rule_objective_preview_pack_id_var = tk.StringVar(value="")
+        self.certified_rule_objective_preview_input_id_var = tk.StringVar(value="")
+        self.certified_rule_objective_preview_max_records_var = tk.StringVar(value="10000")
+        self.certified_rule_objective_preview_mapping_var = tk.StringVar(value='{"mapping_version":"rule_effect_mapping_v1","on_match":{"values":{"eligible_action":true}},"on_no_match":{"mode":"preserve_baseline"}}')
+        self.certified_rule_objective_preview_plan_id_var = tk.StringVar(value="")
+        self.certified_rule_objective_preview_result_id_var = tk.StringVar(value="")
+        self.certified_rule_objective_preview_receipt_id_var = tk.StringVar(value="")
+        self.certified_rule_objective_preview_confirmation_var = tk.StringVar(value="RUN_OBJECTIVE_PREVIEW")
+        self.certified_rule_objective_preview_status_var = tk.StringVar(value="Document ID: unknown\nSource Revision: unknown\nRule Status: unknown\nCertification Status: unknown\nObjective Pack Status: unknown\nControlled Input Status: unknown\nPreview Status: unknown\nCompared Records: 0\nImproved Records: 0\nWorsened Records: 0\nUnsupported Records: 0\nPreview Coverage: null\nCompatibility Rate: null\nRecommended Action: Load one rule workspace to start objective preview.")
+        self.certified_rule_scoring_preview_objective_result_id_var = tk.StringVar(value="")
+        self.certified_rule_scoring_preview_config_id_var = tk.StringVar(value="")
+        self.certified_rule_scoring_preview_plan_id_var = tk.StringVar(value="")
+        self.certified_rule_scoring_preview_result_id_var = tk.StringVar(value="")
+        self.certified_rule_scoring_preview_receipt_id_var = tk.StringVar(value="")
+        self.certified_rule_scoring_preview_confirmation_var = tk.StringVar(value="RUN_SCORING_PREVIEW")
+        self.certified_rule_scoring_preview_status_var = tk.StringVar(value="Document ID: unknown\nSource Revision: unknown\nCanonical Rule ID: unknown\nCertification Status: unknown\nObjective Preview Status: unknown\nPhase 9O Compatibility: unknown\nScoring Configuration Status: unknown\nCompatibility Status: unknown\nScoring Preview Status: unknown\nTotal Records: 0\nScoreable Records: 0\nCompared Records: 0\nIncreased Records: 0\nDecreased Records: 0\nUnchanged Records: 0\nMixed Records: 0\nUnsupported Records: 0\nError Count: 0\nBaseline Mean Score: null\nRule-Enabled Mean Score: null\nMean Score Delta: null\nScoring Coverage: null\nRecommended Action: Load one objective preview result to start scoring preview.")
+        self.certified_rule_fast_lane_preview_rule_id_var = tk.StringVar(value="")
+        self.certified_rule_fast_lane_preview_plan_id_var = tk.StringVar(value="")
+        self.certified_rule_fast_lane_preview_result_id_var = tk.StringVar(value="")
+        self.certified_rule_fast_lane_preview_receipt_id_var = tk.StringVar(value="")
+        self.certified_rule_fast_lane_preview_confirmation_var = tk.StringVar(value="RUN_FAST_LANE_COMPATIBILITY_PREVIEW")
+        self.certified_rule_fast_lane_preview_status_var = tk.StringVar(value="Document ID: unknown\nSource Revision: unknown\nCertification Status: unknown\nFast Lane Contract ID: unknown\nFast Lane Contract Version: unknown\nCapability Status: unknown\nPreview Status: unknown\nOverall Compatibility: unknown\nSemantic Loss: unknown\nCompatible Dimensions: 0\nWarning Dimensions: 0\nIncompatible Dimensions: 0\nBlocker Count: 0\nWarning Count: 0\nRecommended Action: Load one certified rule to start Fast Lane compatibility preview.")
+        self.certified_rule_integration_authorization_rule_id_var = tk.StringVar(value="")
+        self.certified_rule_integration_authorization_scoring_result_id_var = tk.StringVar(value="")
+        self.certified_rule_integration_authorization_fast_lane_result_id_var = tk.StringVar(value="")
+        self.certified_rule_integration_authorization_plan_id_var = tk.StringVar(value="")
+        self.certified_rule_integration_authorization_result_id_var = tk.StringVar(value="")
+        self.certified_rule_integration_authorization_receipt_id_var = tk.StringVar(value="")
+        self.certified_rule_integration_authorization_reviewer_var = tk.StringVar(value="")
+        self.certified_rule_integration_authorization_decision_var = tk.StringVar(value="defer_integration")
+        self.certified_rule_integration_authorization_rationale_var = tk.StringVar(value="")
+        self.certified_rule_integration_authorization_ack_var = tk.StringVar(value="reviewed_scoring_preview, reviewed_fast_lane_preview")
+        self.certified_rule_integration_authorization_confirmation_var = tk.StringVar(value="SAVE_INTEGRATION_AUTHORIZATION")
+        self.certified_rule_integration_authorization_status_var = tk.StringVar(value="Document ID: unknown\nSource Revision: unknown\nCanonical Rule ID: unknown\nCertification Status: unknown\nScoring Preview Status: unknown\nFast Lane Preview Status: unknown\nOverall Compatibility: unknown\nSemantic Loss: unknown\nDecision Status: unknown\nReviewer: none\nBlocker Count: 0\nWarning Count: 0\nRecommended Action: Load one certified rule and current preview evidence to start authorization review.")
+        self.certified_rule_release_candidate_rule_id_var = tk.StringVar(value="")
+        self.certified_rule_release_candidate_authorization_result_id_var = tk.StringVar(value="")
+        self.certified_rule_release_candidate_plan_id_var = tk.StringVar(value="")
+        self.certified_rule_release_candidate_result_id_var = tk.StringVar(value="")
+        self.certified_rule_release_candidate_receipt_id_var = tk.StringVar(value="")
+        self.certified_rule_release_candidate_confirmation_var = tk.StringVar(value="QUALIFY_RELEASE_CANDIDATE")
+        self.certified_rule_release_candidate_status_var = tk.StringVar(value="Document ID: unknown\nSource Revision: unknown\nCanonical Rule ID: unknown\nAuthorization Status: unknown\nScoring Evidence Status: unknown\nCompatibility Evidence Status: unknown\nEligibility Status: unknown\nQualification Status: unknown\nBlocker Count: 0\nWarning Count: 0\nRecommended Action: Load one authorized integration result to start release-candidate qualification.")
+        self.certified_rule_controlled_integration_rule_id_var = tk.StringVar(value="")
+        self.certified_rule_controlled_integration_release_result_id_var = tk.StringVar(value="")
+        self.certified_rule_controlled_integration_target_id_var = tk.StringVar(value="controlled_staging_primary")
+        self.certified_rule_controlled_integration_plan_id_var = tk.StringVar(value="")
+        self.certified_rule_controlled_integration_result_id_var = tk.StringVar(value="")
+        self.certified_rule_controlled_integration_receipt_id_var = tk.StringVar(value="")
+        self.certified_rule_controlled_integration_confirmation_var = tk.StringVar(value="EXECUTE_CONTROLLED_INTEGRATION")
+        self.certified_rule_controlled_integration_status_var = tk.StringVar(value="Document ID: unknown\nSource Revision: unknown\nCertification Status: unknown\nRelease Candidate Status: unknown\nAuthorization Status: unknown\nTarget Status: unknown\nEnvironment Class: unknown\nAdapter Version: unknown\nNamespace ID: unknown\nTransaction ID: unknown\nExecution Status: unknown\nPending Verification: unknown\nCommitted Verification: unknown\nRollback Status: unknown\nProduction Safety: unknown\nStale Status: unknown\nBlocker Count: 0\nWarning Count: 0\nRecommended Action: Load one qualified release candidate and explicit target to start controlled integration.")
+        self.certified_rule_production_authorization_rule_id_var = tk.StringVar(value="")
+        self.certified_rule_production_authorization_integration_result_id_var = tk.StringVar(value="")
+        self.certified_rule_production_authorization_target_id_var = tk.StringVar(value="production_target_primary")
+        self.certified_rule_production_authorization_plan_id_var = tk.StringVar(value="")
+        self.certified_rule_production_authorization_result_id_var = tk.StringVar(value="")
+        self.certified_rule_production_authorization_receipt_id_var = tk.StringVar(value="")
+        self.certified_rule_production_authorization_decision_var = tk.StringVar(value="authorize_for_later_production_deployment")
+        self.certified_rule_production_authorization_confirmation_var = tk.StringVar(value="SAVE_PRODUCTION_AUTHORIZATION")
+        self.certified_rule_production_authorization_status_var = tk.StringVar(value="Document ID: unknown\nSource Revision: unknown\nControlled Integration Status: unknown\nRelease Candidate Status: unknown\nAuthorization Status: unknown\nProduction Target Status: unknown\nDescriptor Access Mode: unknown\nNamespace ID: unknown\nTransaction ID: unknown\nDecision Status: unknown\nStale Status: unknown\nBlocker Count: 0\nWarning Count: 0\nRecommended Action: Load one completed controlled integration result and explicit production target descriptor to start production authorization.")
+        self.certified_rule_production_deployment_rule_id_var = tk.StringVar(value="")
+        self.certified_rule_production_deployment_authorization_result_id_var = tk.StringVar(value="")
+        self.certified_rule_production_deployment_target_id_var = tk.StringVar(value="production_target_primary")
+        self.certified_rule_production_deployment_plan_id_var = tk.StringVar(value="")
+        self.certified_rule_production_deployment_result_id_var = tk.StringVar(value="")
+        self.certified_rule_production_deployment_receipt_id_var = tk.StringVar(value="")
+        self.certified_rule_production_deployment_confirmation_var = tk.StringVar(value="EXECUTE_AUTHORIZED_PRODUCTION_DEPLOYMENT")
+        self.certified_rule_production_deployment_status_var = tk.StringVar(value="Document ID: unknown\nSource Revision: unknown\nCertification Status: unknown\nPhase 9U Authorization Status: unknown\nPhase 9T Verification Status: unknown\nProduction Target Status: unknown\nAdapter Version: unknown\nTransaction ID: unknown\nApply Status: unknown\nPending Verification: unknown\nCommit Status: unknown\nCommitted Verification: unknown\nRollback Status: unknown\nProduction Safety: unknown\nBlocker Count: 0\nWarning Count: 0\nRecommended Action: Load one authorized production authorization result and explicit target to start production deployment.")
+        self.certified_rule_post_deployment_result_id_var = tk.StringVar(value="")
+        self.certified_rule_post_deployment_plan_id_var = tk.StringVar(value="")
+        self.certified_rule_post_deployment_decision_result_id_var = tk.StringVar(value="")
+        self.certified_rule_post_deployment_receipt_id_var = tk.StringVar(value="")
+        self.certified_rule_post_deployment_decision_var = tk.StringVar(value="continue_observation")
+        self.certified_rule_post_deployment_confirmation_var = tk.StringVar(value="SAVE_POST_DEPLOYMENT_ACCEPTANCE_DECISION")
+        self.certified_rule_post_deployment_status_var = tk.StringVar(value="Document ID: unknown\nSource Revision: unknown\nCanonical Rule ID: unknown\nDeployed Rule ID: unknown\nPhase 9V Status: unknown\nCurrent Transaction Status: unknown\nCurrent Verification Status: unknown\nCanonical Source Rule Status: unknown\nDeployed Rule Status: unknown\nOptional Telemetry Status: unknown\nDecision Status: unknown\nBlocker Count: 0\nWarning Count: 0\nRecommended Action: Load one completed Phase 9V deployment result to start post-deployment observation.")
+        self.deployed_rule_operational_telemetry_rule_id_var = tk.StringVar(value="")
+        self.deployed_rule_operational_telemetry_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_operational_telemetry_phase_9w_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_operational_telemetry_target_id_var = tk.StringVar(value="production_target_primary")
+        self.deployed_rule_operational_telemetry_deployed_rule_id_var = tk.StringVar(value="")
+        self.deployed_rule_operational_telemetry_start_var = tk.StringVar(value="")
+        self.deployed_rule_operational_telemetry_end_var = tk.StringVar(value="")
+        self.deployed_rule_operational_telemetry_event_type_var = tk.StringVar(value="")
+        self.deployed_rule_operational_telemetry_producer_var = tk.StringVar(value="")
+        self.deployed_rule_operational_telemetry_max_results_var = tk.StringVar(value="50")
+        self.deployed_rule_operational_telemetry_status_var = tk.StringVar(value="Phase 9V Deployment Status: unknown\nCurrent Transaction Status: unknown\nDeployed Rule Status: unknown\nCanonical Source Rule Preservation: unknown\nState Telemetry Available: unknown\nExecution Telemetry Available: unknown\nProducer IDs: none\nObservation Window: none\nTotal Matching Event Count: 0\nReturned Event Count: 0\nValidated Event Count: 0\nInvalid Event Count: 0\nCorrupt Event Count: 0\nSnapshot Completeness: unknown\nSnapshot ID: none\nTelemetry Health: unknown\nMetric Availability: unknown\nEffectiveness Evaluation Status: not_performed\nBlocker Count: 0\nWarning Count: 0\nRecommended Action: Load one completed Phase 9V deployment result to inspect telemetry.")
+        self._register_deployed_rule_operational_telemetry_traces()
+        self.deployed_rule_effectiveness_readiness_rule_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_readiness_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_readiness_target_id_var = tk.StringVar(value="production_target_primary")
+        self.deployed_rule_effectiveness_readiness_deployed_rule_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_readiness_snapshot_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_readiness_start_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_readiness_end_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_readiness_phase_9w_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_readiness_plan_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_readiness_loaded_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_readiness_confirmation_var = tk.StringVar(value="RECORD_EFFECTIVENESS_READINESS_RESULT")
+        self.deployed_rule_effectiveness_readiness_status_var = tk.StringVar(value="Phase 9V Status: unknown\nDeployed Rule Status: unknown\nCanonical Source Rule Status: unknown\nTelemetry Snapshot Status: unknown\nExecution Producer Availability: unknown\nExecution Producer ID: unknown\nExecution Producer Fingerprint: unknown\nValid Execution Attempt Count: 0\nCompleted Event Count: 0\nFailed Event Count: 0\nMinimum Execution Attempts: 30\nSample Sufficiency Status: unknown\nDenominator Readiness: unknown\nObservation-Window Readiness: unknown\nReadiness Status: unknown\nReadiness Plan ID: none\nReadiness Result ID: none\nHealth Scope: repository-wide\nReadiness Health: unknown\nEffectiveness Evaluation Status: not_performed\nBlocker Count: 0\nWarning Count: 0\nRecommended Action: Load one explicit readiness workspace from a completed Phase 9V deployment and Phase 9X snapshot.")
+        self._register_deployed_rule_effectiveness_readiness_traces()
         for variable in (
             self.pdf_viewport_id_var,
             self.pdf_reader_workspace_id_var,
@@ -864,6 +1053,52 @@ class DesktopRightPanelMixin:
             self.rule_revalidation_note_var,
             self.rule_revalidation_completion_confirmation_var,
             self.rule_revalidation_receipt_id_var,
+            self.rule_supersession_old_rule_id_var,
+            self.rule_supersession_proposal_id_var,
+            self.rule_supersession_review_id_var,
+            self.rule_supersession_note_var,
+            self.rule_supersession_receipt_id_var,
+            self.rule_supersession_confirmation_var,
+            self.rule_supersession_rollback_confirmation_var,
+            self.rule_effectiveness_rule_id_var,
+            self.rule_effectiveness_dataset_id_var,
+            self.rule_effectiveness_comparison_rule_id_var,
+            self.rule_effectiveness_max_records_var,
+            self.rule_effectiveness_recommendation_analysis_id_var,
+            self.rule_effectiveness_recommendation_policy_id_var,
+            self.rule_effectiveness_recommendation_id_var,
+            self.rule_effectiveness_recommendation_note_var,
+            self.rule_effectiveness_recommendation_review_id_var,
+            self.rule_effectiveness_recommendation_action_candidate_id_var,
+            self.rule_effectiveness_recommendation_queue_confirmation_var,
+            self.rule_batch_document_id_var,
+            self.rule_batch_source_revision_var,
+            self.rule_batch_dataset_id_var,
+            self.rule_batch_policy_id_var,
+            self.rule_batch_rule_ids_var,
+            self.rule_batch_max_rules_var,
+            self.rule_batch_max_records_var,
+            self.rule_batch_plan_id_var,
+            self.rule_batch_run_id_var,
+            self.rule_batch_stop_after_items_var,
+            self.rule_batch_cancellation_reason_var,
+            self.autonomous_pdf_document_id_var,
+            self.autonomous_pdf_source_revision_var,
+            self.autonomous_pdf_max_pages_var,
+            self.autonomous_pdf_max_harvest_candidates_var,
+            self.autonomous_pdf_max_proposal_candidates_var,
+            self.autonomous_pdf_max_rule_candidates_var,
+            self.autonomous_pdf_max_certified_rules_var,
+            self.autonomous_pdf_plan_id_var,
+            self.autonomous_pdf_run_id_var,
+            self.autonomous_pdf_stop_after_stage_var,
+            self.autonomous_pdf_confirmation_var,
+            self.autonomous_pdf_cancellation_reason_var,
+            self.autonomous_pdf_benchmark_id_var,
+            self.autonomous_pdf_benchmark_run_id_var,
+            self.autonomous_pdf_benchmark_result_id_var,
+            self.autonomous_pdf_benchmark_receipt_id_var,
+            self.autonomous_pdf_benchmark_confirmation_var,
         ):
             tk.Entry(viewport_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4 if variable is self.pdf_viewport_id_var else 0, 3))
         ttk.Combobox(viewport_box, textvariable=self.pdf_viewport_selection_mode_var, values=("intersect", "contained"), state="readonly").pack(fill=tk.X, pady=(0, 3))
@@ -873,11 +1108,16 @@ class DesktopRightPanelMixin:
         ttk.Combobox(viewport_box, textvariable=self.proposal_promotion_decision_var, values=("approve", "reject", "request_changes"), state="readonly").pack(fill=tk.X, pady=(0, 3))
         ttk.Combobox(viewport_box, textvariable=self.rule_activation_decision_var, values=("approve", "reject", "request_changes"), state="readonly").pack(fill=tk.X, pady=(0, 3))
         ttk.Combobox(viewport_box, textvariable=self.rule_revalidation_decision_var, values=("certify", "request_changes", "reject_and_rollback"), state="readonly").pack(fill=tk.X, pady=(0, 3))
+        ttk.Combobox(viewport_box, textvariable=self.rule_supersession_decision_var, values=("approve", "reject", "request_changes"), state="readonly").pack(fill=tk.X, pady=(0, 3))
+        ttk.Combobox(viewport_box, textvariable=self.rule_effectiveness_recommendation_decision_var, values=("accept", "reject", "defer", "request_more_evidence"), state="readonly").pack(fill=tk.X, pady=(0, 3))
         ttk.Checkbutton(viewport_box, text="Allow Near Duplicate", variable=self.citation_review_allow_near_duplicate_var).pack(anchor="w", pady=(0, 4))
         ttk.Checkbutton(viewport_box, text="Acknowledge Near Duplicate", variable=self.proposal_promotion_ack_near_duplicate_var).pack(anchor="w", pady=(0, 2))
         ttk.Checkbutton(viewport_box, text="Acknowledge Conflict", variable=self.proposal_promotion_ack_conflict_var).pack(anchor="w", pady=(0, 4))
         ttk.Checkbutton(viewport_box, text="Acknowledge Inactive Equivalent", variable=self.rule_activation_ack_inactive_var).pack(anchor="w", pady=(0, 2))
         ttk.Checkbutton(viewport_box, text="Acknowledge Conflict (Rule)", variable=self.rule_activation_ack_conflict_var).pack(anchor="w", pady=(0, 4))
+        ttk.Checkbutton(viewport_box, text="Acknowledge Scope Change", variable=self.rule_supersession_ack_scope_var).pack(anchor="w", pady=(0, 4))
+        ttk.Checkbutton(viewport_box, text="Regenerate Effectiveness Analysis", variable=self.rule_effectiveness_regenerate_var).pack(anchor="w", pady=(0, 4))
+        ttk.Checkbutton(viewport_box, text="Include Certified Rules from This PDF", variable=self.rule_batch_include_active_var).pack(anchor="w", pady=(0, 4))
         self.pdf_viewport_status_var = tk.StringVar(value="Certification Status: unknown\nRenderer Status: unknown\nCurrent Page / Page Count: unknown\nZoom: 100%\nRender Status: not_rendered\nCache Status: unknown\nLocator Status: not_selected\nText Layer Status: unknown\nOverlay Status: none\nWorkspace Status: none\nWorkspace Revision: 0\nBookmarks: 0\nAnnotations: 0\nCitation Drafts: 0\nSelected Text: none\nRecommended Action: Open a certified viewport session.")
         tk.Label(viewport_box, textvariable=self.pdf_viewport_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(0, 5))
         viewport_actions = ttk.Frame(viewport_box, style="Panel.TFrame")
@@ -943,8 +1183,352 @@ class DesktopRightPanelMixin:
             ("Reject and Roll Back", lambda: self._run_pdf_viewport_action("reject_rule_revalidation")),
             ("Complete Revalidation", lambda: self._run_pdf_viewport_action("complete_rule_revalidation")),
             ("Copy Revalidation Report", lambda: self._run_pdf_viewport_action("copy_rule_revalidation_report")),
+            ("Load Supersession", lambda: self._run_pdf_viewport_action("load_rule_supersession")),
+            ("Approve Replacement", lambda: self._run_pdf_viewport_action("approve_rule_supersession")),
+            ("Reject Replacement", lambda: self._run_pdf_viewport_action("reject_rule_supersession")),
+            ("Request Changes", lambda: self._run_pdf_viewport_action("request_changes_rule_supersession")),
+            ("Supersede Rule", lambda: self._run_pdf_viewport_action("supersede_rule")),
+            ("Rollback Supersession", lambda: self._run_pdf_viewport_action("rollback_rule_supersession")),
+            ("Copy Supersession Report", lambda: self._run_pdf_viewport_action("copy_rule_supersession_report")),
+            ("Load Effectiveness Workspace", lambda: self._run_pdf_viewport_action("load_rule_effectiveness_workspace")),
+            ("Build Backtest Plan", lambda: self._run_pdf_viewport_action("build_rule_effectiveness_plan")),
+            ("Run Focused Backtest", lambda: self._run_pdf_viewport_action("run_rule_effectiveness_backtest")),
+            ("Effectiveness Health", lambda: self._run_pdf_viewport_action("rule_effectiveness_health")),
+            ("Copy Effectiveness Report", lambda: self._run_pdf_viewport_action("copy_rule_effectiveness_report")),
+            ("Load Recommendation Workspace", lambda: self._run_pdf_viewport_action("load_rule_effectiveness_recommendation_workspace")),
+            ("Generate Recommendation", lambda: self._run_pdf_viewport_action("generate_rule_effectiveness_recommendation")),
+            ("Accept Recommendation", lambda: self._run_pdf_viewport_action("accept_rule_effectiveness_recommendation")),
+            ("Reject Recommendation", lambda: self._run_pdf_viewport_action("reject_rule_effectiveness_recommendation")),
+            ("Defer Recommendation", lambda: self._run_pdf_viewport_action("defer_rule_effectiveness_recommendation")),
+            ("Request More Evidence", lambda: self._run_pdf_viewport_action("more_evidence_rule_effectiveness_recommendation")),
+            ("Queue Action Candidate", lambda: self._run_pdf_viewport_action("queue_rule_effectiveness_action_candidate")),
+            ("Copy Recommendation Report", lambda: self._run_pdf_viewport_action("copy_rule_effectiveness_recommendation_report")),
+            ("Load Batch Workspace", lambda: self._run_pdf_viewport_action("load_rule_batch_workspace")),
+            ("Build Batch Plan", lambda: self._run_pdf_viewport_action("build_rule_batch_plan")),
+            ("Run / Resume Batch", lambda: self._run_pdf_viewport_action("run_rule_batch_analysis")),
+            ("Cancel Batch", lambda: self._run_pdf_viewport_action("cancel_rule_batch_run")),
+            ("Batch Health", lambda: self._run_pdf_viewport_action("rule_batch_health")),
+            ("Copy Batch Report", lambda: self._run_pdf_viewport_action("copy_rule_batch_report")),
+            ("Load Autonomous Workspace", lambda: self._run_pdf_viewport_action("load_autonomous_pdf_workspace")),
+            ("Build Autonomous Plan", lambda: self._run_pdf_viewport_action("build_autonomous_pdf_plan")),
+            ("Run / Resume AUTO", lambda: self._run_pdf_viewport_action("run_autonomous_pdf_pipeline")),
+            ("Cancel Autonomous Run", lambda: self._run_pdf_viewport_action("cancel_autonomous_pdf_pipeline")),
+            ("Autonomous Health", lambda: self._run_pdf_viewport_action("autonomous_pdf_health")),
+            ("Copy Autonomous Report", lambda: self._run_pdf_viewport_action("copy_autonomous_pdf_report")),
+            ("Load Benchmark Workspace", lambda: self._run_pdf_viewport_action("load_autonomous_pdf_benchmark_workspace")),
+            ("Validate Benchmark Manifest", lambda: self._run_pdf_viewport_action("validate_autonomous_pdf_benchmark_manifest")),
+            ("Run Benchmark", lambda: self._run_pdf_viewport_action("run_autonomous_pdf_benchmark")),
+            ("Benchmark Health", lambda: self._run_pdf_viewport_action("autonomous_pdf_benchmark_health")),
+            ("Copy Benchmark Report", lambda: self._run_pdf_viewport_action("copy_autonomous_pdf_benchmark_report")),
+            ("Load Remediation Workspace", lambda: self._run_pdf_viewport_action("load_autonomous_pdf_remediation_workspace")),
+            ("Run Triage", lambda: self._run_pdf_viewport_action("run_autonomous_pdf_remediation_triage")),
+            ("Review Case", lambda: self._run_pdf_viewport_action("review_autonomous_pdf_remediation_case")),
+            ("Verify Re-Benchmark", lambda: self._run_pdf_viewport_action("verify_autonomous_pdf_remediation")),
+            ("Copy Remediation Report", lambda: self._run_pdf_viewport_action("copy_autonomous_pdf_remediation_report")),
+            ("Load Corrective Workspace", lambda: self._run_pdf_viewport_action("load_autonomous_pdf_corrective_action_workspace")),
+            ("Build Action Plan", lambda: self._run_pdf_viewport_action("build_autonomous_pdf_corrective_action_plan")),
+            ("Execute Action", lambda: self._run_pdf_viewport_action("execute_autonomous_pdf_corrective_action")),
+            ("Verify Action", lambda: self._run_pdf_viewport_action("verify_autonomous_pdf_corrective_action")),
+            ("Close Action", lambda: self._run_pdf_viewport_action("close_autonomous_pdf_corrective_action")),
+            ("Copy Action Report", lambda: self._run_pdf_viewport_action("copy_autonomous_pdf_corrective_action_report")),
+            ("Load Replay Workspace", lambda: self._run_pdf_viewport_action("load_certified_rule_replay_workspace")),
+            ("Validate Replay Eligibility", lambda: self._run_pdf_viewport_action("validate_certified_rule_replay_eligibility")),
+            ("Build Replay Plan", lambda: self._run_pdf_viewport_action("build_certified_rule_replay_plan")),
+            ("Run Shadow Replay", lambda: self._run_pdf_viewport_action("run_certified_rule_replay")),
+            ("Replay Health", lambda: self._run_pdf_viewport_action("certified_rule_replay_health")),
+            ("Copy Replay Report", lambda: self._run_pdf_viewport_action("copy_certified_rule_replay_report")),
+            ("Load Objective Preview Workspace", lambda: self._run_pdf_viewport_action("load_certified_rule_objective_preview_workspace")),
+            ("Validate Objective Preview Eligibility", lambda: self._run_pdf_viewport_action("validate_certified_rule_objective_preview_eligibility")),
+            ("Build Objective Preview Plan", lambda: self._run_pdf_viewport_action("build_certified_rule_objective_preview_plan")),
+            ("Run Read-Only Preview", lambda: self._run_pdf_viewport_action("run_certified_rule_objective_preview")),
+            ("Objective Preview Health", lambda: self._run_pdf_viewport_action("certified_rule_objective_preview_health")),
+            ("Copy Objective Preview Report", lambda: self._run_pdf_viewport_action("copy_certified_rule_objective_preview_report")),
+            ("Load Scoring Workspace", lambda: self._run_pdf_viewport_action("load_certified_rule_scoring_preview_workspace")),
+            ("Validate Scoring Eligibility", lambda: self._run_pdf_viewport_action("validate_certified_rule_scoring_preview_eligibility")),
+            ("Build Scoring Plan", lambda: self._run_pdf_viewport_action("build_certified_rule_scoring_preview_plan")),
+            ("Run Read-Only Scoring Preview", lambda: self._run_pdf_viewport_action("run_certified_rule_scoring_preview")),
+            ("Scoring Preview Health", lambda: self._run_pdf_viewport_action("certified_rule_scoring_preview_health")),
+            ("Copy Scoring Report", lambda: self._run_pdf_viewport_action("copy_certified_rule_scoring_preview_report")),
+            ("Load Fast Lane Workspace", lambda: self._run_pdf_viewport_action("load_certified_rule_fast_lane_preview_workspace")),
+            ("Validate Fast Lane Eligibility", lambda: self._run_pdf_viewport_action("validate_certified_rule_fast_lane_preview_eligibility")),
+            ("Build Compatibility Plan", lambda: self._run_pdf_viewport_action("build_certified_rule_fast_lane_preview_plan")),
+            ("Run Compatibility Preview", lambda: self._run_pdf_viewport_action("run_certified_rule_fast_lane_preview")),
+            ("Fast Lane Preview Health", lambda: self._run_pdf_viewport_action("certified_rule_fast_lane_preview_health")),
+            ("Copy Compatibility Report", lambda: self._run_pdf_viewport_action("copy_certified_rule_fast_lane_preview_report")),
+            ("Load Authorization Workspace", lambda: self._run_pdf_viewport_action("load_certified_rule_integration_authorization_workspace")),
+            ("Validate Authorization Eligibility", lambda: self._run_pdf_viewport_action("validate_certified_rule_integration_authorization_eligibility")),
+            ("Build Authorization Plan", lambda: self._run_pdf_viewport_action("build_certified_rule_integration_authorization_plan")),
+            ("Save Authorization Decision", lambda: self._run_pdf_viewport_action("save_certified_rule_integration_authorization_decision")),
+            ("Copy Authorization Report", lambda: self._run_pdf_viewport_action("copy_certified_rule_integration_authorization_report")),
+            ("Load Release Candidate Workspace", lambda: self._run_pdf_viewport_action("load_certified_rule_release_candidate_workspace")),
+            ("Validate Release Candidate", lambda: self._run_pdf_viewport_action("validate_certified_rule_release_candidate_eligibility")),
+            ("Build Release Plan", lambda: self._run_pdf_viewport_action("build_certified_rule_release_candidate_plan")),
+            ("Qualify Release Candidate", lambda: self._run_pdf_viewport_action("qualify_certified_rule_release_candidate")),
+            ("Copy Release Report", lambda: self._run_pdf_viewport_action("copy_certified_rule_release_candidate_report")),
+            ("Load Integration Workspace", lambda: self._run_pdf_viewport_action("load_certified_rule_controlled_integration_workspace")),
+            ("Validate Integration Eligibility", lambda: self._run_pdf_viewport_action("validate_certified_rule_controlled_integration_eligibility")),
+            ("Build Integration Plan", lambda: self._run_pdf_viewport_action("build_certified_rule_controlled_integration_plan")),
+            ("Execute Controlled Integration", lambda: self._run_pdf_viewport_action("execute_certified_rule_controlled_integration")),
+            ("Controlled Integration Health", lambda: self._run_pdf_viewport_action("certified_rule_controlled_integration_health")),
+            ("Copy Integration Report", lambda: self._run_pdf_viewport_action("copy_certified_rule_controlled_integration_report")),
+            ("Load Production Authorization Workspace", lambda: self._run_pdf_viewport_action("load_certified_rule_production_authorization_workspace")),
+            ("Validate Production Authorization", lambda: self._run_pdf_viewport_action("validate_certified_rule_production_authorization_eligibility")),
+            ("Build Production Authorization Plan", lambda: self._run_pdf_viewport_action("build_certified_rule_production_authorization_plan")),
+            ("Save Production Authorization", lambda: self._run_pdf_viewport_action("save_certified_rule_production_authorization_decision")),
+            ("Production Authorization Health", lambda: self._run_pdf_viewport_action("certified_rule_production_authorization_health")),
+            ("Copy Production Authorization Report", lambda: self._run_pdf_viewport_action("copy_certified_rule_production_authorization_report")),
+            ("Load Production Deployment Workspace", lambda: self._run_pdf_viewport_action("load_certified_rule_production_deployment_workspace")),
+            ("Validate Production Deployment", lambda: self._run_pdf_viewport_action("validate_certified_rule_production_deployment_eligibility")),
+            ("Build Production Deployment Plan", lambda: self._run_pdf_viewport_action("build_certified_rule_production_deployment_plan")),
+            ("Execute Authorized Deployment", lambda: self._run_pdf_viewport_action("execute_certified_rule_production_deployment")),
+            ("Production Deployment Health", lambda: self._run_pdf_viewport_action("certified_rule_production_deployment_health")),
+            ("Copy Production Deployment Report", lambda: self._run_pdf_viewport_action("copy_certified_rule_production_deployment_report")),
+            ("Load Post-Deployment Workspace", lambda: self._run_pdf_viewport_action("load_certified_rule_post_deployment_acceptance_workspace")),
+            ("Validate Post-Deployment", lambda: self._run_pdf_viewport_action("validate_certified_rule_post_deployment_acceptance_eligibility")),
+            ("Build Observation Plan", lambda: self._run_pdf_viewport_action("build_certified_rule_post_deployment_acceptance_plan")),
+            ("Save Post-Deployment Decision", lambda: self._run_pdf_viewport_action("save_certified_rule_post_deployment_acceptance_decision")),
+            ("Post-Deployment Health", lambda: self._run_pdf_viewport_action("certified_rule_post_deployment_acceptance_health")),
+            ("Copy Post-Deployment Report", lambda: self._run_pdf_viewport_action("copy_certified_rule_post_deployment_acceptance_report")),
         ):
             ttk.Button(viewport_actions, text=label, command=command, style="Compact.TButton").pack(fill=tk.X, pady=(0, 3))
+        remediation_box = ttk.Frame(parent, style="Panel.TFrame")
+        remediation_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(remediation_box, text="Autonomous PDF Remediation", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in (
+            self.autonomous_pdf_benchmark_result_id_var,
+            self.autonomous_pdf_remediation_plan_id_var,
+            self.autonomous_pdf_remediation_case_id_var,
+            self.autonomous_pdf_remediation_new_result_id_var,
+            self.autonomous_pdf_remediation_review_note_var,
+            self.autonomous_pdf_remediation_confirmation_var,
+        ):
+            tk.Entry(remediation_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        ttk.Combobox(remediation_box, textvariable=self.autonomous_pdf_remediation_review_decision_var, values=("accept_for_targeted_fix", "benchmark_manifest_review", "source_document_review", "expected_conservative_behavior", "defer", "reject", "no_action"), state="readonly").pack(fill=tk.X, pady=(4, 0))
+        tk.Label(remediation_box, textvariable=self.autonomous_pdf_remediation_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        corrective_box = ttk.Frame(parent, style="Panel.TFrame")
+        corrective_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(corrective_box, text="Autonomous PDF Corrective Action", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in (
+            self.autonomous_pdf_remediation_case_id_var,
+            self.autonomous_pdf_corrective_action_id_var,
+            self.autonomous_pdf_corrective_action_payload_var,
+            self.autonomous_pdf_remediation_new_result_id_var,
+            self.autonomous_pdf_corrective_action_confirmation_var,
+        ):
+            tk.Entry(corrective_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        ttk.Combobox(corrective_box, textvariable=self.autonomous_pdf_corrective_action_type_var, values=("close_expected_behavior", "close_no_action", "apply_benchmark_manifest_amendment", "request_new_source_revision", "create_phase_9j_fix_package", "create_phase_9k_fix_package"), state="readonly").pack(fill=tk.X, pady=(4, 0))
+        tk.Label(corrective_box, textvariable=self.autonomous_pdf_corrective_action_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        replay_box = ttk.Frame(parent, style="Panel.TFrame")
+        replay_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(replay_box, text="Certified Rule Historical Replay", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in (
+            self.certified_rule_replay_rule_id_var,
+            self.certified_rule_replay_dataset_id_var,
+            self.certified_rule_replay_max_records_var,
+            self.certified_rule_replay_plan_id_var,
+            self.certified_rule_replay_result_id_var,
+            self.certified_rule_replay_receipt_id_var,
+            self.certified_rule_replay_confirmation_var,
+        ):
+            tk.Entry(replay_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(replay_box, textvariable=self.certified_rule_replay_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        objective_preview_box = ttk.Frame(parent, style="Panel.TFrame")
+        objective_preview_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(objective_preview_box, text="Certified Rule Objective Preview", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in (
+            self.certified_rule_objective_preview_rule_id_var,
+            self.certified_rule_objective_preview_pack_id_var,
+            self.certified_rule_objective_preview_input_id_var,
+            self.certified_rule_objective_preview_max_records_var,
+            self.certified_rule_objective_preview_mapping_var,
+            self.certified_rule_objective_preview_plan_id_var,
+            self.certified_rule_objective_preview_result_id_var,
+            self.certified_rule_objective_preview_receipt_id_var,
+            self.certified_rule_objective_preview_confirmation_var,
+        ):
+            tk.Entry(objective_preview_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(objective_preview_box, textvariable=self.certified_rule_objective_preview_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        scoring_preview_box = ttk.Frame(parent, style="Panel.TFrame")
+        scoring_preview_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(scoring_preview_box, text="Certified Rule Scoring Preview", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in (
+            self.certified_rule_scoring_preview_objective_result_id_var,
+            self.certified_rule_scoring_preview_config_id_var,
+            self.certified_rule_scoring_preview_plan_id_var,
+            self.certified_rule_scoring_preview_result_id_var,
+            self.certified_rule_scoring_preview_receipt_id_var,
+            self.certified_rule_scoring_preview_confirmation_var,
+        ):
+            tk.Entry(scoring_preview_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(scoring_preview_box, textvariable=self.certified_rule_scoring_preview_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        fast_lane_preview_box = ttk.Frame(parent, style="Panel.TFrame")
+        fast_lane_preview_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(fast_lane_preview_box, text="Certified Rule Fast Lane Preview", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in (
+            self.certified_rule_fast_lane_preview_rule_id_var,
+            self.certified_rule_fast_lane_preview_plan_id_var,
+            self.certified_rule_fast_lane_preview_result_id_var,
+            self.certified_rule_fast_lane_preview_receipt_id_var,
+            self.certified_rule_fast_lane_preview_confirmation_var,
+        ):
+            tk.Entry(fast_lane_preview_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(fast_lane_preview_box, textvariable=self.certified_rule_fast_lane_preview_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        authorization_box = ttk.Frame(parent, style="Panel.TFrame")
+        authorization_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(authorization_box, text="Certified Rule Integration Authorization", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in (
+            self.certified_rule_integration_authorization_rule_id_var,
+            self.certified_rule_integration_authorization_scoring_result_id_var,
+            self.certified_rule_integration_authorization_fast_lane_result_id_var,
+            self.certified_rule_integration_authorization_plan_id_var,
+            self.certified_rule_integration_authorization_result_id_var,
+            self.certified_rule_integration_authorization_receipt_id_var,
+            self.certified_rule_integration_authorization_reviewer_var,
+            self.certified_rule_integration_authorization_rationale_var,
+            self.certified_rule_integration_authorization_ack_var,
+            self.certified_rule_integration_authorization_confirmation_var,
+        ):
+            tk.Entry(authorization_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        ttk.Combobox(authorization_box, textvariable=self.certified_rule_integration_authorization_decision_var, values=("authorize_for_later_integration", "reject_integration", "defer_integration"), state="readonly").pack(fill=tk.X, pady=(4, 0))
+        tk.Label(authorization_box, textvariable=self.certified_rule_integration_authorization_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        release_candidate_box = ttk.Frame(parent, style="Panel.TFrame")
+        release_candidate_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(release_candidate_box, text="Certified Rule Release Candidate", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in (
+            self.certified_rule_release_candidate_rule_id_var,
+            self.certified_rule_release_candidate_authorization_result_id_var,
+            self.certified_rule_release_candidate_plan_id_var,
+            self.certified_rule_release_candidate_result_id_var,
+            self.certified_rule_release_candidate_receipt_id_var,
+            self.certified_rule_release_candidate_confirmation_var,
+        ):
+            tk.Entry(release_candidate_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(release_candidate_box, textvariable=self.certified_rule_release_candidate_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        controlled_integration_box = ttk.Frame(parent, style="Panel.TFrame")
+        controlled_integration_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(controlled_integration_box, text="Certified Rule Controlled Integration", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in (
+            self.certified_rule_controlled_integration_rule_id_var,
+            self.certified_rule_controlled_integration_release_result_id_var,
+            self.certified_rule_controlled_integration_target_id_var,
+            self.certified_rule_controlled_integration_plan_id_var,
+            self.certified_rule_controlled_integration_result_id_var,
+            self.certified_rule_controlled_integration_receipt_id_var,
+            self.certified_rule_controlled_integration_confirmation_var,
+        ):
+            tk.Entry(controlled_integration_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(controlled_integration_box, textvariable=self.certified_rule_controlled_integration_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        production_authorization_box = ttk.Frame(parent, style="Panel.TFrame")
+        production_authorization_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(production_authorization_box, text="Certified Rule Production Authorization", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in (
+            self.certified_rule_production_authorization_rule_id_var,
+            self.certified_rule_production_authorization_integration_result_id_var,
+            self.certified_rule_production_authorization_target_id_var,
+            self.certified_rule_production_authorization_plan_id_var,
+            self.certified_rule_production_authorization_result_id_var,
+            self.certified_rule_production_authorization_receipt_id_var,
+            self.certified_rule_production_authorization_confirmation_var,
+        ):
+            tk.Entry(production_authorization_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        ttk.Combobox(
+            production_authorization_box,
+            textvariable=self.certified_rule_production_authorization_decision_var,
+            values=("authorize_for_later_production_deployment", "defer_production_deployment", "reject_production_deployment"),
+            state="readonly",
+        ).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(production_authorization_box, textvariable=self.certified_rule_production_authorization_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        production_deployment_box = ttk.Frame(parent, style="Panel.TFrame")
+        production_deployment_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(production_deployment_box, text="Certified Rule Production Deployment", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in (
+            self.certified_rule_production_deployment_rule_id_var,
+            self.certified_rule_production_deployment_authorization_result_id_var,
+            self.certified_rule_production_deployment_target_id_var,
+            self.certified_rule_production_deployment_plan_id_var,
+            self.certified_rule_production_deployment_result_id_var,
+            self.certified_rule_production_deployment_receipt_id_var,
+            self.certified_rule_production_deployment_confirmation_var,
+        ):
+            tk.Entry(production_deployment_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(production_deployment_box, textvariable=self.certified_rule_production_deployment_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        post_deployment_box = ttk.Frame(parent, style="Panel.TFrame")
+        post_deployment_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(post_deployment_box, text="Certified Rule Post-Deployment Acceptance", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in (
+            self.certified_rule_post_deployment_result_id_var,
+            self.certified_rule_post_deployment_plan_id_var,
+            self.certified_rule_post_deployment_decision_result_id_var,
+            self.certified_rule_post_deployment_receipt_id_var,
+            self.certified_rule_post_deployment_confirmation_var,
+        ):
+            tk.Entry(post_deployment_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        ttk.Combobox(
+            post_deployment_box,
+            textvariable=self.certified_rule_post_deployment_decision_var,
+            values=("accept", "reject", "continue_observation"),
+            state="readonly",
+        ).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(post_deployment_box, textvariable=self.certified_rule_post_deployment_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        telemetry_box = ttk.Frame(parent, style="Panel.TFrame")
+        telemetry_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(telemetry_box, text="Deployed Rule Operational Telemetry", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for variable in (
+            self.deployed_rule_operational_telemetry_rule_id_var,
+            self.deployed_rule_operational_telemetry_result_id_var,
+            self.deployed_rule_operational_telemetry_phase_9w_result_id_var,
+            self.deployed_rule_operational_telemetry_target_id_var,
+            self.deployed_rule_operational_telemetry_deployed_rule_id_var,
+            self.deployed_rule_operational_telemetry_start_var,
+            self.deployed_rule_operational_telemetry_end_var,
+            self.deployed_rule_operational_telemetry_event_type_var,
+            self.deployed_rule_operational_telemetry_producer_var,
+            self.deployed_rule_operational_telemetry_max_results_var,
+        ):
+            tk.Entry(telemetry_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(telemetry_box, textvariable=self.deployed_rule_operational_telemetry_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        telemetry_actions = ttk.Frame(telemetry_box, style="Panel.TFrame")
+        telemetry_actions.pack(fill=tk.X, pady=(4, 0))
+        for label, command in (
+            ("Load Telemetry Workspace", lambda: self._run_pdf_viewport_action("load_deployed_rule_operational_telemetry_workspace")),
+            ("Validate Telemetry Eligibility", lambda: self._run_pdf_viewport_action("validate_deployed_rule_operational_telemetry_eligibility")),
+            ("List Operational Events", lambda: self._run_pdf_viewport_action("list_deployed_rule_operational_events")),
+            ("Build Telemetry Snapshot", lambda: self._run_pdf_viewport_action("build_deployed_rule_operational_snapshot")),
+            ("Telemetry Health", lambda: self._run_pdf_viewport_action("deployed_rule_operational_telemetry_health")),
+            ("Copy Telemetry Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_operational_telemetry_report")),
+        ):
+            ttk.Button(telemetry_actions, text=label, command=command, style="Compact.TButton").pack(fill=tk.X, pady=(0, 3))
+        readiness_box = ttk.Frame(parent, style="Panel.TFrame")
+        readiness_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(readiness_box, text="Deployed Rule Effectiveness Readiness", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for label_text, variable in (
+            ("Canonical Rule ID", self.deployed_rule_effectiveness_readiness_rule_id_var),
+            ("Phase 9V Deployment Result ID", self.deployed_rule_effectiveness_readiness_result_id_var),
+            ("Production Target ID", self.deployed_rule_effectiveness_readiness_target_id_var),
+            ("Deployed Rule ID", self.deployed_rule_effectiveness_readiness_deployed_rule_id_var),
+            ("Telemetry Snapshot ID", self.deployed_rule_effectiveness_readiness_snapshot_id_var),
+            ("Observation Start", self.deployed_rule_effectiveness_readiness_start_var),
+            ("Observation End", self.deployed_rule_effectiveness_readiness_end_var),
+            ("Optional Phase 9W Result ID", self.deployed_rule_effectiveness_readiness_phase_9w_result_id_var),
+            ("Readiness Plan ID", self.deployed_rule_effectiveness_readiness_plan_id_var),
+            ("Readiness Result ID", self.deployed_rule_effectiveness_readiness_loaded_result_id_var),
+            ("Confirmation", self.deployed_rule_effectiveness_readiness_confirmation_var),
+        ):
+            tk.Label(readiness_box, text=label_text, bg=PALETTE["panel"], fg=PALETTE["muted"], font=("Segoe UI", 8), anchor="w").pack(fill=tk.X, pady=(4, 0))
+            tk.Entry(readiness_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(readiness_box, textvariable=self.deployed_rule_effectiveness_readiness_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        readiness_actions = ttk.Frame(readiness_box, style="Panel.TFrame")
+        readiness_actions.pack(fill=tk.X, pady=(4, 0))
+        for label, command in (
+            ("Load Readiness Workspace", lambda: self._run_pdf_viewport_action("load_deployed_rule_effectiveness_readiness_workspace")),
+            ("Validate Readiness Eligibility", lambda: self._run_pdf_viewport_action("validate_deployed_rule_effectiveness_readiness_eligibility")),
+            ("Build Readiness Plan", lambda: self._run_pdf_viewport_action("build_deployed_rule_effectiveness_readiness_plan")),
+            ("Load Readiness Result", lambda: self._run_pdf_viewport_action("load_deployed_rule_effectiveness_readiness_result")),
+            ("Record Readiness Result", lambda: self._run_pdf_viewport_action("record_deployed_rule_effectiveness_readiness_result")),
+            ("Readiness Health", lambda: self._run_pdf_viewport_action("deployed_rule_effectiveness_readiness_health")),
+            ("Copy Readiness Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_effectiveness_readiness_report")),
+        ):
+            ttk.Button(readiness_actions, text=label, command=command, style="Compact.TButton").pack(fill=tk.X, pady=(0, 3))
         taxonomy_box = ttk.Frame(parent, style="Panel.TFrame")
         taxonomy_box.pack(fill=tk.X, pady=(0, 8))
         tk.Label(taxonomy_box, text="Controlled Topic Taxonomy", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
@@ -2774,6 +3358,1064 @@ class DesktopRightPanelMixin:
                 self.clipboard_clear()
                 self.clipboard_append(text)
                 self.status_var.set("Public-safe rule activation revalidation report copied.")
+            elif action == "load_rule_supersession":
+                old_rule_id = self.rule_supersession_old_rule_id_var.get().strip()
+                proposal_id = self.rule_supersession_proposal_id_var.get().strip()
+                result = build_rule_supersession_workspace(old_rule_id, proposal_id)
+                self._rule_supersession_workspace = result
+                self.rule_supersession_review_id_var.set(str(result.get("review_status") == "pending" and "" or getattr(self, "_rule_supersession_review", {}).get("supersession_review_id", "") or ""))
+                self.rule_supersession_receipt_id_var.set(str(result.get("supersession_receipt_id") or ""))
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+                self.status_var.set(f"Rule supersession workspace: {result.get('supersession_compatibility', result.get('status', 'unknown'))}.")
+            elif action in {"approve_rule_supersession", "reject_rule_supersession", "request_changes_rule_supersession"}:
+                old_rule_id = self.rule_supersession_old_rule_id_var.get().strip()
+                proposal_id = self.rule_supersession_proposal_id_var.get().strip()
+                decision = "approve" if action == "approve_rule_supersession" else "reject" if action == "reject_rule_supersession" else "request_changes"
+                result = save_rule_supersession_decision(
+                    old_rule_id,
+                    proposal_id,
+                    decision,
+                    reviewer_note=self.rule_supersession_note_var.get().strip() or None,
+                    acknowledge_scope_change=bool(self.rule_supersession_ack_scope_var.get()),
+                )
+                if result.get("review"):
+                    self._rule_supersession_review = result["review"]
+                    self.rule_supersession_review_id_var.set(str(result["review"].get("supersession_review_id") or ""))
+                self._rule_supersession_workspace = build_rule_supersession_workspace(old_rule_id, proposal_id)
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+                self.status_var.set(f"Rule supersession review: {result.get('status')}.")
+            elif action == "supersede_rule":
+                review_id = self.rule_supersession_review_id_var.get().strip()
+                result = supersede_certified_rule(review_id, confirmation=self.rule_supersession_confirmation_var.get().strip() or None)
+                self._rule_supersession_action = result
+                receipt_id = str(result.get("supersession_receipt_id") or "")
+                if receipt_id:
+                    self.rule_supersession_receipt_id_var.set(receipt_id)
+                old_rule_id = str(result.get("old_rule_id") or self.rule_supersession_old_rule_id_var.get().strip())
+                proposal_id = self.rule_supersession_proposal_id_var.get().strip()
+                if old_rule_id and proposal_id:
+                    self._rule_supersession_workspace = build_rule_supersession_workspace(old_rule_id, proposal_id)
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+                self.status_var.set(f"Rule supersession: {result.get('status')}.")
+            elif action == "rollback_rule_supersession":
+                receipt_id = self.rule_supersession_receipt_id_var.get().strip()
+                result = rollback_rule_supersession(receipt_id, confirmation=self.rule_supersession_rollback_confirmation_var.get().strip() or None)
+                self._rule_supersession_action = result
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+                self.status_var.set(f"Rule supersession rollback: {result.get('status')}.")
+            elif action == "copy_rule_supersession_report":
+                review_id = self.rule_supersession_review_id_var.get().strip() or None
+                receipt_id = self.rule_supersession_receipt_id_var.get().strip() or None
+                text = format_rule_supersession_report(supersession_review_id=review_id, supersession_receipt_id=receipt_id, public_safe=True)
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe rule supersession report copied.")
+            elif action == "load_rule_effectiveness_workspace":
+                result = build_rule_effectiveness_workspace(
+                    self.rule_effectiveness_rule_id_var.get().strip(),
+                    self.rule_effectiveness_dataset_id_var.get().strip(),
+                    comparison_rule_id=self.rule_effectiveness_comparison_rule_id_var.get().strip() or None,
+                )
+                self._rule_effectiveness_workspace = result
+                self.status_var.set(f"Rule effectiveness workspace: {result.get('analysis_status', result.get('status', 'unknown'))}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "build_rule_effectiveness_plan":
+                result = build_rule_effectiveness_backtest_plan(
+                    self.rule_effectiveness_rule_id_var.get().strip(),
+                    self.rule_effectiveness_dataset_id_var.get().strip(),
+                    comparison_rule_id=self.rule_effectiveness_comparison_rule_id_var.get().strip() or None,
+                    max_records=int(self.rule_effectiveness_max_records_var.get().strip() or "200"),
+                )
+                self._rule_effectiveness_plan = result
+                self.status_var.set(f"Rule effectiveness plan: {result.get('record_count', 0)} records.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "run_rule_effectiveness_backtest":
+                result = run_rule_effectiveness_backtest(
+                    self.rule_effectiveness_rule_id_var.get().strip(),
+                    self.rule_effectiveness_dataset_id_var.get().strip(),
+                    comparison_rule_id=self.rule_effectiveness_comparison_rule_id_var.get().strip() or None,
+                    max_records=int(self.rule_effectiveness_max_records_var.get().strip() or "200"),
+                    regenerate=bool(self.rule_effectiveness_regenerate_var.get()),
+                )
+                self._rule_effectiveness_analysis = result
+                self.status_var.set(f"Rule effectiveness backtest: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "rule_effectiveness_health":
+                result = get_rule_effectiveness_health(
+                    rule_id=self.rule_effectiveness_rule_id_var.get().strip() or None,
+                    dataset_id=self.rule_effectiveness_dataset_id_var.get().strip() or None,
+                )
+                self._rule_effectiveness_health = result
+                self.status_var.set(f"Rule effectiveness health: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "copy_rule_effectiveness_report":
+                analysis_id = str((getattr(self, "_rule_effectiveness_analysis", {}) or {}).get("analysis_id") or "")
+                text = format_rule_effectiveness_report(analysis_id=analysis_id or None, rule_id=self.rule_effectiveness_rule_id_var.get().strip() or None, public_safe=True)
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe rule effectiveness report copied.")
+            elif action == "load_rule_effectiveness_recommendation_workspace":
+                result = build_rule_effectiveness_recommendation_workspace(
+                    self.rule_effectiveness_recommendation_analysis_id_var.get().strip(),
+                    policy_id=self.rule_effectiveness_recommendation_policy_id_var.get().strip() or "default_v1",
+                )
+                self._rule_effectiveness_recommendation_workspace = result
+                if result.get("recommendation_id"):
+                    self.rule_effectiveness_recommendation_id_var.set(str(result.get("recommendation_id") or ""))
+                if result.get("recommendation_review_id"):
+                    self.rule_effectiveness_recommendation_review_id_var.set(str(result.get("recommendation_review_id") or ""))
+                if result.get("action_candidate_id"):
+                    self.rule_effectiveness_recommendation_action_candidate_id_var.set(str(result.get("action_candidate_id") or ""))
+                self.status_var.set(f"Rule effectiveness recommendation workspace: {result.get('recommendation_status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "generate_rule_effectiveness_recommendation":
+                result = generate_rule_effectiveness_recommendation(
+                    self.rule_effectiveness_recommendation_analysis_id_var.get().strip(),
+                    policy_id=self.rule_effectiveness_recommendation_policy_id_var.get().strip() or "default_v1",
+                )
+                self._rule_effectiveness_recommendation = result
+                if result.get("recommendation_id"):
+                    self.rule_effectiveness_recommendation_id_var.set(str(result.get("recommendation_id") or ""))
+                self.status_var.set(f"Rule effectiveness recommendation: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action in {"accept_rule_effectiveness_recommendation", "reject_rule_effectiveness_recommendation", "defer_rule_effectiveness_recommendation", "more_evidence_rule_effectiveness_recommendation"}:
+                decision = {
+                    "accept_rule_effectiveness_recommendation": "accept",
+                    "reject_rule_effectiveness_recommendation": "reject",
+                    "defer_rule_effectiveness_recommendation": "defer",
+                    "more_evidence_rule_effectiveness_recommendation": "request_more_evidence",
+                }[action]
+                self.rule_effectiveness_recommendation_decision_var.set(decision)
+                result = save_rule_effectiveness_recommendation_decision(
+                    self.rule_effectiveness_recommendation_id_var.get().strip(),
+                    decision,
+                    reviewer_note=self.rule_effectiveness_recommendation_note_var.get().strip() or None,
+                )
+                self._rule_effectiveness_recommendation_review = result
+                if result.get("recommendation_review_id"):
+                    self.rule_effectiveness_recommendation_review_id_var.set(str(result.get("recommendation_review_id") or ""))
+                self.status_var.set(f"Rule effectiveness review: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "queue_rule_effectiveness_action_candidate":
+                result = create_rule_action_candidate_from_recommendation(
+                    self.rule_effectiveness_recommendation_review_id_var.get().strip(),
+                    confirmation=self.rule_effectiveness_recommendation_queue_confirmation_var.get().strip() or None,
+                )
+                self._rule_effectiveness_recommendation_action = result
+                if result.get("action_candidate_id"):
+                    self.rule_effectiveness_recommendation_action_candidate_id_var.set(str(result.get("action_candidate_id") or ""))
+                self.status_var.set(f"Rule effectiveness action candidate: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "copy_rule_effectiveness_recommendation_report":
+                text = format_rule_effectiveness_recommendation_report(
+                    recommendation_id=self.rule_effectiveness_recommendation_id_var.get().strip() or None,
+                    action_candidate_id=self.rule_effectiveness_recommendation_action_candidate_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe rule effectiveness recommendation report copied.")
+            elif action == "load_rule_batch_workspace":
+                rule_ids = [item.strip() for item in self.rule_batch_rule_ids_var.get().split(",") if item.strip()]
+                result = build_rule_batch_workspace(
+                    self.rule_batch_document_id_var.get().strip(),
+                    int(self.rule_batch_source_revision_var.get().strip() or "0"),
+                    self.rule_batch_dataset_id_var.get().strip(),
+                    policy_id=self.rule_batch_policy_id_var.get().strip() or "default_v1",
+                    rule_ids=rule_ids or None,
+                    include_document_certified_rules=bool(self.rule_batch_include_active_var.get()),
+                )
+                self._rule_batch_workspace = result
+                self.status_var.set(f"Rule batch workspace: eligible {result.get('eligible_rule_count', 0)} of {result.get('selected_rule_count', 0)}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "build_rule_batch_plan":
+                rule_ids = [item.strip() for item in self.rule_batch_rule_ids_var.get().split(",") if item.strip()]
+                result = build_rule_batch_plan(
+                    self.rule_batch_document_id_var.get().strip(),
+                    int(self.rule_batch_source_revision_var.get().strip() or "0"),
+                    self.rule_batch_dataset_id_var.get().strip(),
+                    policy_id=self.rule_batch_policy_id_var.get().strip() or "default_v1",
+                    rule_ids=rule_ids or None,
+                    include_document_certified_rules=bool(self.rule_batch_include_active_var.get()),
+                    max_rules=int(self.rule_batch_max_rules_var.get().strip() or "10"),
+                    max_records_per_rule=int(self.rule_batch_max_records_var.get().strip() or "200"),
+                )
+                self._rule_batch_plan = result
+                if result.get("batch_plan_id"):
+                    self.rule_batch_plan_id_var.set(str(result.get("batch_plan_id") or ""))
+                self.status_var.set(f"Rule batch plan: {result.get('rule_count', 0)} rules.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "run_rule_batch_analysis":
+                result = run_rule_batch_analysis(
+                    self.rule_batch_plan_id_var.get().strip(),
+                    stop_after_items=(int(self.rule_batch_stop_after_items_var.get().strip()) if self.rule_batch_stop_after_items_var.get().strip() else None),
+                )
+                self._rule_batch_run = result
+                if result.get("batch_run_id"):
+                    self.rule_batch_run_id_var.set(str(result.get("batch_run_id") or ""))
+                self.status_var.set(f"Rule batch run: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "cancel_rule_batch_run":
+                result = cancel_rule_batch_run(
+                    self.rule_batch_run_id_var.get().strip(),
+                    self.rule_batch_cancellation_reason_var.get().strip(),
+                )
+                self._rule_batch_run = result
+                self.status_var.set(f"Rule batch cancellation: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "rule_batch_health":
+                from .rule_batch_analysis import get_rule_batch_health
+                result = get_rule_batch_health(self.rule_batch_run_id_var.get().strip() or None)
+                self._rule_batch_health = result
+                self.status_var.set(f"Rule batch health: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "copy_rule_batch_report":
+                text = format_rule_batch_report(
+                    batch_run_id=self.rule_batch_run_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe rule batch report copied.")
+            elif action == "load_autonomous_pdf_workspace":
+                result = build_autonomous_pdf_workspace(
+                    self.autonomous_pdf_document_id_var.get().strip() or document_id,
+                    int(self.autonomous_pdf_source_revision_var.get().strip() or "0"),
+                )
+                self._autonomous_pdf_workspace = result
+                self.status_var.set(f"Autonomous PDF workspace: {result.get('autonomous_readiness', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "build_autonomous_pdf_plan":
+                result = build_autonomous_pdf_plan(
+                    self.autonomous_pdf_document_id_var.get().strip() or document_id,
+                    int(self.autonomous_pdf_source_revision_var.get().strip() or "0"),
+                    max_pages=int(self.autonomous_pdf_max_pages_var.get().strip() or "300"),
+                    max_harvest_candidates=int(self.autonomous_pdf_max_harvest_candidates_var.get().strip() or "50"),
+                    max_proposal_candidates=int(self.autonomous_pdf_max_proposal_candidates_var.get().strip() or "20"),
+                    max_rule_candidates=int(self.autonomous_pdf_max_rule_candidates_var.get().strip() or "10"),
+                    max_certified_rules=int(self.autonomous_pdf_max_certified_rules_var.get().strip() or "5"),
+                )
+                self._autonomous_pdf_plan = result
+                if result.get("autonomous_plan_id"):
+                    self.autonomous_pdf_plan_id_var.set(str(result.get("autonomous_plan_id") or ""))
+                self.status_var.set(f"Autonomous PDF plan: {result.get('autonomous_plan_id', 'blocked')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "run_autonomous_pdf_pipeline":
+                result = run_autonomous_pdf_pipeline(
+                    self.autonomous_pdf_plan_id_var.get().strip(),
+                    confirmation=self.autonomous_pdf_confirmation_var.get().strip() or None,
+                    stop_after_stage=self.autonomous_pdf_stop_after_stage_var.get().strip() or None,
+                )
+                self._autonomous_pdf_run = result
+                if result.get("autonomous_run_id"):
+                    self.autonomous_pdf_run_id_var.set(str(result.get("autonomous_run_id") or ""))
+                self.status_var.set(f"Autonomous PDF run: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "cancel_autonomous_pdf_pipeline":
+                result = cancel_autonomous_pdf_pipeline(
+                    self.autonomous_pdf_run_id_var.get().strip(),
+                    self.autonomous_pdf_cancellation_reason_var.get().strip(),
+                )
+                self._autonomous_pdf_run = result
+                self.status_var.set(f"Autonomous PDF cancellation: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "autonomous_pdf_health":
+                result = get_autonomous_pdf_health(self.autonomous_pdf_document_id_var.get().strip() or document_id or None)
+                self._autonomous_pdf_health = result
+                self.status_var.set(f"Autonomous PDF health: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "copy_autonomous_pdf_report":
+                text = format_autonomous_pdf_report(
+                    autonomous_run_id=self.autonomous_pdf_run_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe autonomous PDF report copied.")
+            elif action == "load_autonomous_pdf_benchmark_workspace":
+                result = build_autonomous_pdf_benchmark_workspace(
+                    self.autonomous_pdf_benchmark_id_var.get().strip(),
+                    autonomous_run_id=self.autonomous_pdf_benchmark_run_id_var.get().strip() or None,
+                )
+                self._autonomous_pdf_benchmark_workspace = result
+                if result.get("autonomous_run_id"):
+                    self.autonomous_pdf_benchmark_run_id_var.set(str(result.get("autonomous_run_id") or ""))
+                self.status_var.set(f"Autonomous PDF benchmark workspace: {result.get('benchmark_status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "validate_autonomous_pdf_benchmark_manifest":
+                result = validate_autonomous_pdf_benchmark_manifest(self.autonomous_pdf_benchmark_id_var.get().strip())
+                self._autonomous_pdf_benchmark_manifest_validation = result
+                self.status_var.set(f"Autonomous PDF benchmark manifest: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "run_autonomous_pdf_benchmark":
+                result = run_autonomous_pdf_benchmark(
+                    self.autonomous_pdf_benchmark_id_var.get().strip(),
+                    self.autonomous_pdf_benchmark_run_id_var.get().strip(),
+                    confirmation=self.autonomous_pdf_benchmark_confirmation_var.get().strip() or None,
+                )
+                self._autonomous_pdf_benchmark_result = result
+                if result.get("benchmark_result_id"):
+                    self.autonomous_pdf_benchmark_result_id_var.set(str(result.get("benchmark_result_id") or ""))
+                if result.get("benchmark_receipt_id"):
+                    self.autonomous_pdf_benchmark_receipt_id_var.set(str(result.get("benchmark_receipt_id") or ""))
+                self.status_var.set(f"Autonomous PDF benchmark: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "autonomous_pdf_benchmark_health":
+                result = get_autonomous_pdf_benchmark_health(self.autonomous_pdf_benchmark_id_var.get().strip() or None)
+                self._autonomous_pdf_benchmark_health = result
+                self.status_var.set(f"Autonomous PDF benchmark health: {result.get('status', 'unknown')}.")
+                self._set_pdf_viewport_status(viewport=getattr(self, "_pdf_viewport_text_layer", {}).get("text_layer"), render=getattr(self, "_pdf_viewport_last_render", None))
+            elif action == "copy_autonomous_pdf_benchmark_report":
+                text = format_autonomous_pdf_benchmark_report(
+                    benchmark_result_id=self.autonomous_pdf_benchmark_result_id_var.get().strip() or None,
+                    benchmark_receipt_id=self.autonomous_pdf_benchmark_receipt_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe autonomous PDF benchmark report copied.")
+            elif action == "load_autonomous_pdf_remediation_workspace":
+                result = build_autonomous_pdf_remediation_workspace(self.autonomous_pdf_benchmark_result_id_var.get().strip())
+                self._set_autonomous_pdf_remediation_status(result)
+                if result.get("remediation_plan_id"):
+                    self.autonomous_pdf_remediation_plan_id_var.set(str(result.get("remediation_plan_id") or ""))
+                self.status_var.set(f"Autonomous PDF remediation workspace: {result.get('status', 'unknown')}.")
+            elif action == "run_autonomous_pdf_remediation_triage":
+                result = run_autonomous_pdf_remediation_triage(
+                    self.autonomous_pdf_benchmark_result_id_var.get().strip(),
+                    confirmation=self.autonomous_pdf_remediation_confirmation_var.get().strip() or None,
+                )
+                self._set_autonomous_pdf_remediation_status(result)
+                if result.get("remediation_plan_id"):
+                    self.autonomous_pdf_remediation_plan_id_var.set(str(result.get("remediation_plan_id") or ""))
+                self.status_var.set(f"Autonomous PDF remediation triage: {result.get('status', 'unknown')}.")
+            elif action == "review_autonomous_pdf_remediation_case":
+                result = review_autonomous_pdf_remediation_case(
+                    self.autonomous_pdf_remediation_case_id_var.get().strip(),
+                    self.autonomous_pdf_remediation_review_decision_var.get().strip(),
+                    note=self.autonomous_pdf_remediation_review_note_var.get().strip() or None,
+                    confirmation=self.autonomous_pdf_remediation_confirmation_var.get().strip() or None,
+                )
+                self._set_autonomous_pdf_remediation_status(result)
+                self.status_var.set(f"Autonomous PDF remediation review: {result.get('status', 'unknown')}.")
+            elif action == "verify_autonomous_pdf_remediation":
+                result = verify_autonomous_pdf_remediation(
+                    self.autonomous_pdf_remediation_plan_id_var.get().strip(),
+                    self.autonomous_pdf_remediation_new_result_id_var.get().strip(),
+                    confirmation=self.autonomous_pdf_remediation_confirmation_var.get().strip() or None,
+                )
+                self._set_autonomous_pdf_remediation_status(result)
+                self.status_var.set(f"Autonomous PDF remediation verification: {result.get('status', 'unknown')}.")
+            elif action == "copy_autonomous_pdf_remediation_report":
+                text = format_autonomous_pdf_remediation_report(
+                    self.autonomous_pdf_remediation_plan_id_var.get().strip(),
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe autonomous PDF remediation report copied.")
+            elif action == "load_autonomous_pdf_corrective_action_workspace":
+                result = build_autonomous_pdf_corrective_action_workspace(self.autonomous_pdf_remediation_case_id_var.get().strip())
+                self._set_autonomous_pdf_corrective_action_status(result)
+                if result.get("corrective_action_id"):
+                    self.autonomous_pdf_corrective_action_id_var.set(str(result.get("corrective_action_id") or ""))
+                self.status_var.set(f"Autonomous PDF corrective workspace: {result.get('status', 'unknown')}.")
+            elif action == "build_autonomous_pdf_corrective_action_plan":
+                payload = json.loads(self.autonomous_pdf_corrective_action_payload_var.get().strip() or "{}")
+                result = build_autonomous_pdf_corrective_action_plan(
+                    self.autonomous_pdf_remediation_case_id_var.get().strip(),
+                    self.autonomous_pdf_corrective_action_type_var.get().strip(),
+                    payload,
+                )
+                self._set_autonomous_pdf_corrective_action_status(result)
+                if result.get("corrective_action_id"):
+                    self.autonomous_pdf_corrective_action_id_var.set(str(result.get("corrective_action_id") or ""))
+                self.status_var.set(f"Autonomous PDF corrective plan: {result.get('status', 'unknown')}.")
+            elif action == "execute_autonomous_pdf_corrective_action":
+                result = execute_autonomous_pdf_corrective_action(
+                    self.autonomous_pdf_corrective_action_id_var.get().strip(),
+                    confirmation=self.autonomous_pdf_corrective_action_confirmation_var.get().strip() or None,
+                )
+                self._set_autonomous_pdf_corrective_action_status(result)
+                self.status_var.set(f"Autonomous PDF corrective execution: {result.get('status', 'unknown')}.")
+            elif action == "verify_autonomous_pdf_corrective_action":
+                result = verify_autonomous_pdf_corrective_action(
+                    self.autonomous_pdf_corrective_action_id_var.get().strip(),
+                    self.autonomous_pdf_remediation_new_result_id_var.get().strip(),
+                    confirmation=self.autonomous_pdf_corrective_action_confirmation_var.get().strip() or None,
+                )
+                self._set_autonomous_pdf_corrective_action_status(result)
+                self.status_var.set(f"Autonomous PDF corrective verification: {result.get('status', 'unknown')}.")
+            elif action == "close_autonomous_pdf_corrective_action":
+                result = close_autonomous_pdf_corrective_action(
+                    self.autonomous_pdf_corrective_action_id_var.get().strip(),
+                    confirmation=self.autonomous_pdf_corrective_action_confirmation_var.get().strip() or None,
+                )
+                self._set_autonomous_pdf_corrective_action_status(result)
+                self.status_var.set(f"Autonomous PDF corrective closure: {result.get('status', 'unknown')}.")
+            elif action == "copy_autonomous_pdf_corrective_action_report":
+                text = format_autonomous_pdf_corrective_action_report(
+                    self.autonomous_pdf_corrective_action_id_var.get().strip(),
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe autonomous PDF corrective-action report copied.")
+            elif action == "load_certified_rule_replay_workspace":
+                result = build_certified_rule_replay_workspace(
+                    self.certified_rule_replay_rule_id_var.get().strip(),
+                    self.certified_rule_replay_dataset_id_var.get().strip() or None,
+                )
+                self._set_certified_rule_replay_status(result)
+                if result.get("replay_plan_id"):
+                    self.certified_rule_replay_plan_id_var.set(str(result.get("replay_plan_id") or ""))
+                if result.get("replay_result_id"):
+                    self.certified_rule_replay_result_id_var.set(str(result.get("replay_result_id") or ""))
+                if result.get("replay_receipt_id"):
+                    self.certified_rule_replay_receipt_id_var.set(str(result.get("replay_receipt_id") or ""))
+                self.status_var.set(f"Certified rule replay workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_certified_rule_replay_eligibility":
+                result = validate_certified_rule_replay_eligibility(
+                    self.certified_rule_replay_rule_id_var.get().strip(),
+                    dataset_id=self.certified_rule_replay_dataset_id_var.get().strip() or None,
+                )
+                self._set_certified_rule_replay_status(result)
+                self.status_var.set(f"Certified rule replay eligibility: {result.get('status', 'unknown')}.")
+            elif action == "build_certified_rule_replay_plan":
+                result = build_certified_rule_replay_plan(
+                    self.certified_rule_replay_rule_id_var.get().strip(),
+                    self.certified_rule_replay_dataset_id_var.get().strip(),
+                    max_records=int(self.certified_rule_replay_max_records_var.get().strip() or "10000"),
+                )
+                self._set_certified_rule_replay_status(result)
+                if result.get("replay_plan_id"):
+                    self.certified_rule_replay_plan_id_var.set(str(result.get("replay_plan_id") or ""))
+                self.status_var.set(f"Certified rule replay plan: {result.get('status', 'unknown')}.")
+            elif action == "run_certified_rule_replay":
+                result = run_certified_rule_replay(
+                    self.certified_rule_replay_plan_id_var.get().strip(),
+                    confirmation=self.certified_rule_replay_confirmation_var.get().strip() or None,
+                )
+                self._set_certified_rule_replay_status(result)
+                if result.get("replay_result_id"):
+                    self.certified_rule_replay_result_id_var.set(str(result.get("replay_result_id") or ""))
+                if result.get("replay_receipt_id"):
+                    self.certified_rule_replay_receipt_id_var.set(str(result.get("replay_receipt_id") or ""))
+                self.status_var.set(f"Certified rule replay run: {result.get('status', 'unknown')}.")
+            elif action == "certified_rule_replay_health":
+                result = get_certified_rule_replay_health(self.certified_rule_replay_plan_id_var.get().strip() or None)
+                self._set_certified_rule_replay_status(result)
+                self.status_var.set(f"Certified rule replay health: {result.get('status', 'unknown')}.")
+            elif action == "copy_certified_rule_replay_report":
+                text = format_certified_rule_replay_report(
+                    replay_result_id=self.certified_rule_replay_result_id_var.get().strip() or None,
+                    replay_receipt_id=self.certified_rule_replay_receipt_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe certified rule replay report copied.")
+            elif action == "load_certified_rule_objective_preview_workspace":
+                result = build_certified_rule_objective_preview_workspace(
+                    self.certified_rule_objective_preview_rule_id_var.get().strip(),
+                    self.certified_rule_objective_preview_pack_id_var.get().strip(),
+                    self.certified_rule_objective_preview_input_id_var.get().strip() or None,
+                )
+                self._set_certified_rule_objective_preview_status(result)
+                if result.get("objective_preview_plan_id"):
+                    self.certified_rule_objective_preview_plan_id_var.set(str(result.get("objective_preview_plan_id") or ""))
+                if result.get("objective_preview_result_id"):
+                    self.certified_rule_objective_preview_result_id_var.set(str(result.get("objective_preview_result_id") or ""))
+                if result.get("objective_preview_receipt_id"):
+                    self.certified_rule_objective_preview_receipt_id_var.set(str(result.get("objective_preview_receipt_id") or ""))
+                self.status_var.set(f"Certified rule objective preview workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_certified_rule_objective_preview_eligibility":
+                result = validate_certified_rule_objective_preview_eligibility(
+                    self.certified_rule_objective_preview_rule_id_var.get().strip(),
+                    self.certified_rule_objective_preview_pack_id_var.get().strip(),
+                    controlled_input_id=self.certified_rule_objective_preview_input_id_var.get().strip() or None,
+                    effect_mapping=json.loads(self.certified_rule_objective_preview_mapping_var.get().strip() or "{}"),
+                )
+                self._set_certified_rule_objective_preview_status(result)
+                self.status_var.set(f"Certified rule objective preview eligibility: {result.get('status', 'unknown')}.")
+            elif action == "build_certified_rule_objective_preview_plan":
+                result = build_certified_rule_objective_preview_plan(
+                    self.certified_rule_objective_preview_rule_id_var.get().strip(),
+                    self.certified_rule_objective_preview_pack_id_var.get().strip(),
+                    self.certified_rule_objective_preview_input_id_var.get().strip(),
+                    json.loads(self.certified_rule_objective_preview_mapping_var.get().strip() or "{}"),
+                    max_records=int(self.certified_rule_objective_preview_max_records_var.get().strip() or "10000"),
+                )
+                self._set_certified_rule_objective_preview_status(result)
+                if result.get("objective_preview_plan_id"):
+                    self.certified_rule_objective_preview_plan_id_var.set(str(result.get("objective_preview_plan_id") or ""))
+                self.status_var.set(f"Certified rule objective preview plan: {result.get('status', 'unknown')}.")
+            elif action == "run_certified_rule_objective_preview":
+                result = run_certified_rule_objective_preview(
+                    self.certified_rule_objective_preview_plan_id_var.get().strip(),
+                    confirmation=self.certified_rule_objective_preview_confirmation_var.get().strip() or None,
+                )
+                self._set_certified_rule_objective_preview_status(result)
+                if result.get("objective_preview_result_id"):
+                    self.certified_rule_objective_preview_result_id_var.set(str(result.get("objective_preview_result_id") or ""))
+                if result.get("objective_preview_receipt_id"):
+                    self.certified_rule_objective_preview_receipt_id_var.set(str(result.get("objective_preview_receipt_id") or ""))
+                self.status_var.set(f"Certified rule objective preview run: {result.get('status', 'unknown')}.")
+            elif action == "certified_rule_objective_preview_health":
+                result = get_certified_rule_objective_preview_health(self.certified_rule_objective_preview_plan_id_var.get().strip() or None)
+                self._set_certified_rule_objective_preview_status(result)
+                self.status_var.set(f"Certified rule objective preview health: {result.get('status', 'unknown')}.")
+            elif action == "copy_certified_rule_objective_preview_report":
+                text = format_certified_rule_objective_preview_report(
+                    objective_preview_result_id=self.certified_rule_objective_preview_result_id_var.get().strip() or None,
+                    objective_preview_receipt_id=self.certified_rule_objective_preview_receipt_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe certified rule objective preview report copied.")
+            elif action == "load_certified_rule_scoring_preview_workspace":
+                result = build_certified_rule_scoring_preview_workspace(
+                    self.certified_rule_scoring_preview_objective_result_id_var.get().strip(),
+                    self.certified_rule_scoring_preview_config_id_var.get().strip() or None,
+                )
+                self._set_certified_rule_scoring_preview_status(result)
+                if result.get("scoring_preview_plan_id"):
+                    self.certified_rule_scoring_preview_plan_id_var.set(str(result.get("scoring_preview_plan_id") or ""))
+                if result.get("scoring_preview_result_id"):
+                    self.certified_rule_scoring_preview_result_id_var.set(str(result.get("scoring_preview_result_id") or ""))
+                if result.get("scoring_preview_receipt_id"):
+                    self.certified_rule_scoring_preview_receipt_id_var.set(str(result.get("scoring_preview_receipt_id") or ""))
+                self.status_var.set(f"Certified rule scoring preview workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_certified_rule_scoring_preview_eligibility":
+                result = validate_certified_rule_scoring_preview_eligibility(
+                    self.certified_rule_scoring_preview_objective_result_id_var.get().strip(),
+                    self.certified_rule_scoring_preview_config_id_var.get().strip(),
+                )
+                self._set_certified_rule_scoring_preview_status(result)
+                self.status_var.set(f"Certified rule scoring preview eligibility: {result.get('status', 'unknown')}.")
+            elif action == "build_certified_rule_scoring_preview_plan":
+                result = build_certified_rule_scoring_preview_plan(
+                    self.certified_rule_scoring_preview_objective_result_id_var.get().strip(),
+                    self.certified_rule_scoring_preview_config_id_var.get().strip(),
+                )
+                self._set_certified_rule_scoring_preview_status(result)
+                if result.get("scoring_preview_plan_id"):
+                    self.certified_rule_scoring_preview_plan_id_var.set(str(result.get("scoring_preview_plan_id") or ""))
+                self.status_var.set(f"Certified rule scoring preview plan: {result.get('status', 'unknown')}.")
+            elif action == "run_certified_rule_scoring_preview":
+                result = run_certified_rule_scoring_preview(
+                    self.certified_rule_scoring_preview_plan_id_var.get().strip(),
+                    confirmation=self.certified_rule_scoring_preview_confirmation_var.get().strip() or None,
+                )
+                self._set_certified_rule_scoring_preview_status(result)
+                if result.get("scoring_preview_result_id"):
+                    self.certified_rule_scoring_preview_result_id_var.set(str(result.get("scoring_preview_result_id") or ""))
+                if result.get("scoring_preview_receipt_id"):
+                    self.certified_rule_scoring_preview_receipt_id_var.set(str(result.get("scoring_preview_receipt_id") or ""))
+                self.status_var.set(f"Certified rule scoring preview run: {result.get('status', 'unknown')}.")
+            elif action == "certified_rule_scoring_preview_health":
+                result = get_certified_rule_scoring_preview_health(self.certified_rule_scoring_preview_plan_id_var.get().strip() or None)
+                self._set_certified_rule_scoring_preview_status(result)
+                self.status_var.set(f"Certified rule scoring preview health: {result.get('status', 'unknown')}.")
+            elif action == "copy_certified_rule_scoring_preview_report":
+                text = format_certified_rule_scoring_preview_report(
+                    scoring_preview_result_id=self.certified_rule_scoring_preview_result_id_var.get().strip() or None,
+                    scoring_preview_receipt_id=self.certified_rule_scoring_preview_receipt_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe certified rule scoring preview report copied.")
+            elif action == "load_certified_rule_fast_lane_preview_workspace":
+                result = build_certified_rule_fast_lane_preview_workspace(
+                    self.certified_rule_fast_lane_preview_rule_id_var.get().strip(),
+                )
+                self._set_certified_rule_fast_lane_preview_status(result)
+                if result.get("fast_lane_preview_plan_id"):
+                    self.certified_rule_fast_lane_preview_plan_id_var.set(str(result.get("fast_lane_preview_plan_id") or ""))
+                if result.get("fast_lane_preview_result_id"):
+                    self.certified_rule_fast_lane_preview_result_id_var.set(str(result.get("fast_lane_preview_result_id") or ""))
+                if result.get("fast_lane_preview_receipt_id"):
+                    self.certified_rule_fast_lane_preview_receipt_id_var.set(str(result.get("fast_lane_preview_receipt_id") or ""))
+                self.status_var.set(f"Certified rule Fast Lane preview workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_certified_rule_fast_lane_preview_eligibility":
+                result = validate_certified_rule_fast_lane_preview_eligibility(
+                    self.certified_rule_fast_lane_preview_rule_id_var.get().strip(),
+                )
+                self._set_certified_rule_fast_lane_preview_status(result)
+                self.status_var.set(f"Certified rule Fast Lane preview eligibility: {result.get('status', 'unknown')}.")
+            elif action == "build_certified_rule_fast_lane_preview_plan":
+                result = build_certified_rule_fast_lane_preview_plan(
+                    self.certified_rule_fast_lane_preview_rule_id_var.get().strip(),
+                )
+                self._set_certified_rule_fast_lane_preview_status(result)
+                if result.get("fast_lane_preview_plan_id"):
+                    self.certified_rule_fast_lane_preview_plan_id_var.set(str(result.get("fast_lane_preview_plan_id") or ""))
+                self.status_var.set(f"Certified rule Fast Lane preview plan: {result.get('status', 'unknown')}.")
+            elif action == "run_certified_rule_fast_lane_preview":
+                result = run_certified_rule_fast_lane_preview(
+                    self.certified_rule_fast_lane_preview_plan_id_var.get().strip(),
+                    confirmation=self.certified_rule_fast_lane_preview_confirmation_var.get().strip() or None,
+                )
+                self._set_certified_rule_fast_lane_preview_status(result)
+                if result.get("fast_lane_preview_result_id"):
+                    self.certified_rule_fast_lane_preview_result_id_var.set(str(result.get("fast_lane_preview_result_id") or ""))
+                if result.get("fast_lane_preview_receipt_id"):
+                    self.certified_rule_fast_lane_preview_receipt_id_var.set(str(result.get("fast_lane_preview_receipt_id") or ""))
+                self.status_var.set(f"Certified rule Fast Lane preview run: {result.get('status', 'unknown')}.")
+            elif action == "certified_rule_fast_lane_preview_health":
+                result = get_certified_rule_fast_lane_preview_health(self.certified_rule_fast_lane_preview_plan_id_var.get().strip() or None)
+                self._set_certified_rule_fast_lane_preview_status(result)
+                self.status_var.set(f"Certified rule Fast Lane preview health: {result.get('status', 'unknown')}.")
+            elif action == "copy_certified_rule_fast_lane_preview_report":
+                text = format_certified_rule_fast_lane_preview_report(
+                    fast_lane_preview_result_id=self.certified_rule_fast_lane_preview_result_id_var.get().strip() or None,
+                    fast_lane_preview_receipt_id=self.certified_rule_fast_lane_preview_receipt_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe certified rule Fast Lane preview report copied.")
+            elif action == "load_certified_rule_integration_authorization_workspace":
+                result = build_certified_rule_integration_authorization_workspace(
+                    self.certified_rule_integration_authorization_rule_id_var.get().strip(),
+                    self.certified_rule_integration_authorization_scoring_result_id_var.get().strip() or None,
+                    self.certified_rule_integration_authorization_fast_lane_result_id_var.get().strip() or None,
+                )
+                self._set_certified_rule_integration_authorization_status(result)
+                if result.get("scoring_preview_result_id"):
+                    self.certified_rule_integration_authorization_scoring_result_id_var.set(str(result.get("scoring_preview_result_id") or ""))
+                if result.get("fast_lane_preview_result_id"):
+                    self.certified_rule_integration_authorization_fast_lane_result_id_var.set(str(result.get("fast_lane_preview_result_id") or ""))
+                if result.get("integration_authorization_plan_id"):
+                    self.certified_rule_integration_authorization_plan_id_var.set(str(result.get("integration_authorization_plan_id") or ""))
+                if result.get("integration_authorization_result_id"):
+                    self.certified_rule_integration_authorization_result_id_var.set(str(result.get("integration_authorization_result_id") or ""))
+                if result.get("integration_authorization_receipt_id"):
+                    self.certified_rule_integration_authorization_receipt_id_var.set(str(result.get("integration_authorization_receipt_id") or ""))
+                self.status_var.set(f"Certified rule integration authorization workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_certified_rule_integration_authorization_eligibility":
+                result = validate_certified_rule_integration_authorization_eligibility(
+                    self.certified_rule_integration_authorization_rule_id_var.get().strip(),
+                    self.certified_rule_integration_authorization_scoring_result_id_var.get().strip(),
+                    self.certified_rule_integration_authorization_fast_lane_result_id_var.get().strip(),
+                )
+                self._set_certified_rule_integration_authorization_status(result)
+                self.status_var.set(f"Certified rule integration authorization eligibility: {result.get('status', 'unknown')}.")
+            elif action == "build_certified_rule_integration_authorization_plan":
+                result = build_certified_rule_integration_authorization_plan(
+                    self.certified_rule_integration_authorization_rule_id_var.get().strip(),
+                    self.certified_rule_integration_authorization_scoring_result_id_var.get().strip(),
+                    self.certified_rule_integration_authorization_fast_lane_result_id_var.get().strip(),
+                )
+                self._set_certified_rule_integration_authorization_status(result)
+                if result.get("integration_authorization_plan_id"):
+                    self.certified_rule_integration_authorization_plan_id_var.set(str(result.get("integration_authorization_plan_id") or ""))
+                self.status_var.set(f"Certified rule integration authorization plan: {result.get('status', 'unknown')}.")
+            elif action == "save_certified_rule_integration_authorization_decision":
+                acknowledgements = [item.strip() for item in self.certified_rule_integration_authorization_ack_var.get().split(",") if item.strip()]
+                result = save_certified_rule_integration_authorization_decision(
+                    self.certified_rule_integration_authorization_plan_id_var.get().strip(),
+                    self.certified_rule_integration_authorization_reviewer_var.get().strip(),
+                    self.certified_rule_integration_authorization_decision_var.get().strip(),
+                    self.certified_rule_integration_authorization_rationale_var.get().strip(),
+                    acknowledgements,
+                    confirmation=self.certified_rule_integration_authorization_confirmation_var.get().strip() or None,
+                )
+                self._set_certified_rule_integration_authorization_status(result)
+                if result.get("integration_authorization_result_id"):
+                    self.certified_rule_integration_authorization_result_id_var.set(str(result.get("integration_authorization_result_id") or ""))
+                if result.get("integration_authorization_receipt_id"):
+                    self.certified_rule_integration_authorization_receipt_id_var.set(str(result.get("integration_authorization_receipt_id") or ""))
+                self.status_var.set(f"Certified rule integration authorization decision: {result.get('status', 'unknown')}.")
+            elif action == "copy_certified_rule_integration_authorization_report":
+                text = format_certified_rule_integration_authorization_report(
+                    integration_authorization_result_id=self.certified_rule_integration_authorization_result_id_var.get().strip() or None,
+                    integration_authorization_receipt_id=self.certified_rule_integration_authorization_receipt_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe certified rule integration authorization report copied.")
+            elif action == "load_certified_rule_release_candidate_workspace":
+                result = build_certified_rule_release_candidate_workspace(
+                    self.certified_rule_release_candidate_rule_id_var.get().strip(),
+                    self.certified_rule_release_candidate_authorization_result_id_var.get().strip(),
+                )
+                self._set_certified_rule_release_candidate_status(result)
+                if result.get("release_candidate_plan_id"):
+                    self.certified_rule_release_candidate_plan_id_var.set(str(result.get("release_candidate_plan_id") or ""))
+                if result.get("release_candidate_result_id"):
+                    self.certified_rule_release_candidate_result_id_var.set(str(result.get("release_candidate_result_id") or ""))
+                if result.get("release_candidate_receipt_id"):
+                    self.certified_rule_release_candidate_receipt_id_var.set(str(result.get("release_candidate_receipt_id") or ""))
+                self.status_var.set(f"Certified rule release candidate workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_certified_rule_release_candidate_eligibility":
+                result = validate_certified_rule_release_candidate_eligibility(
+                    self.certified_rule_release_candidate_rule_id_var.get().strip(),
+                    self.certified_rule_release_candidate_authorization_result_id_var.get().strip(),
+                )
+                self._set_certified_rule_release_candidate_status(result)
+                self.status_var.set(f"Certified rule release candidate eligibility: {result.get('status', 'unknown')}.")
+            elif action == "build_certified_rule_release_candidate_plan":
+                result = build_certified_rule_release_candidate_plan(
+                    self.certified_rule_release_candidate_rule_id_var.get().strip(),
+                    self.certified_rule_release_candidate_authorization_result_id_var.get().strip(),
+                )
+                self._set_certified_rule_release_candidate_status(result)
+                if result.get("release_candidate_plan_id"):
+                    self.certified_rule_release_candidate_plan_id_var.set(str(result.get("release_candidate_plan_id") or ""))
+                self.status_var.set(f"Certified rule release candidate plan: {result.get('status', 'unknown')}.")
+            elif action == "qualify_certified_rule_release_candidate":
+                result = qualify_certified_rule_release_candidate(
+                    self.certified_rule_release_candidate_plan_id_var.get().strip(),
+                    confirmation=self.certified_rule_release_candidate_confirmation_var.get().strip() or None,
+                )
+                self._set_certified_rule_release_candidate_status(result)
+                if result.get("release_candidate_result_id"):
+                    self.certified_rule_release_candidate_result_id_var.set(str(result.get("release_candidate_result_id") or ""))
+                if result.get("release_candidate_receipt_id"):
+                    self.certified_rule_release_candidate_receipt_id_var.set(str(result.get("release_candidate_receipt_id") or ""))
+                self.status_var.set(f"Certified rule release candidate qualification: {result.get('status', 'unknown')}.")
+            elif action == "copy_certified_rule_release_candidate_report":
+                text = format_certified_rule_release_candidate_report(
+                    release_candidate_result_id=self.certified_rule_release_candidate_result_id_var.get().strip() or None,
+                    release_candidate_receipt_id=self.certified_rule_release_candidate_receipt_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe certified rule release candidate report copied.")
+            elif action == "load_certified_rule_controlled_integration_workspace":
+                result = build_certified_rule_controlled_integration_workspace(
+                    self.certified_rule_controlled_integration_rule_id_var.get().strip(),
+                    self.certified_rule_controlled_integration_release_result_id_var.get().strip(),
+                    self.certified_rule_controlled_integration_target_id_var.get().strip(),
+                )
+                self._set_certified_rule_controlled_integration_status(result)
+                if result.get("controlled_integration_plan_id"):
+                    self.certified_rule_controlled_integration_plan_id_var.set(str(result.get("controlled_integration_plan_id") or ""))
+                if result.get("controlled_integration_result_id"):
+                    self.certified_rule_controlled_integration_result_id_var.set(str(result.get("controlled_integration_result_id") or ""))
+                if result.get("controlled_integration_receipt_id"):
+                    self.certified_rule_controlled_integration_receipt_id_var.set(str(result.get("controlled_integration_receipt_id") or ""))
+                self.status_var.set(f"Certified rule controlled integration workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_certified_rule_controlled_integration_eligibility":
+                result = validate_certified_rule_controlled_integration_eligibility(
+                    self.certified_rule_controlled_integration_rule_id_var.get().strip(),
+                    self.certified_rule_controlled_integration_release_result_id_var.get().strip(),
+                    self.certified_rule_controlled_integration_target_id_var.get().strip(),
+                )
+                self._set_certified_rule_controlled_integration_status(result)
+                self.status_var.set(f"Certified rule controlled integration eligibility: {result.get('status', 'unknown')}.")
+            elif action == "build_certified_rule_controlled_integration_plan":
+                result = build_certified_rule_controlled_integration_plan(
+                    self.certified_rule_controlled_integration_rule_id_var.get().strip(),
+                    self.certified_rule_controlled_integration_release_result_id_var.get().strip(),
+                    self.certified_rule_controlled_integration_target_id_var.get().strip(),
+                )
+                self._set_certified_rule_controlled_integration_status(result)
+                if result.get("controlled_integration_plan_id"):
+                    self.certified_rule_controlled_integration_plan_id_var.set(str(result.get("controlled_integration_plan_id") or ""))
+                self.status_var.set(f"Certified rule controlled integration plan: {result.get('status', 'unknown')}.")
+            elif action == "execute_certified_rule_controlled_integration":
+                result = execute_certified_rule_controlled_integration(
+                    self.certified_rule_controlled_integration_plan_id_var.get().strip(),
+                    confirmation=self.certified_rule_controlled_integration_confirmation_var.get().strip() or None,
+                )
+                self._set_certified_rule_controlled_integration_status(result)
+                if result.get("controlled_integration_result_id"):
+                    self.certified_rule_controlled_integration_result_id_var.set(str(result.get("controlled_integration_result_id") or ""))
+                if result.get("controlled_integration_receipt_id"):
+                    self.certified_rule_controlled_integration_receipt_id_var.set(str(result.get("controlled_integration_receipt_id") or ""))
+                self.status_var.set(f"Certified rule controlled integration execution: {result.get('status', 'unknown')}.")
+            elif action == "certified_rule_controlled_integration_health":
+                result = get_certified_rule_controlled_integration_health(self.certified_rule_controlled_integration_plan_id_var.get().strip() or None)
+                self._set_certified_rule_controlled_integration_status(result)
+                self.status_var.set(f"Certified rule controlled integration health: {result.get('status', 'unknown')}.")
+            elif action == "copy_certified_rule_controlled_integration_report":
+                text = format_certified_rule_controlled_integration_report(
+                    controlled_integration_result_id=self.certified_rule_controlled_integration_result_id_var.get().strip() or None,
+                    controlled_integration_receipt_id=self.certified_rule_controlled_integration_receipt_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe certified rule controlled integration report copied.")
+            elif action == "load_certified_rule_production_authorization_workspace":
+                result = build_certified_rule_production_authorization_workspace(
+                    self.certified_rule_production_authorization_rule_id_var.get().strip(),
+                    self.certified_rule_production_authorization_integration_result_id_var.get().strip(),
+                    self.certified_rule_production_authorization_target_id_var.get().strip(),
+                )
+                self._set_certified_rule_production_authorization_status(result)
+                if result.get("production_authorization_plan_id"):
+                    self.certified_rule_production_authorization_plan_id_var.set(str(result.get("production_authorization_plan_id") or ""))
+                if result.get("production_authorization_result_id"):
+                    self.certified_rule_production_authorization_result_id_var.set(str(result.get("production_authorization_result_id") or ""))
+                if result.get("production_authorization_receipt_id"):
+                    self.certified_rule_production_authorization_receipt_id_var.set(str(result.get("production_authorization_receipt_id") or ""))
+                self.status_var.set(f"Certified rule production authorization workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_certified_rule_production_authorization_eligibility":
+                result = validate_certified_rule_production_authorization_eligibility(
+                    self.certified_rule_production_authorization_rule_id_var.get().strip(),
+                    self.certified_rule_production_authorization_integration_result_id_var.get().strip(),
+                    self.certified_rule_production_authorization_target_id_var.get().strip(),
+                )
+                self._set_certified_rule_production_authorization_status(result)
+                self.status_var.set(f"Certified rule production authorization eligibility: {result.get('status', 'unknown')}.")
+            elif action == "build_certified_rule_production_authorization_plan":
+                result = build_certified_rule_production_authorization_plan(
+                    self.certified_rule_production_authorization_rule_id_var.get().strip(),
+                    self.certified_rule_production_authorization_integration_result_id_var.get().strip(),
+                    self.certified_rule_production_authorization_target_id_var.get().strip(),
+                )
+                self._set_certified_rule_production_authorization_status(result)
+                if result.get("production_authorization_plan_id"):
+                    self.certified_rule_production_authorization_plan_id_var.set(str(result.get("production_authorization_plan_id") or ""))
+                self.status_var.set(f"Certified rule production authorization plan: {result.get('status', 'unknown')}.")
+            elif action == "save_certified_rule_production_authorization_decision":
+                result = save_certified_rule_production_authorization_decision(
+                    self.certified_rule_production_authorization_plan_id_var.get().strip(),
+                    decision=self.certified_rule_production_authorization_decision_var.get().strip() or None,
+                    confirmation=self.certified_rule_production_authorization_confirmation_var.get().strip() or None,
+                )
+                self._set_certified_rule_production_authorization_status(result)
+                if result.get("production_authorization_result_id"):
+                    self.certified_rule_production_authorization_result_id_var.set(str(result.get("production_authorization_result_id") or ""))
+                if result.get("production_authorization_receipt_id"):
+                    self.certified_rule_production_authorization_receipt_id_var.set(str(result.get("production_authorization_receipt_id") or ""))
+                self.status_var.set(f"Certified rule production authorization save: {result.get('status', 'unknown')}.")
+            elif action == "certified_rule_production_authorization_health":
+                result = get_certified_rule_production_authorization_health(self.certified_rule_production_authorization_plan_id_var.get().strip() or None)
+                self._set_certified_rule_production_authorization_status(result)
+                self.status_var.set(f"Certified rule production authorization health: {result.get('status', 'unknown')}.")
+            elif action == "copy_certified_rule_production_authorization_report":
+                text = format_certified_rule_production_authorization_report(
+                    production_authorization_result_id=self.certified_rule_production_authorization_result_id_var.get().strip() or None,
+                    production_authorization_receipt_id=self.certified_rule_production_authorization_receipt_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe certified rule production authorization report copied.")
+            elif action == "load_certified_rule_production_deployment_workspace":
+                result = build_certified_rule_production_deployment_workspace(
+                    self.certified_rule_production_deployment_rule_id_var.get().strip(),
+                    self.certified_rule_production_deployment_authorization_result_id_var.get().strip(),
+                    self.certified_rule_production_deployment_target_id_var.get().strip(),
+                )
+                self._set_certified_rule_production_deployment_status(result)
+                if result.get("production_deployment_plan_id"):
+                    self.certified_rule_production_deployment_plan_id_var.set(str(result.get("production_deployment_plan_id") or ""))
+                if result.get("production_deployment_result_id"):
+                    self.certified_rule_production_deployment_result_id_var.set(str(result.get("production_deployment_result_id") or ""))
+                if result.get("production_deployment_receipt_id"):
+                    self.certified_rule_production_deployment_receipt_id_var.set(str(result.get("production_deployment_receipt_id") or ""))
+                self.status_var.set(f"Certified rule production deployment workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_certified_rule_production_deployment_eligibility":
+                result = validate_certified_rule_production_deployment_eligibility(
+                    self.certified_rule_production_deployment_rule_id_var.get().strip(),
+                    self.certified_rule_production_deployment_authorization_result_id_var.get().strip(),
+                    self.certified_rule_production_deployment_target_id_var.get().strip(),
+                )
+                self._set_certified_rule_production_deployment_status(result)
+                self.status_var.set(f"Certified rule production deployment eligibility: {result.get('status', 'unknown')}.")
+            elif action == "build_certified_rule_production_deployment_plan":
+                result = build_certified_rule_production_deployment_plan(
+                    self.certified_rule_production_deployment_rule_id_var.get().strip(),
+                    self.certified_rule_production_deployment_authorization_result_id_var.get().strip(),
+                    self.certified_rule_production_deployment_target_id_var.get().strip(),
+                )
+                self._set_certified_rule_production_deployment_status(result)
+                if result.get("production_deployment_plan_id"):
+                    self.certified_rule_production_deployment_plan_id_var.set(str(result.get("production_deployment_plan_id") or ""))
+                self.status_var.set(f"Certified rule production deployment plan: {result.get('status', 'unknown')}.")
+            elif action == "execute_certified_rule_production_deployment":
+                result = execute_certified_rule_production_deployment(
+                    self.certified_rule_production_deployment_plan_id_var.get().strip(),
+                    confirmation=self.certified_rule_production_deployment_confirmation_var.get().strip() or None,
+                )
+                self._set_certified_rule_production_deployment_status(result)
+                if result.get("production_deployment_result_id"):
+                    self.certified_rule_production_deployment_result_id_var.set(str(result.get("production_deployment_result_id") or ""))
+                if result.get("production_deployment_receipt_id"):
+                    self.certified_rule_production_deployment_receipt_id_var.set(str(result.get("production_deployment_receipt_id") or ""))
+                self.status_var.set(f"Certified rule production deployment execution: {result.get('status', 'unknown')}.")
+            elif action == "certified_rule_production_deployment_health":
+                result = get_certified_rule_production_deployment_health(self.certified_rule_production_deployment_plan_id_var.get().strip() or None)
+                self._set_certified_rule_production_deployment_status(result)
+                self.status_var.set(f"Certified rule production deployment health: {result.get('status', 'unknown')}.")
+            elif action == "copy_certified_rule_production_deployment_report":
+                text = format_certified_rule_production_deployment_report(
+                    production_deployment_result_id=self.certified_rule_production_deployment_result_id_var.get().strip() or None,
+                    production_deployment_receipt_id=self.certified_rule_production_deployment_receipt_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe certified rule production deployment report copied.")
+            elif action == "load_certified_rule_post_deployment_acceptance_workspace":
+                result = build_certified_rule_post_deployment_acceptance_workspace(
+                    self.certified_rule_post_deployment_result_id_var.get().strip(),
+                )
+                self._set_certified_rule_post_deployment_acceptance_status(result)
+                if result.get("post_deployment_acceptance_plan_id"):
+                    self.certified_rule_post_deployment_plan_id_var.set(str(result.get("post_deployment_acceptance_plan_id") or ""))
+                if result.get("post_deployment_acceptance_result_id"):
+                    self.certified_rule_post_deployment_decision_result_id_var.set(str(result.get("post_deployment_acceptance_result_id") or ""))
+                if result.get("post_deployment_acceptance_receipt_id"):
+                    self.certified_rule_post_deployment_receipt_id_var.set(str(result.get("post_deployment_acceptance_receipt_id") or ""))
+                self.status_var.set(f"Certified rule post-deployment workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_certified_rule_post_deployment_acceptance_eligibility":
+                result = validate_certified_rule_post_deployment_acceptance_eligibility(
+                    self.certified_rule_post_deployment_result_id_var.get().strip(),
+                )
+                self._set_certified_rule_post_deployment_acceptance_status(result)
+                self.status_var.set(f"Certified rule post-deployment eligibility: {result.get('status', 'unknown')}.")
+            elif action == "build_certified_rule_post_deployment_acceptance_plan":
+                result = build_certified_rule_post_deployment_acceptance_plan(
+                    self.certified_rule_post_deployment_result_id_var.get().strip(),
+                )
+                self._set_certified_rule_post_deployment_acceptance_status(result)
+                if result.get("post_deployment_acceptance_plan_id"):
+                    self.certified_rule_post_deployment_plan_id_var.set(str(result.get("post_deployment_acceptance_plan_id") or ""))
+                self.status_var.set(f"Certified rule post-deployment plan: {result.get('status', 'unknown')}.")
+            elif action == "save_certified_rule_post_deployment_acceptance_decision":
+                result = save_certified_rule_post_deployment_acceptance_decision(
+                    self.certified_rule_post_deployment_plan_id_var.get().strip(),
+                    self.certified_rule_post_deployment_decision_var.get().strip() or "",
+                    confirmation=self.certified_rule_post_deployment_confirmation_var.get().strip() or None,
+                )
+                self._set_certified_rule_post_deployment_acceptance_status(result)
+                if result.get("post_deployment_acceptance_result_id"):
+                    self.certified_rule_post_deployment_decision_result_id_var.set(str(result.get("post_deployment_acceptance_result_id") or ""))
+                if result.get("post_deployment_acceptance_receipt_id"):
+                    self.certified_rule_post_deployment_receipt_id_var.set(str(result.get("post_deployment_acceptance_receipt_id") or ""))
+                self.status_var.set(f"Certified rule post-deployment decision: {result.get('status', 'unknown')}.")
+            elif action == "certified_rule_post_deployment_acceptance_health":
+                result = get_certified_rule_post_deployment_acceptance_health(self.certified_rule_post_deployment_plan_id_var.get().strip() or None)
+                self._set_certified_rule_post_deployment_acceptance_status(result)
+                self.status_var.set(f"Certified rule post-deployment health: {result.get('status', 'unknown')}.")
+            elif action == "copy_certified_rule_post_deployment_acceptance_report":
+                text = format_certified_rule_post_deployment_acceptance_report(
+                    post_deployment_acceptance_result_id=self.certified_rule_post_deployment_decision_result_id_var.get().strip() or None,
+                    post_deployment_acceptance_receipt_id=self.certified_rule_post_deployment_receipt_id_var.get().strip() or None,
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe certified rule post-deployment report copied.")
+            elif action == "load_deployed_rule_operational_telemetry_workspace":
+                if not self._validate_deployed_rule_operational_telemetry_inputs(action):
+                    return
+                result = build_deployed_rule_operational_telemetry_workspace(**self._deployed_rule_operational_telemetry_common_kwargs())
+                self._set_deployed_rule_operational_telemetry_status(result)
+                self.status_var.set(f"Deployed rule operational telemetry workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_deployed_rule_operational_telemetry_eligibility":
+                if not self._validate_deployed_rule_operational_telemetry_inputs(action):
+                    return
+                result = validate_deployed_rule_operational_telemetry_eligibility(**self._deployed_rule_operational_telemetry_common_kwargs())
+                self._set_deployed_rule_operational_telemetry_status(result)
+                self.status_var.set(f"Deployed rule operational telemetry eligibility: {result.get('status', 'unknown')}.")
+            elif action == "list_deployed_rule_operational_events":
+                if not self._validate_deployed_rule_operational_telemetry_inputs(action):
+                    return
+                result = list_deployed_rule_operational_events(**self._deployed_rule_operational_telemetry_list_kwargs())
+                self._set_deployed_rule_operational_telemetry_status(result)
+                self.status_var.set(f"Deployed rule operational telemetry events: {result.get('status', 'unknown')}.")
+            elif action == "build_deployed_rule_operational_snapshot":
+                if not self._validate_deployed_rule_operational_telemetry_inputs(action):
+                    return
+                result = build_deployed_rule_operational_snapshot(**self._deployed_rule_operational_telemetry_snapshot_kwargs())
+                self._set_deployed_rule_operational_telemetry_status(result)
+                self.status_var.set(f"Deployed rule operational telemetry snapshot: {result.get('status', 'unknown')}.")
+            elif action == "deployed_rule_operational_telemetry_health":
+                if not self._validate_deployed_rule_operational_telemetry_inputs(action):
+                    return
+                result = get_deployed_rule_operational_telemetry_health(**self._deployed_rule_operational_telemetry_common_kwargs())
+                result = dict(result)
+                result["telemetry_health"] = result.get("status", "unknown")
+                self._set_deployed_rule_operational_telemetry_status(result)
+                self.status_var.set(f"Deployed rule operational telemetry health: {result.get('telemetry_health', result.get('status', 'unknown'))}.")
+            elif action == "copy_deployed_rule_operational_telemetry_report":
+                if not self._validate_deployed_rule_operational_telemetry_inputs(action):
+                    return
+                text = format_deployed_rule_operational_telemetry_report(
+                    **self._deployed_rule_operational_telemetry_common_kwargs(),
+                    start_timestamp=self.deployed_rule_operational_telemetry_start_var.get().strip() or None,
+                    end_timestamp=self.deployed_rule_operational_telemetry_end_var.get().strip() or None,
+                    event_type=self.deployed_rule_operational_telemetry_event_type_var.get().strip() or None,
+                    producer_id=self.deployed_rule_operational_telemetry_producer_var.get().strip() or None,
+                    max_results=self._deployed_rule_operational_telemetry_max_results(),
+                    public_safe=True,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe deployed-rule operational telemetry report copied.")
+            elif action == "load_deployed_rule_effectiveness_readiness_workspace":
+                if not self._validate_deployed_rule_effectiveness_readiness_inputs(action):
+                    return
+                result = build_deployed_rule_effectiveness_readiness_workspace(**self._deployed_rule_effectiveness_readiness_common_kwargs())
+                self._set_deployed_rule_effectiveness_readiness_status(result)
+                self.status_var.set(f"Deployed rule effectiveness readiness workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_deployed_rule_effectiveness_readiness_eligibility":
+                if not self._validate_deployed_rule_effectiveness_readiness_inputs(action):
+                    return
+                result = validate_deployed_rule_effectiveness_readiness_eligibility(**self._deployed_rule_effectiveness_readiness_common_kwargs())
+                self._set_deployed_rule_effectiveness_readiness_status(result)
+                self.status_var.set(f"Deployed rule effectiveness readiness eligibility: {result.get('status', 'unknown')}.")
+            elif action == "build_deployed_rule_effectiveness_readiness_plan":
+                if not self._validate_deployed_rule_effectiveness_readiness_inputs(action):
+                    return
+                result = build_deployed_rule_effectiveness_readiness_plan(**self._deployed_rule_effectiveness_readiness_common_kwargs())
+                if isinstance(result, dict) and result.get("effectiveness_readiness_plan_id"):
+                    self.deployed_rule_effectiveness_readiness_plan_id_var.set(str(result.get("effectiveness_readiness_plan_id") or ""))
+                self._set_deployed_rule_effectiveness_readiness_status(result)
+                self.status_var.set(f"Deployed rule effectiveness readiness plan: {result.get('status', 'unknown')}.")
+            elif action == "load_deployed_rule_effectiveness_readiness_result":
+                if not self._validate_deployed_rule_effectiveness_readiness_inputs(action):
+                    return
+                loaded = load_deployed_rule_effectiveness_readiness_result(
+                    self.deployed_rule_effectiveness_readiness_loaded_result_id_var.get().strip(),
+                )
+                if isinstance(loaded, dict) and isinstance(loaded.get("effectiveness_readiness_result"), dict):
+                    self._set_deployed_rule_effectiveness_readiness_status(loaded["effectiveness_readiness_result"])
+                else:
+                    self._set_deployed_rule_effectiveness_readiness_status(loaded)
+                self.status_var.set(f"Deployed rule effectiveness readiness result load: {loaded.get('status', 'unknown')}.")
+            elif action == "record_deployed_rule_effectiveness_readiness_result":
+                if not self._validate_deployed_rule_effectiveness_readiness_inputs(action):
+                    return
+                result = record_deployed_rule_effectiveness_readiness_result(
+                    self.deployed_rule_effectiveness_readiness_plan_id_var.get().strip(),
+                    confirmation=self.deployed_rule_effectiveness_readiness_confirmation_var.get().strip(),
+                )
+                if isinstance(result, dict) and result.get("effectiveness_readiness_result_id"):
+                    self.deployed_rule_effectiveness_readiness_loaded_result_id_var.set(str(result.get("effectiveness_readiness_result_id") or ""))
+                    loaded = load_deployed_rule_effectiveness_readiness_result(str(result.get("effectiveness_readiness_result_id") or ""))
+                    if isinstance(loaded, dict) and isinstance(loaded.get("effectiveness_readiness_result"), dict):
+                        self._set_deployed_rule_effectiveness_readiness_status(loaded["effectiveness_readiness_result"])
+                    else:
+                        self._set_deployed_rule_effectiveness_readiness_status(result)
+                else:
+                    self._set_deployed_rule_effectiveness_readiness_status(result)
+                self.status_var.set(f"Deployed rule effectiveness readiness result: {result.get('status', 'unknown')}.")
+            elif action == "deployed_rule_effectiveness_readiness_health":
+                result = get_deployed_rule_effectiveness_readiness_health()
+                result = dict(result)
+                result["readiness_health"] = result.get("status", "unknown")
+                result["health_scope"] = "repository-wide"
+                self._set_deployed_rule_effectiveness_readiness_status(result)
+                self.status_var.set(f"Deployed rule effectiveness readiness health: {result.get('readiness_health', result.get('status', 'unknown'))}.")
+            elif action == "copy_deployed_rule_effectiveness_readiness_report":
+                if not self._validate_deployed_rule_effectiveness_readiness_inputs(action):
+                    return
+                text = format_deployed_rule_effectiveness_readiness_report(**self._deployed_rule_effectiveness_readiness_common_kwargs())
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe deployed-rule effectiveness readiness report copied.")
             elif action == "copy":
                 text = format_pdf_text_layer_report(viewport_id=viewport_id or None, document_id=None if viewport_id else document_id, public_safe=True)
                 self.clipboard_clear()
@@ -2781,6 +4423,605 @@ class DesktopRightPanelMixin:
                 self.status_var.set("Public-safe PDF text-layer report copied.")
         except Exception as exc:
             self.status_var.set(f"PDF viewport action failed: {exc}")
+
+    def _set_autonomous_pdf_remediation_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        total_cases = int(payload.get("case_count", payload.get("total_case_count", 0)) or 0)
+        reviewed = int(payload.get("reviewed_case_count", 0) or 0)
+        self.autonomous_pdf_remediation_status_var.set(
+            f"Document ID: {payload.get('document_id', 'unknown')}\n"
+            f"Source Revision: {payload.get('source_revision', 'unknown')}\n"
+            f"Original Release Classification: {payload.get('release_classification', 'unknown')}\n"
+            f"Plan Status: {payload.get('status', 'unknown')}\n"
+            f"Total Case Count: {total_cases}\n"
+            f"Critical Case Count: {int(payload.get('critical_case_count', 0) or 0)}\n"
+            f"High Case Count: {int(payload.get('high_case_count', 0) or 0)}\n"
+            f"Unresolved Case Count: {max(total_cases - reviewed, 0)}\n"
+            f"Reviewed Case Count: {reviewed}\n"
+            f"Resolved Case Count: {int(payload.get('resolved_count', 0) or 0)}\n"
+            f"Persisting Case Count: {int(payload.get('persisting_count', 0) or 0)}\n"
+            f"Regressed Case Count: {int(payload.get('regressed_count', 0) or 0)}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue remediation review.')}"
+        )
+
+    def _set_autonomous_pdf_corrective_action_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        blockers = payload.get("blockers", [])
+        blocker_text = ", ".join(str(item) for item in blockers) if isinstance(blockers, list) and blockers else "none"
+        self.autonomous_pdf_corrective_action_status_var.set(
+            f"Document ID: {payload.get('document_id', 'unknown')}\n"
+            f"Source Revision: {payload.get('source_revision', 'unknown')}\n"
+            f"Review Decision: {payload.get('review_decision', 'unknown')}\n"
+            f"Root-Cause Classification: {payload.get('root_cause_classification', 'unknown')}\n"
+            f"Action Type: {payload.get('action_type', 'unknown')}\n"
+            f"Action Status: {payload.get('status', 'unknown')}\n"
+            f"Verification Required: {'Yes' if payload.get('verification_required') else 'No'}\n"
+            f"Verification Outcome: {payload.get('verification_outcome', 'none')}\n"
+            f"Closure Status: {payload.get('closure_status', 'open')}\n"
+            f"Remaining Blockers: {blocker_text}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue corrective action processing.')}"
+        )
+
+    def _set_certified_rule_replay_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        self.certified_rule_replay_status_var.set(
+            f"Document ID: {payload.get('document_id', 'unknown')}\n"
+            f"Source Revision: {payload.get('source_revision', 'unknown')}\n"
+            f"Rule Status: {payload.get('rule_status', payload.get('status', 'unknown'))}\n"
+            f"Certification Status: {payload.get('certification_status', 'unknown')}\n"
+            f"Dataset Fingerprint Status: {payload.get('dataset_fingerprint_status', 'unknown')}\n"
+            f"Replay Status: {payload.get('status', 'unknown')}\n"
+            f"Total Records: {payload.get('total_records', payload.get('bounded_record_count', 0))}\n"
+            f"Evaluated Records: {payload.get('evaluated_records', 0)}\n"
+            f"Match Count: {payload.get('match_count', 0)}\n"
+            f"No-Match Count: {payload.get('no_match_count', 0)}\n"
+            f"Unsupported Count: {payload.get('unsupported_count', 0)}\n"
+            f"Error Count: {payload.get('evaluator_error_count', 0)}\n"
+            f"Replay Coverage: {payload.get('replay_coverage', 'null')}\n"
+            f"Compatibility Rate: {payload.get('compatibility_rate', 'null')}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue replay workflow.')}"
+        )
+
+    def _set_certified_rule_objective_preview_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
+        self.certified_rule_objective_preview_status_var.set(
+            f"Document ID: {payload.get('document_id', 'unknown')}\n"
+            f"Source Revision: {payload.get('source_revision', 'unknown')}\n"
+            f"Rule Status: {payload.get('rule_status', payload.get('status', 'unknown'))}\n"
+            f"Certification Status: {payload.get('certification_status', 'unknown')}\n"
+            f"Objective Pack Status: {payload.get('objective_pack_status', 'unknown')}\n"
+            f"Controlled Input Status: {payload.get('controlled_input_status', 'unknown')}\n"
+            f"Preview Status: {payload.get('status', 'unknown')}\n"
+            f"Compared Records: {metrics.get('compared_records', payload.get('compared_records', 0))}\n"
+            f"Improved Records: {metrics.get('improved_records', payload.get('improved_records', 0))}\n"
+            f"Worsened Records: {metrics.get('worsened_records', payload.get('worsened_records', 0))}\n"
+            f"Unsupported Records: {metrics.get('unsupported_records', payload.get('unsupported_records', 0))}\n"
+            f"Preview Coverage: {metrics.get('preview_coverage', 'null')}\n"
+            f"Compatibility Rate: {metrics.get('compatibility_rate', 'null')}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue objective preview workflow.')}"
+        )
+
+    def _set_certified_rule_scoring_preview_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
+        self.certified_rule_scoring_preview_status_var.set(
+            f"Document ID: {payload.get('document_id', 'unknown')}\n"
+            f"Source Revision: {payload.get('source_revision', 'unknown')}\n"
+            f"Canonical Rule ID: {payload.get('canonical_rule_id', 'unknown')}\n"
+            f"Certification Status: {payload.get('certification_status', 'unknown')}\n"
+            f"Objective Preview Status: {payload.get('objective_preview_status', payload.get('status', 'unknown'))}\n"
+            f"Phase 9O Compatibility: {payload.get('phase_9o_compatibility', payload.get('compatibility_status', 'unknown'))}\n"
+            f"Scoring Configuration Status: {payload.get('scoring_config_status', 'unknown')}\n"
+            f"Compatibility Status: {payload.get('compatibility_status', payload.get('status', 'unknown'))}\n"
+            f"Scoring Preview Status: {payload.get('status', 'unknown')}\n"
+            f"Total Records: {metrics.get('total_phase_9o_records', payload.get('total_record_count', 0))}\n"
+            f"Scoreable Records: {metrics.get('scoreable_records', payload.get('scoreable_record_count', payload.get('scoreable_records', 0)))}\n"
+            f"Compared Records: {metrics.get('compared_records', 0)}\n"
+            f"Increased Records: {metrics.get('increased_score_records', 0)}\n"
+            f"Decreased Records: {metrics.get('decreased_score_records', 0)}\n"
+            f"Unchanged Records: {metrics.get('unchanged_score_records', 0)}\n"
+            f"Mixed Records: {metrics.get('mixed_component_records', 0)}\n"
+            f"Unsupported Records: {metrics.get('unsupported_records', 0)}\n"
+            f"Error Count: {metrics.get('scoring_error_records', 0)}\n"
+            f"Baseline Mean Score: {metrics.get('baseline_mean_bounded_score', metrics.get('baseline_mean_raw_score', 'null'))}\n"
+            f"Rule-Enabled Mean Score: {metrics.get('rule_enabled_mean_bounded_score', metrics.get('rule_enabled_mean_raw_score', 'null'))}\n"
+            f"Mean Score Delta: {metrics.get('mean_bounded_score_delta', metrics.get('mean_raw_score_delta', 'null'))}\n"
+            f"Scoring Coverage: {metrics.get('scoring_coverage', 'null')}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue scoring preview workflow.')}"
+        )
+
+    def _set_certified_rule_fast_lane_preview_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        self.certified_rule_fast_lane_preview_status_var.set(
+            f"Document ID: {payload.get('document_id', 'unknown')}\n"
+            f"Source Revision: {payload.get('source_revision', 'unknown')}\n"
+            f"Certification Status: {payload.get('certification_status', 'unknown')}\n"
+            f"Fast Lane Contract ID: {payload.get('fast_lane_contract_id', 'unknown')}\n"
+            f"Fast Lane Contract Version: {payload.get('fast_lane_contract_version', 'unknown')}\n"
+            f"Capability Status: {payload.get('capability_status', payload.get('compatibility_foundation_status', 'unknown'))}\n"
+            f"Preview Status: {payload.get('preview_status', payload.get('status', 'unknown'))}\n"
+            f"Overall Compatibility: {payload.get('overall_compatibility', 'unknown')}\n"
+            f"Semantic Loss: {payload.get('semantic_loss', 'unknown')}\n"
+            f"Compatible Dimensions: {payload.get('compatible_dimension_count', 0)}\n"
+            f"Warning Dimensions: {payload.get('warning_dimension_count', 0)}\n"
+            f"Incompatible Dimensions: {payload.get('incompatible_dimension_count', 0)}\n"
+            f"Blocker Count: {payload.get('blocker_count', len(payload.get('blockers', []) if isinstance(payload.get('blockers'), list) else []))}\n"
+            f"Warning Count: {payload.get('warning_count', len(payload.get('warnings', []) if isinstance(payload.get('warnings'), list) else []))}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue Fast Lane compatibility preview workflow.')}"
+        )
+
+    def _set_certified_rule_integration_authorization_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        self.certified_rule_integration_authorization_status_var.set(
+            f"Document ID: {payload.get('document_id', 'unknown')}\n"
+            f"Source Revision: {payload.get('source_revision', 'unknown')}\n"
+            f"Canonical Rule ID: {payload.get('canonical_rule_id', 'unknown')}\n"
+            f"Certification Status: {payload.get('certification_status', 'unknown')}\n"
+            f"Scoring Preview Status: {payload.get('scoring_preview_status', payload.get('status', 'unknown'))}\n"
+            f"Fast Lane Preview Status: {payload.get('fast_lane_preview_status', payload.get('status', 'unknown'))}\n"
+            f"Overall Compatibility: {payload.get('overall_compatibility', 'unknown')}\n"
+            f"Semantic Loss: {payload.get('semantic_loss', 'unknown')}\n"
+            f"Decision Status: {payload.get('status', 'unknown')}\n"
+            f"Reviewer: {payload.get('reviewer_identity', 'none')}\n"
+            f"Blocker Count: {len(payload.get('blockers', []) if isinstance(payload.get('blockers'), list) else [])}\n"
+            f"Warning Count: {len(payload.get('warnings', []) if isinstance(payload.get('warnings'), list) else [])}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue integration authorization review.')}"
+        )
+
+    def _set_certified_rule_release_candidate_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        self.certified_rule_release_candidate_status_var.set(
+            f"Document ID: {payload.get('document_id', 'unknown')}\n"
+            f"Source Revision: {payload.get('source_revision', 'unknown')}\n"
+            f"Canonical Rule ID: {payload.get('canonical_rule_id', 'unknown')}\n"
+            f"Authorization Status: {payload.get('authorization_status', payload.get('status', 'unknown'))}\n"
+            f"Scoring Evidence Status: {payload.get('scoring_evidence_status', 'unknown')}\n"
+            f"Compatibility Evidence Status: {payload.get('compatibility_evidence_status', 'unknown')}\n"
+            f"Eligibility Status: {payload.get('health_status', payload.get('status', 'unknown'))}\n"
+            f"Qualification Status: {payload.get('status', 'unknown')}\n"
+            f"Blocker Count: {len(payload.get('blockers', []) if isinstance(payload.get('blockers'), list) else [])}\n"
+            f"Warning Count: {len(payload.get('warnings', []) if isinstance(payload.get('warnings'), list) else [])}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue release-candidate qualification.')}"
+        )
+
+    def _set_certified_rule_controlled_integration_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        self.certified_rule_controlled_integration_status_var.set(
+            f"Document ID: {payload.get('document_id', 'unknown')}\n"
+            f"Source Revision: {payload.get('source_revision', 'unknown')}\n"
+            f"Certification Status: {payload.get('certification_status', 'unknown')}\n"
+            f"Release Candidate Status: {payload.get('release_candidate_status', payload.get('status', 'unknown'))}\n"
+            f"Authorization Status: {payload.get('authorization_status', 'unknown')}\n"
+            f"Target Status: {payload.get('target_status', payload.get('integration_target_id', 'unknown'))}\n"
+            f"Environment Class: {payload.get('environment_class', 'unknown')}\n"
+            f"Adapter Version: {payload.get('adapter_version', 'unknown')}\n"
+            f"Namespace ID: {payload.get('isolated_namespace_id', payload.get('namespace_id', 'unknown'))}\n"
+            f"Transaction ID: {payload.get('transaction_id', 'unknown')}\n"
+            f"Execution Status: {payload.get('final_status', payload.get('status', 'unknown'))}\n"
+            f"Pending Verification: {payload.get('pending_verification_status', payload.get('verification_status', 'unknown'))}\n"
+            f"Committed Verification: {payload.get('committed_verification_status', payload.get('verification_capability_status', 'unknown'))}\n"
+            f"Rollback Status: {payload.get('rollback_status', payload.get('rollback_capability_status', 'unknown'))}\n"
+            f"Production Safety: {payload.get('production_safety_status', 'unknown')}\n"
+            f"Stale Status: {'yes' if payload.get('stale') else 'no'}\n"
+            f"Blocker Count: {len(payload.get('blockers', []) if isinstance(payload.get('blockers'), list) else [])}\n"
+            f"Warning Count: {len(payload.get('warnings', []) if isinstance(payload.get('warnings'), list) else [])}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue controlled integration review.')}"
+        )
+
+    def _set_certified_rule_production_authorization_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        self.certified_rule_production_authorization_status_var.set(
+            f"Document ID: {payload.get('document_id', 'unknown')}\n"
+            f"Source Revision: {payload.get('source_revision', 'unknown')}\n"
+            f"Controlled Integration Status: {payload.get('controlled_integration_status', 'unknown')}\n"
+            f"Release Candidate Status: {payload.get('release_candidate_status', 'unknown')}\n"
+            f"Authorization Status: {payload.get('authorization_status', 'unknown')}\n"
+            f"Production Target Status: {payload.get('production_target_status', payload.get('status', 'unknown'))}\n"
+            f"Descriptor Access Mode: {payload.get('descriptor_access_mode', 'unknown')}\n"
+            f"Namespace ID: {payload.get('namespace_id', 'unknown')}\n"
+            f"Transaction ID: {payload.get('transaction_id', 'unknown')}\n"
+            f"Decision Status: {payload.get('status', 'unknown')}\n"
+            f"Stale Status: {'yes' if payload.get('stale') else 'no'}\n"
+            f"Blocker Count: {len(payload.get('blockers', []) if isinstance(payload.get('blockers'), list) else [])}\n"
+            f"Warning Count: {len(payload.get('warnings', []) if isinstance(payload.get('warnings'), list) else [])}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue production authorization review.')}"
+        )
+
+    def _set_certified_rule_production_deployment_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        self.certified_rule_production_deployment_status_var.set(
+            f"Document ID: {payload.get('document_id', 'unknown')}\n"
+            f"Source Revision: {payload.get('source_revision', 'unknown')}\n"
+            f"Certification Status: {payload.get('certification_status', 'unknown')}\n"
+            f"Phase 9U Authorization Status: {payload.get('production_authorization_status', payload.get('authorization_status', 'unknown'))}\n"
+            f"Phase 9T Verification Status: {payload.get('phase_9t_verification_status', 'unknown')}\n"
+            f"Production Target Status: {payload.get('production_target_status', payload.get('status', 'unknown'))}\n"
+            f"Adapter Version: {payload.get('adapter_version', 'unknown')}\n"
+            f"Transaction ID: {payload.get('production_transaction_id', payload.get('transaction_id', 'unknown'))}\n"
+            f"Apply Status: {payload.get('apply_status', 'unknown')}\n"
+            f"Pending Verification: {payload.get('pending_verification_status', 'unknown')}\n"
+            f"Commit Status: {payload.get('commit_status', 'unknown')}\n"
+            f"Committed Verification: {payload.get('committed_verification_status', 'unknown')}\n"
+            f"Rollback Status: {payload.get('rollback_status', 'unknown')}\n"
+            f"Production Safety: {payload.get('production_safety_status', 'unknown')}\n"
+            f"Blocker Count: {len(payload.get('blockers', []) if isinstance(payload.get('blockers'), list) else [])}\n"
+            f"Warning Count: {len(payload.get('warnings', []) if isinstance(payload.get('warnings'), list) else [])}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue authorized production deployment review.')}"
+        )
+
+    def _set_certified_rule_post_deployment_acceptance_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        self.certified_rule_post_deployment_status_var.set(
+            f"Document ID: {payload.get('document_id', 'unknown')}\n"
+            f"Source Revision: {payload.get('source_revision', 'unknown')}\n"
+            f"Canonical Rule ID: {payload.get('canonical_rule_id', 'unknown')}\n"
+            f"Deployed Rule ID: {payload.get('deployed_rule_id', 'unknown')}\n"
+            f"Phase 9V Status: {payload.get('phase_9v_result_status', payload.get('status', 'unknown'))}\n"
+            f"Current Transaction Status: {payload.get('current_transaction_status', 'unknown')}\n"
+            f"Current Verification Status: {payload.get('current_verification_status', 'unknown')}\n"
+            f"Canonical Source Rule Status: {payload.get('canonical_source_rule_status', 'unknown')}\n"
+            f"Deployed Rule Status: {payload.get('current_deployed_rule_status', 'unknown')}\n"
+            f"Optional Telemetry Status: {payload.get('optional_telemetry_status', 'unknown')}\n"
+            f"Decision Status: {payload.get('decision_status', payload.get('status', 'unknown'))}\n"
+            f"Blocker Count: {len(payload.get('blockers', []) if isinstance(payload.get('blockers'), list) else [])}\n"
+            f"Warning Count: {len(payload.get('warnings', []) if isinstance(payload.get('warnings'), list) else [])}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue post-deployment integrity review.')}"
+        )
+
+    def _deployed_rule_operational_telemetry_common_kwargs(self) -> dict[str, object]:
+        return {
+            "canonical_rule_id": self.deployed_rule_operational_telemetry_rule_id_var.get().strip(),
+            "production_deployment_result_id": self.deployed_rule_operational_telemetry_result_id_var.get().strip(),
+            "phase_9w_result_id": self.deployed_rule_operational_telemetry_phase_9w_result_id_var.get().strip() or None,
+            "production_target_id": self.deployed_rule_operational_telemetry_target_id_var.get().strip() or None,
+            "deployed_rule_id": self.deployed_rule_operational_telemetry_deployed_rule_id_var.get().strip() or None,
+        }
+
+    def _deployed_rule_operational_telemetry_max_results(self) -> int:
+        text = self.deployed_rule_operational_telemetry_max_results_var.get().strip()
+        try:
+            value = int(text or "50")
+        except ValueError:
+            return 50
+        return 50 if value <= 0 else value
+
+    def _deployed_rule_operational_telemetry_list_kwargs(self) -> dict[str, object]:
+        return {
+            "deployed_rule_id": self.deployed_rule_operational_telemetry_deployed_rule_id_var.get().strip(),
+            "production_deployment_result_id": self.deployed_rule_operational_telemetry_result_id_var.get().strip(),
+            "event_type": self.deployed_rule_operational_telemetry_event_type_var.get().strip() or None,
+            "producer_id": self.deployed_rule_operational_telemetry_producer_var.get().strip() or None,
+            "start_timestamp": self.deployed_rule_operational_telemetry_start_var.get().strip() or None,
+            "end_timestamp": self.deployed_rule_operational_telemetry_end_var.get().strip() or None,
+            "max_results": self._deployed_rule_operational_telemetry_max_results(),
+        }
+
+    def _deployed_rule_operational_telemetry_snapshot_kwargs(self) -> dict[str, object]:
+        return {
+            "deployed_rule_id": self.deployed_rule_operational_telemetry_deployed_rule_id_var.get().strip(),
+            "production_deployment_result_id": self.deployed_rule_operational_telemetry_result_id_var.get().strip(),
+            "start_timestamp": self.deployed_rule_operational_telemetry_start_var.get().strip() or None,
+            "end_timestamp": self.deployed_rule_operational_telemetry_end_var.get().strip() or None,
+            "phase_9w_result_id": self.deployed_rule_operational_telemetry_phase_9w_result_id_var.get().strip() or None,
+            "max_events": self._deployed_rule_operational_telemetry_max_results(),
+        }
+
+    def _register_deployed_rule_operational_telemetry_traces(self) -> None:
+        if getattr(self, "_deployed_rule_operational_telemetry_traces_registered", False):
+            return
+        self._deployed_rule_operational_telemetry_traces_registered = True
+        for variable in (
+            self.deployed_rule_operational_telemetry_rule_id_var,
+            self.deployed_rule_operational_telemetry_result_id_var,
+            self.deployed_rule_operational_telemetry_phase_9w_result_id_var,
+            self.deployed_rule_operational_telemetry_target_id_var,
+            self.deployed_rule_operational_telemetry_deployed_rule_id_var,
+            self.deployed_rule_operational_telemetry_start_var,
+            self.deployed_rule_operational_telemetry_end_var,
+            self.deployed_rule_operational_telemetry_event_type_var,
+            self.deployed_rule_operational_telemetry_producer_var,
+            self.deployed_rule_operational_telemetry_max_results_var,
+        ):
+            trace_add = getattr(variable, "trace_add", None)
+            if callable(trace_add):
+                trace_add("write", self._on_deployed_rule_operational_telemetry_input_changed)
+
+    def _on_deployed_rule_operational_telemetry_input_changed(self, *_args: object) -> None:
+        self._mark_deployed_rule_operational_telemetry_stale()
+
+    def _mark_deployed_rule_operational_telemetry_stale(self) -> None:
+        self.deployed_rule_operational_telemetry_status_var.set(
+            "Phase 9V Deployment Status: stale\n"
+            "Current Transaction Status: stale\n"
+            "Deployed Rule Status: stale\n"
+            "Canonical Source Rule Preservation: stale\n"
+            "State Telemetry Available: unknown\n"
+            "Execution Telemetry Available: unknown\n"
+            "Producer IDs: none\n"
+            "Observation Window: stale_due_to_input_change\n"
+            "Total Matching Event Count: 0\n"
+            "Returned Event Count: 0\n"
+            "Validated Event Count: 0\n"
+            "Invalid Event Count: 0\n"
+            "Corrupt Event Count: 0\n"
+            "Snapshot Completeness: stale\n"
+            "Snapshot ID: none\n"
+            "Telemetry Health: stale\n"
+            "Metric Availability: unknown\n"
+            "Effectiveness Evaluation Status: not_performed\n"
+            "Blocker Count: 0\n"
+            "Warning Count: 1\n"
+            "Recommended Action: Refresh telemetry workspace, eligibility, events, snapshot, health, or report after changing inputs."
+        )
+
+    def _validate_deployed_rule_operational_telemetry_inputs(self, action: str) -> bool:
+        required_fields = {
+            "load_deployed_rule_operational_telemetry_workspace": (
+                ("canonical_rule_id", self.deployed_rule_operational_telemetry_rule_id_var.get().strip()),
+                ("production_deployment_result_id", self.deployed_rule_operational_telemetry_result_id_var.get().strip()),
+            ),
+            "validate_deployed_rule_operational_telemetry_eligibility": (
+                ("canonical_rule_id", self.deployed_rule_operational_telemetry_rule_id_var.get().strip()),
+                ("production_deployment_result_id", self.deployed_rule_operational_telemetry_result_id_var.get().strip()),
+            ),
+            "deployed_rule_operational_telemetry_health": (
+                ("canonical_rule_id", self.deployed_rule_operational_telemetry_rule_id_var.get().strip()),
+                ("production_deployment_result_id", self.deployed_rule_operational_telemetry_result_id_var.get().strip()),
+            ),
+            "copy_deployed_rule_operational_telemetry_report": (
+                ("canonical_rule_id", self.deployed_rule_operational_telemetry_rule_id_var.get().strip()),
+                ("production_deployment_result_id", self.deployed_rule_operational_telemetry_result_id_var.get().strip()),
+            ),
+            "list_deployed_rule_operational_events": (
+                ("deployed_rule_id", self.deployed_rule_operational_telemetry_deployed_rule_id_var.get().strip()),
+                ("production_deployment_result_id", self.deployed_rule_operational_telemetry_result_id_var.get().strip()),
+            ),
+            "build_deployed_rule_operational_snapshot": (
+                ("deployed_rule_id", self.deployed_rule_operational_telemetry_deployed_rule_id_var.get().strip()),
+                ("production_deployment_result_id", self.deployed_rule_operational_telemetry_result_id_var.get().strip()),
+            ),
+        }
+        required = required_fields.get(action, ())
+        missing = [name for name, value in required if not value]
+        if not missing:
+            return True
+        self.deployed_rule_operational_telemetry_status_var.set(
+            "Phase 9V Deployment Status: blocked\n"
+            "Current Transaction Status: blocked\n"
+            "Deployed Rule Status: blocked\n"
+            "Canonical Source Rule Preservation: unknown\n"
+            "State Telemetry Available: unknown\n"
+            "Execution Telemetry Available: unknown\n"
+            "Producer IDs: none\n"
+            f"Observation Window: {self.deployed_rule_operational_telemetry_start_var.get().strip() or 'none'} -> {self.deployed_rule_operational_telemetry_end_var.get().strip() or 'none'}\n"
+            "Total Matching Event Count: 0\n"
+            "Returned Event Count: 0\n"
+            "Validated Event Count: 0\n"
+            "Invalid Event Count: 0\n"
+            "Corrupt Event Count: 0\n"
+            "Snapshot Completeness: unknown\n"
+            "Snapshot ID: none\n"
+            "Telemetry Health: blocked\n"
+            "Metric Availability: unknown\n"
+            "Effectiveness Evaluation Status: not_performed\n"
+            f"Blocker Count: {len(missing)}\n"
+            "Warning Count: 0\n"
+            f"Recommended Action: Enter required telemetry identifiers before {action}: {', '.join(missing)}."
+        )
+        self.status_var.set(f"Deployed rule operational telemetry action blocked: missing {', '.join(missing)}.")
+        return False
+
+    def _set_deployed_rule_operational_telemetry_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        metric_availability = payload.get("metric_availability")
+        if isinstance(metric_availability, dict):
+            metric_summary = ", ".join(f"{key}={value}" for key, value in sorted(metric_availability.items()))
+        else:
+            metric_summary = "unknown"
+        phase_9v_status = payload.get("phase_9v_result_status", payload.get("status", "unknown"))
+        current_verification = payload.get("current_verification_status", "unknown")
+        canonical_preservation = "preserved" if str(payload.get("canonical_rule_id", "") or "").strip() else "unknown"
+        observation_start = payload.get("observation_start", self.deployed_rule_operational_telemetry_start_var.get().strip() or None)
+        observation_end = payload.get("observation_end", self.deployed_rule_operational_telemetry_end_var.get().strip() or None)
+        observation_window = f"{observation_start or 'none'} -> {observation_end or 'none'}"
+        self.deployed_rule_operational_telemetry_status_var.set(
+            f"Phase 9V Deployment Status: {phase_9v_status}\n"
+            f"Current Transaction Status: {payload.get('current_transaction_status', 'unknown')}\n"
+            f"Deployed Rule Status: {payload.get('deployed_rule_status', current_verification)}\n"
+            f"Canonical Source Rule Preservation: {canonical_preservation}\n"
+            f"State Telemetry Available: {payload.get('state_telemetry_available', 'unknown')}\n"
+            f"Execution Telemetry Available: {payload.get('execution_telemetry_available', 'unknown')}\n"
+            f"Producer IDs: {', '.join(payload.get('producer_ids', [])) if isinstance(payload.get('producer_ids'), list) and payload.get('producer_ids') else 'none'}\n"
+            f"Observation Window: {observation_window}\n"
+            f"Total Matching Event Count: {payload.get('total_matching_event_count', 0)}\n"
+            f"Returned Event Count: {payload.get('returned_event_count', 0)}\n"
+            f"Validated Event Count: {payload.get('validated_event_count', 0)}\n"
+            f"Invalid Event Count: {payload.get('invalid_event_count', 0)}\n"
+            f"Corrupt Event Count: {payload.get('corrupt_event_count', 0)}\n"
+            f"Snapshot Completeness: {payload.get('snapshot_completeness_status', 'unknown')}\n"
+            f"Snapshot ID: {payload.get('snapshot_id', 'none')}\n"
+            f"Telemetry Health: {payload.get('telemetry_health', payload.get('status', 'unknown'))}\n"
+            f"Metric Availability: {metric_summary}\n"
+            f"Effectiveness Evaluation Status: {payload.get('effectiveness_evaluation_status', 'not_performed')}\n"
+            f"Blocker Count: {len(payload.get('blockers', []) if isinstance(payload.get('blockers'), list) else [])}\n"
+            f"Warning Count: {len(payload.get('warnings', []) if isinstance(payload.get('warnings'), list) else [])}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Review read-only deployed-rule telemetry state.')}"
+        )
+
+    def _deployed_rule_effectiveness_readiness_common_kwargs(self) -> dict[str, object]:
+        return {
+            "canonical_rule_id": self.deployed_rule_effectiveness_readiness_rule_id_var.get().strip(),
+            "production_deployment_result_id": self.deployed_rule_effectiveness_readiness_result_id_var.get().strip(),
+            "production_target_id": self.deployed_rule_effectiveness_readiness_target_id_var.get().strip(),
+            "deployed_rule_id": self.deployed_rule_effectiveness_readiness_deployed_rule_id_var.get().strip(),
+            "telemetry_snapshot_id": self.deployed_rule_effectiveness_readiness_snapshot_id_var.get().strip(),
+            "observation_window_start": self.deployed_rule_effectiveness_readiness_start_var.get().strip(),
+            "observation_window_end": self.deployed_rule_effectiveness_readiness_end_var.get().strip(),
+            "post_deployment_result_id": self.deployed_rule_effectiveness_readiness_phase_9w_result_id_var.get().strip() or None,
+        }
+
+    def _register_deployed_rule_effectiveness_readiness_traces(self) -> None:
+        if getattr(self, "_deployed_rule_effectiveness_readiness_traces_registered", False):
+            return
+        self._deployed_rule_effectiveness_readiness_traces_registered = True
+        for variable in (
+            self.deployed_rule_effectiveness_readiness_rule_id_var,
+            self.deployed_rule_effectiveness_readiness_result_id_var,
+            self.deployed_rule_effectiveness_readiness_target_id_var,
+            self.deployed_rule_effectiveness_readiness_deployed_rule_id_var,
+            self.deployed_rule_effectiveness_readiness_snapshot_id_var,
+            self.deployed_rule_effectiveness_readiness_start_var,
+            self.deployed_rule_effectiveness_readiness_end_var,
+            self.deployed_rule_effectiveness_readiness_phase_9w_result_id_var,
+            self.deployed_rule_effectiveness_readiness_plan_id_var,
+            self.deployed_rule_effectiveness_readiness_loaded_result_id_var,
+            self.deployed_rule_effectiveness_readiness_confirmation_var,
+        ):
+            trace_add = getattr(variable, "trace_add", None)
+            if callable(trace_add):
+                trace_add("write", self._on_deployed_rule_effectiveness_readiness_input_changed)
+
+    def _on_deployed_rule_effectiveness_readiness_input_changed(self, *_args: object) -> None:
+        self._mark_deployed_rule_effectiveness_readiness_stale()
+
+    def _mark_deployed_rule_effectiveness_readiness_stale(self) -> None:
+        self.deployed_rule_effectiveness_readiness_status_var.set(
+            "Phase 9V Status: stale\n"
+            "Deployed Rule Status: stale\n"
+            "Canonical Source Rule Status: stale\n"
+            "Telemetry Snapshot Status: stale\n"
+            "Execution Producer Availability: unknown\n"
+            "Execution Producer ID: unknown\n"
+            "Execution Producer Fingerprint: unknown\n"
+            "Valid Execution Attempt Count: 0\n"
+            "Completed Event Count: 0\n"
+            "Failed Event Count: 0\n"
+            "Minimum Execution Attempts: 30\n"
+            "Sample Sufficiency Status: stale_due_to_input_change\n"
+            "Denominator Readiness: stale_due_to_input_change\n"
+            "Observation-Window Readiness: stale_due_to_input_change\n"
+            "Readiness Status: stale_due_to_input_change\n"
+            "Readiness Plan ID: none\n"
+            "Readiness Result ID: none\n"
+            "Health Scope: repository-wide\n"
+            "Readiness Health: stale\n"
+            "Effectiveness Evaluation Status: not_performed\n"
+            "Blocker Count: 0\n"
+            "Warning Count: 1\n"
+            "Recommended Action: Refresh readiness workspace, eligibility, plan, result, health, or report after changing inputs."
+        )
+
+    def _validate_deployed_rule_effectiveness_readiness_inputs(self, action: str) -> bool:
+        shared = (
+            ("canonical_rule_id", self.deployed_rule_effectiveness_readiness_rule_id_var.get().strip()),
+            ("production_deployment_result_id", self.deployed_rule_effectiveness_readiness_result_id_var.get().strip()),
+            ("production_target_id", self.deployed_rule_effectiveness_readiness_target_id_var.get().strip()),
+            ("deployed_rule_id", self.deployed_rule_effectiveness_readiness_deployed_rule_id_var.get().strip()),
+            ("telemetry_snapshot_id", self.deployed_rule_effectiveness_readiness_snapshot_id_var.get().strip()),
+            ("observation_window_start", self.deployed_rule_effectiveness_readiness_start_var.get().strip()),
+            ("observation_window_end", self.deployed_rule_effectiveness_readiness_end_var.get().strip()),
+        )
+        required_fields = {
+            "load_deployed_rule_effectiveness_readiness_workspace": shared,
+            "validate_deployed_rule_effectiveness_readiness_eligibility": shared,
+            "build_deployed_rule_effectiveness_readiness_plan": shared,
+            "copy_deployed_rule_effectiveness_readiness_report": shared,
+            "load_deployed_rule_effectiveness_readiness_result": (
+                ("effectiveness_readiness_result_id", self.deployed_rule_effectiveness_readiness_loaded_result_id_var.get().strip()),
+            ),
+            "record_deployed_rule_effectiveness_readiness_result": (
+                ("effectiveness_readiness_plan_id", self.deployed_rule_effectiveness_readiness_plan_id_var.get().strip()),
+                ("confirmation", self.deployed_rule_effectiveness_readiness_confirmation_var.get().strip()),
+            ),
+        }
+        required = required_fields.get(action, ())
+        missing = [name for name, value in required if not value]
+        confirmation = self.deployed_rule_effectiveness_readiness_confirmation_var.get().strip()
+        if action == "record_deployed_rule_effectiveness_readiness_result" and confirmation and confirmation != "RECORD_EFFECTIVENESS_READINESS_RESULT":
+            missing.append("confirmation_exact_match_required")
+        if not missing:
+            return True
+        self.deployed_rule_effectiveness_readiness_status_var.set(
+            "Phase 9V Status: blocked\n"
+            "Deployed Rule Status: blocked\n"
+            "Canonical Source Rule Status: unknown\n"
+            "Telemetry Snapshot Status: blocked\n"
+            "Execution Producer Availability: unknown\n"
+            "Execution Producer ID: unknown\n"
+            "Execution Producer Fingerprint: unknown\n"
+            "Valid Execution Attempt Count: 0\n"
+            "Completed Event Count: 0\n"
+            "Failed Event Count: 0\n"
+            "Minimum Execution Attempts: 30\n"
+            "Sample Sufficiency Status: blocked\n"
+            "Denominator Readiness: blocked\n"
+            f"Observation-Window Readiness: {self.deployed_rule_effectiveness_readiness_start_var.get().strip() or 'none'} -> {self.deployed_rule_effectiveness_readiness_end_var.get().strip() or 'none'}\n"
+            "Readiness Status: blocked\n"
+            f"Readiness Plan ID: {self.deployed_rule_effectiveness_readiness_plan_id_var.get().strip() or 'none'}\n"
+            f"Readiness Result ID: {self.deployed_rule_effectiveness_readiness_loaded_result_id_var.get().strip() or 'none'}\n"
+            "Health Scope: repository-wide\n"
+            "Readiness Health: blocked\n"
+            "Effectiveness Evaluation Status: not_performed\n"
+            f"Blocker Count: {len(missing)}\n"
+            "Warning Count: 0\n"
+            f"Recommended Action: Enter required readiness identifiers before {action}: {', '.join(missing)}."
+        )
+        self.status_var.set(f"Deployed rule effectiveness readiness action blocked: missing {', '.join(missing)}.")
+        return False
+
+    def _set_deployed_rule_effectiveness_readiness_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        criteria = payload.get("criteria")
+        if isinstance(criteria, dict):
+            phase_9v_status = "completed" if criteria.get("phase_9v_deployment_completed") else payload.get("status", "unknown")
+            deployed_status = "bound" if criteria.get("deployed_instance_bound_to_phase_9v_result") else "unknown"
+            canonical_status = "unchanged" if criteria.get("canonical_source_rule_unchanged") else "unknown"
+            snapshot_status = "bound" if criteria.get("telemetry_snapshot_exists") else "unknown"
+        else:
+            phase_9v_status = payload.get("phase_9v_result_status", payload.get("status", "unknown"))
+            deployed_status = payload.get("deployed_rule_status", payload.get("status", "unknown"))
+            canonical_status = payload.get("canonical_source_rule_status", "unknown")
+            snapshot_status = payload.get("snapshot_completeness_status", payload.get("status", "unknown"))
+        self.deployed_rule_effectiveness_readiness_status_var.set(
+            f"Phase 9V Status: {phase_9v_status}\n"
+            f"Deployed Rule Status: {deployed_status}\n"
+            f"Canonical Source Rule Status: {canonical_status}\n"
+            f"Telemetry Snapshot Status: {snapshot_status}\n"
+            f"Execution Producer Availability: {payload.get('execution_producer_available', payload.get('execution_producer_status', 'unknown'))}\n"
+            f"Execution Producer ID: {payload.get('execution_producer_id', 'unknown')}\n"
+            f"Execution Producer Fingerprint: {payload.get('execution_producer_fingerprint', 'unknown')}\n"
+            f"Valid Execution Attempt Count: {payload.get('valid_execution_attempt_count', 0)}\n"
+            f"Completed Event Count: {payload.get('execution_completion_count', 0)}\n"
+            f"Failed Event Count: {payload.get('execution_failure_count', 0)}\n"
+            f"Minimum Execution Attempts: {payload.get('minimum_execution_attempt_count', 30)}\n"
+            f"Sample Sufficiency Status: {payload.get('sample_sufficiency_status', 'unknown')}\n"
+            f"Denominator Readiness: {payload.get('denominator_readiness', 'unknown')}\n"
+            f"Observation-Window Readiness: {payload.get('observation_window_readiness', 'unknown')}\n"
+            f"Readiness Status: {payload.get('readiness_status', payload.get('status', 'unknown'))}\n"
+            f"Readiness Plan ID: {payload.get('effectiveness_readiness_plan_id', self.deployed_rule_effectiveness_readiness_plan_id_var.get().strip() or 'none')}\n"
+            f"Readiness Result ID: {payload.get('effectiveness_readiness_result_id', self.deployed_rule_effectiveness_readiness_loaded_result_id_var.get().strip() or 'none')}\n"
+            f"Health Scope: {payload.get('health_scope', 'repository-wide')}\n"
+            f"Readiness Health: {payload.get('readiness_health', payload.get('status', 'unknown'))}\n"
+            f"Effectiveness Evaluation Status: {payload.get('effectiveness_evaluation_status', 'not_performed')}\n"
+            f"Blocker Count: {len(payload.get('blockers', []) if isinstance(payload.get('blockers'), list) else [])}\n"
+            f"Warning Count: {len(payload.get('warnings', []) if isinstance(payload.get('warnings'), list) else [])}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue deployed-rule effectiveness-readiness review.')}"
+        )
 
     def _set_pdf_viewport_status(self, *, viewport: dict[str, object] | None, render: dict[str, object] | None) -> None:
         certification = "unknown"
@@ -2842,6 +5083,89 @@ class DesktopRightPanelMixin:
         rule_revalidation_receipt_id = "none"
         rule_revalidation_status = "none"
         rule_revalidation_rollback_verified = "No"
+        rule_supersession_old_rule_status = "none"
+        rule_supersession_old_rule_certification = "none"
+        rule_supersession_proposal_status = "none"
+        rule_supersession_mapping_status = "none"
+        rule_supersession_compatibility = "none"
+        rule_supersession_scope_change = "none"
+        rule_supersession_review_status = "none"
+        rule_supersession_new_rule_id = "none"
+        rule_supersession_version_chain_id = "none"
+        rule_supersession_receipt_id = "none"
+        rule_supersession_revalidation_status = "none"
+        rule_supersession_rollback_available = "No"
+        rule_effectiveness_certification = "none"
+        rule_effectiveness_dataset_status = "none"
+        rule_effectiveness_records_planned = 0
+        rule_effectiveness_records_evaluated = 0
+        rule_effectiveness_matched = 0
+        rule_effectiveness_not_matched = 0
+        rule_effectiveness_errors = 0
+        rule_effectiveness_match_coverage = "null"
+        rule_effectiveness_labels = "No"
+        rule_effectiveness_precision = "null"
+        rule_effectiveness_recall = "null"
+        rule_effectiveness_specificity = "null"
+        rule_effectiveness_balanced_accuracy = "null"
+        rule_effectiveness_comparison = "none"
+        rule_effectiveness_disagreement = "null"
+        rule_effectiveness_mutation = "No"
+        rule_effectiveness_recommendation_rule_id = "none"
+        rule_effectiveness_recommendation_analysis_status = "none"
+        rule_effectiveness_recommendation_policy_status = "none"
+        rule_effectiveness_recommendation_type = "none"
+        rule_effectiveness_recommendation_status = "not_generated"
+        rule_effectiveness_recommendation_triggered = 0
+        rule_effectiveness_recommendation_outcome_metrics = "No"
+        rule_effectiveness_recommendation_comparison_available = "No"
+        rule_effectiveness_recommendation_review_status = "pending"
+        rule_effectiveness_recommendation_action_type = "none"
+        rule_effectiveness_recommendation_action_status = "not_queued"
+        rule_batch_dataset_status = "none"
+        rule_batch_policy_status = "none"
+        rule_batch_document_status = "unknown"
+        rule_batch_revision_lock_status = "unknown"
+        rule_batch_selected_rule_count = 0
+        rule_batch_eligible_rule_count = 0
+        rule_batch_blocked_rule_count = 0
+        rule_batch_rules_omitted_by_limit = 0
+        rule_batch_foreign_document_rule_count = 0
+        rule_batch_foreign_revision_rule_count = 0
+        rule_batch_total_planned_evaluations = 0
+        rule_batch_status = "not_run"
+        rule_batch_processed_count = 0
+        rule_batch_successful_count = 0
+        rule_batch_failed_count = 0
+        rule_batch_blocked_count = 0
+        rule_batch_next_item_index = 0
+        rule_batch_continue_count = 0
+        rule_batch_monitor_count = 0
+        rule_batch_rollback_count = 0
+        rule_batch_supersession_count = 0
+        rule_batch_insufficient_count = 0
+        autonomous_pdf_document_status = "unknown"
+        autonomous_pdf_native_text_status = "unknown"
+        autonomous_pdf_class = "unknown"
+        autonomous_pdf_readiness = "unknown"
+        autonomous_pdf_plan_status = "none"
+        autonomous_pdf_run_status = "not_run"
+        autonomous_pdf_certified_rule_count = 0
+        autonomous_pdf_blocked_item_count = 0
+        autonomous_pdf_receipt_id = "none"
+        autonomous_pdf_benchmark_manifest_status = "unknown"
+        autonomous_pdf_benchmark_run_status = "unknown"
+        autonomous_pdf_benchmark_release_classification = "not_run"
+        autonomous_pdf_benchmark_native_text_coverage = "null"
+        autonomous_pdf_benchmark_anchor_recall = "null"
+        autonomous_pdf_benchmark_citation_precision = "null"
+        autonomous_pdf_benchmark_citation_recall = "null"
+        autonomous_pdf_benchmark_proposal_precision = "null"
+        autonomous_pdf_benchmark_proposal_recall = "null"
+        autonomous_pdf_benchmark_rule_precision = "null"
+        autonomous_pdf_benchmark_certification_correctness = "null"
+        autonomous_pdf_benchmark_safety_count = 0
+        autonomous_pdf_benchmark_mismatch_count = 0
         selected_text = "none"
         recommended = "Open a certified viewport session."
         renderer_status = "unavailable"
@@ -2959,6 +5283,182 @@ class DesktopRightPanelMixin:
             rule_revalidation_receipt_id = str(rule_revalidation_action.get("certification_receipt_id") or rule_revalidation_receipt_id)
             rule_revalidation_status = str(rule_revalidation_action.get("revalidation_status") or rule_revalidation_status)
             rule_revalidation_rollback_verified = "Yes" if rule_revalidation_action.get("rollback_verified") else rule_revalidation_rollback_verified
+        rule_supersession = getattr(self, "_rule_supersession_workspace", None)
+        if isinstance(rule_supersession, dict):
+            rule_supersession_old_rule_status = str(rule_supersession.get("old_rule_status") or "none")
+            rule_supersession_old_rule_certification = str(rule_supersession.get("old_rule_certification_status") or "none")
+            rule_supersession_proposal_status = str(rule_supersession.get("replacement_proposal_status") or "none")
+            rule_supersession_mapping_status = str(rule_supersession.get("replacement_mapping_status") or "none")
+            rule_supersession_compatibility = str(rule_supersession.get("supersession_compatibility") or "none")
+            rule_supersession_scope_change = "required" if "replacement_scope_is_broader" in set(rule_supersession.get("warnings", [])) or "replacement_scope_is_narrower" in set(rule_supersession.get("warnings", [])) else "not_required"
+            rule_supersession_review_status = str(rule_supersession.get("review_status") or "pending")
+            rule_supersession_new_rule_id = str(rule_supersession.get("candidate_rule_id") or "none")
+            rule_supersession_version_chain_id = str(rule_supersession.get("version_chain_id") or "none")
+            rule_supersession_receipt_id = str(rule_supersession.get("supersession_receipt_id") or "none")
+            rule_supersession_revalidation_status = str(rule_supersession.get("replacement_revalidation_status") or "none")
+            rule_supersession_rollback_available = "Yes" if rule_supersession.get("rollback_available") else "No"
+            recommended = str(rule_supersession.get("recommended_action") or recommended)
+        rule_supersession_action = getattr(self, "_rule_supersession_action", None)
+        if isinstance(rule_supersession_action, dict):
+            rule_supersession_new_rule_id = str(rule_supersession_action.get("new_rule_id") or rule_supersession_new_rule_id)
+            rule_supersession_version_chain_id = str(rule_supersession_action.get("version_chain_id") or rule_supersession_version_chain_id)
+            rule_supersession_receipt_id = str(rule_supersession_action.get("supersession_receipt_id") or rule_supersession_receipt_id)
+            rule_supersession_revalidation_status = str(rule_supersession_action.get("revalidation_status") or rule_supersession_revalidation_status)
+            if rule_supersession_action.get("status") == "rollback_completed":
+                rule_supersession_rollback_available = "No"
+        rule_effectiveness_workspace = getattr(self, "_rule_effectiveness_workspace", None)
+        if isinstance(rule_effectiveness_workspace, dict):
+            rule_effectiveness_certification = str(rule_effectiveness_workspace.get("rule_certification_status") or "none")
+            rule_effectiveness_dataset_status = str(rule_effectiveness_workspace.get("dataset_status") or "none")
+            rule_effectiveness_comparison = str(rule_effectiveness_workspace.get("comparison_rule_id") or "none")
+            recommended = str(rule_effectiveness_workspace.get("recommended_action") or recommended)
+        rule_effectiveness_analysis = getattr(self, "_rule_effectiveness_analysis", None)
+        if isinstance(rule_effectiveness_analysis, dict):
+            rule_effectiveness_records_planned = int(rule_effectiveness_analysis.get("records_planned", 0) or 0)
+            rule_effectiveness_records_evaluated = int(rule_effectiveness_analysis.get("records_evaluated", 0) or 0)
+            rule_effectiveness_matched = int(rule_effectiveness_analysis.get("matched_count", 0) or 0)
+            rule_effectiveness_not_matched = int(rule_effectiveness_analysis.get("not_matched_count", 0) or 0)
+            rule_effectiveness_errors = int(rule_effectiveness_analysis.get("evaluation_error_count", 0) or 0)
+            rule_effectiveness_match_coverage = f"{float(rule_effectiveness_analysis.get('match_coverage')) * 100:.2f}%" if isinstance(rule_effectiveness_analysis.get("match_coverage"), (int, float)) else "null"
+            outcome_metrics = rule_effectiveness_analysis.get("outcome_metrics", {}) or {}
+            rule_effectiveness_labels = "Yes" if outcome_metrics.get("outcome_metrics_status") != "unavailable" else "No"
+            rule_effectiveness_precision = f"{float(outcome_metrics.get('precision')) * 100:.2f}%" if isinstance(outcome_metrics.get("precision"), (int, float)) else "null"
+            rule_effectiveness_recall = f"{float(outcome_metrics.get('recall')) * 100:.2f}%" if isinstance(outcome_metrics.get("recall"), (int, float)) else "null"
+            rule_effectiveness_specificity = f"{float(outcome_metrics.get('specificity')) * 100:.2f}%" if isinstance(outcome_metrics.get("specificity"), (int, float)) else "null"
+            rule_effectiveness_balanced_accuracy = f"{float(outcome_metrics.get('balanced_accuracy')) * 100:.2f}%" if isinstance(outcome_metrics.get("balanced_accuracy"), (int, float)) else "null"
+            comparison_metrics = rule_effectiveness_analysis.get("comparison", {}) or {}
+            rule_effectiveness_comparison = str(comparison_metrics.get("comparison_rule_id") or rule_effectiveness_comparison)
+            rule_effectiveness_disagreement = f"{float(comparison_metrics.get('match_disagreement_rate')) * 100:.2f}%" if isinstance(comparison_metrics.get("match_disagreement_rate"), (int, float)) else "null"
+            rule_effectiveness_mutation = "Yes" if rule_effectiveness_analysis.get("persistent_state_mutated") else "No"
+        recommendation_workspace = getattr(self, "_rule_effectiveness_recommendation_workspace", None)
+        if isinstance(recommendation_workspace, dict):
+            rule_effectiveness_recommendation_rule_id = str(recommendation_workspace.get("rule_id") or "none")
+            rule_effectiveness_recommendation_analysis_status = str(recommendation_workspace.get("analysis_status") or "none")
+            rule_effectiveness_recommendation_policy_status = str(recommendation_workspace.get("policy_status") or "none")
+            rule_effectiveness_recommendation_type = str(recommendation_workspace.get("recommendation_type") or rule_effectiveness_recommendation_type)
+            rule_effectiveness_recommendation_status = str(recommendation_workspace.get("recommendation_status") or rule_effectiveness_recommendation_status)
+            rule_effectiveness_recommendation_triggered = int(recommendation_workspace.get("triggered_condition_count", 0) or 0)
+            rule_effectiveness_recommendation_outcome_metrics = "Yes" if recommendation_workspace.get("outcome_metrics_available") else "No"
+            rule_effectiveness_recommendation_comparison_available = "Yes" if recommendation_workspace.get("version_comparison_available") else "No"
+            rule_effectiveness_recommendation_review_status = str(recommendation_workspace.get("review_status") or rule_effectiveness_recommendation_review_status)
+            rule_effectiveness_recommendation_action_type = str(recommendation_workspace.get("action_candidate_type") or rule_effectiveness_recommendation_action_type)
+            rule_effectiveness_recommendation_action_status = str(recommendation_workspace.get("action_candidate_status") or rule_effectiveness_recommendation_action_status)
+            recommended = str(recommendation_workspace.get("recommended_action") or recommended)
+        recommendation = getattr(self, "_rule_effectiveness_recommendation", None)
+        if isinstance(recommendation, dict):
+            rule_effectiveness_recommendation_rule_id = str(recommendation.get("rule_id") or rule_effectiveness_recommendation_rule_id)
+            rule_effectiveness_recommendation_type = str(recommendation.get("recommendation_type") or rule_effectiveness_recommendation_type)
+            rule_effectiveness_recommendation_status = str(recommendation.get("status") or recommendation.get("recommendation_status") or rule_effectiveness_recommendation_status)
+            rule_effectiveness_recommendation_triggered = len(list(recommendation.get("triggered_conditions", []) or []))
+            metrics = recommendation.get("supporting_metrics", {}) or {}
+            rule_effectiveness_recommendation_outcome_metrics = "Yes" if metrics.get("outcome_metrics_status") == "available" else rule_effectiveness_recommendation_outcome_metrics
+            rule_effectiveness_recommendation_comparison_available = "Yes" if metrics.get("comparison_rule_id") else rule_effectiveness_recommendation_comparison_available
+        recommendation_review = getattr(self, "_rule_effectiveness_recommendation_review", None)
+        if isinstance(recommendation_review, dict):
+            rule_effectiveness_recommendation_review_status = str(recommendation_review.get("review_status") or rule_effectiveness_recommendation_review_status)
+        recommendation_action = getattr(self, "_rule_effectiveness_recommendation_action", None)
+        if isinstance(recommendation_action, dict):
+            rule_effectiveness_recommendation_action_type = str(recommendation_action.get("action_type") or rule_effectiveness_recommendation_action_type)
+            rule_effectiveness_recommendation_action_status = str(recommendation_action.get("status") or rule_effectiveness_recommendation_action_status)
+        rule_batch_workspace = getattr(self, "_rule_batch_workspace", None)
+        if isinstance(rule_batch_workspace, dict):
+            rule_batch_document_status = str(rule_batch_workspace.get("document_status") or rule_batch_document_status)
+            rule_batch_revision_lock_status = str(rule_batch_workspace.get("revision_lock_status") or rule_batch_revision_lock_status)
+            rule_batch_dataset_status = str(rule_batch_workspace.get("dataset_status") or "none")
+            rule_batch_policy_status = str(rule_batch_workspace.get("policy_status") or "none")
+            rule_batch_selected_rule_count = int(rule_batch_workspace.get("selected_rule_count", 0) or 0)
+            rule_batch_eligible_rule_count = int(rule_batch_workspace.get("eligible_rule_count", 0) or 0)
+            rule_batch_blocked_rule_count = int(rule_batch_workspace.get("blocked_rule_count", 0) or 0)
+            rule_batch_foreign_document_rule_count = int(rule_batch_workspace.get("foreign_document_rule_count", 0) or 0)
+            rule_batch_foreign_revision_rule_count = int(rule_batch_workspace.get("foreign_revision_rule_count", 0) or 0)
+            recommended = str(rule_batch_workspace.get("recommended_action") or recommended)
+        rule_batch_plan = getattr(self, "_rule_batch_plan", None)
+        if isinstance(rule_batch_plan, dict):
+            rule_batch_total_planned_evaluations = int(rule_batch_plan.get("total_planned_evaluations", 0) or 0)
+            rule_batch_blocked_rule_count = sum(1 for item in rule_batch_plan.get("items", []) if item.get("blockers"))
+            rule_batch_rules_omitted_by_limit = int(rule_batch_plan.get("rules_omitted_by_limit", 0) or 0)
+            rule_batch_foreign_document_rule_count = int(rule_batch_plan.get("foreign_document_rule_count", rule_batch_foreign_document_rule_count) or 0)
+            rule_batch_foreign_revision_rule_count = int(rule_batch_plan.get("foreign_revision_rule_count", rule_batch_foreign_revision_rule_count) or 0)
+        rule_batch_run = getattr(self, "_rule_batch_run", None)
+        if isinstance(rule_batch_run, dict):
+            rule_batch_status = str(rule_batch_run.get("status") or rule_batch_status)
+            rule_batch_processed_count = int(rule_batch_run.get("processed_count", 0) or 0)
+            rule_batch_successful_count = int(rule_batch_run.get("successful_count", 0) or 0)
+            rule_batch_failed_count = int(rule_batch_run.get("failed_count", 0) or 0)
+            rule_batch_blocked_count = int(rule_batch_run.get("blocked_count", 0) or 0)
+            rule_batch_next_item_index = int(rule_batch_run.get("next_item_index", 0) or 0)
+            for batch_item in rule_batch_run.get("items", []):
+                recommendation_type = str(batch_item.get("recommendation_type") or "")
+                if recommendation_type == "continue":
+                    rule_batch_continue_count += 1
+                elif recommendation_type == "monitor":
+                    rule_batch_monitor_count += 1
+                elif recommendation_type == "rollback_candidate":
+                    rule_batch_rollback_count += 1
+                elif recommendation_type == "supersession_review_candidate":
+                    rule_batch_supersession_count += 1
+                elif recommendation_type == "insufficient_evidence":
+                    rule_batch_insufficient_count += 1
+        rule_batch_health = getattr(self, "_rule_batch_health", None)
+        if isinstance(rule_batch_health, dict) and rule_batch_status == "not_run":
+            rule_batch_status = str(rule_batch_health.get("status") or rule_batch_status)
+        autonomous_pdf_workspace = getattr(self, "_autonomous_pdf_workspace", None)
+        if isinstance(autonomous_pdf_workspace, dict):
+            autonomous_pdf_document_status = str(autonomous_pdf_workspace.get("document_status") or autonomous_pdf_document_status)
+            autonomous_pdf_native_text_status = str(autonomous_pdf_workspace.get("native_text_status") or autonomous_pdf_native_text_status)
+            autonomous_pdf_class = str(autonomous_pdf_workspace.get("document_class") or autonomous_pdf_class)
+            autonomous_pdf_readiness = str(autonomous_pdf_workspace.get("autonomous_readiness") or autonomous_pdf_readiness)
+            recommended = str(autonomous_pdf_workspace.get("recommended_action") or recommended)
+        autonomous_pdf_plan = getattr(self, "_autonomous_pdf_plan", None)
+        if isinstance(autonomous_pdf_plan, dict):
+            autonomous_pdf_plan_status = "blocked" if autonomous_pdf_plan.get("blockers") else "planned"
+        autonomous_pdf_run = getattr(self, "_autonomous_pdf_run", None)
+        if isinstance(autonomous_pdf_run, dict):
+            autonomous_pdf_run_status = str(autonomous_pdf_run.get("status") or autonomous_pdf_run_status)
+            autonomous_pdf_class = str(autonomous_pdf_run.get("document_class") or autonomous_pdf_class)
+            autonomous_pdf_native_text_status = str(autonomous_pdf_run.get("native_text_status") or autonomous_pdf_native_text_status)
+            autonomous_pdf_certified_rule_count = int(autonomous_pdf_run.get("certified_rule_count", 0) or 0)
+            autonomous_pdf_blocked_item_count = int(autonomous_pdf_run.get("blocked_item_count", 0) or 0)
+            autonomous_pdf_receipt_id = str(autonomous_pdf_run.get("autonomous_receipt_id") or autonomous_pdf_receipt_id)
+        autonomous_pdf_health = getattr(self, "_autonomous_pdf_health", None)
+        if isinstance(autonomous_pdf_health, dict) and autonomous_pdf_plan_status == "none":
+            autonomous_pdf_plan_status = str(autonomous_pdf_health.get("status") or autonomous_pdf_plan_status)
+            recommended = str(autonomous_pdf_health.get("recommended_action") or recommended)
+        autonomous_pdf_benchmark_workspace = getattr(self, "_autonomous_pdf_benchmark_workspace", None)
+        if isinstance(autonomous_pdf_benchmark_workspace, dict):
+            autonomous_pdf_benchmark_manifest_status = str(autonomous_pdf_benchmark_workspace.get("benchmark_manifest_status") or autonomous_pdf_benchmark_manifest_status)
+            autonomous_pdf_benchmark_run_status = str(autonomous_pdf_benchmark_workspace.get("autonomous_run_status") or autonomous_pdf_benchmark_run_status)
+            autonomous_pdf_benchmark_release_classification = str(autonomous_pdf_benchmark_workspace.get("benchmark_status") or autonomous_pdf_benchmark_release_classification)
+            recommended = str(autonomous_pdf_benchmark_workspace.get("recommended_action") or recommended)
+        autonomous_pdf_benchmark_validation = getattr(self, "_autonomous_pdf_benchmark_manifest_validation", None)
+        if isinstance(autonomous_pdf_benchmark_validation, dict):
+            autonomous_pdf_benchmark_manifest_status = str(autonomous_pdf_benchmark_validation.get("status") or autonomous_pdf_benchmark_manifest_status)
+        autonomous_pdf_benchmark_result = getattr(self, "_autonomous_pdf_benchmark_result", None)
+        if isinstance(autonomous_pdf_benchmark_result, dict):
+            autonomous_pdf_benchmark_release_classification = str(autonomous_pdf_benchmark_result.get("release_classification") or autonomous_pdf_benchmark_release_classification)
+        benchmark_loaded = None
+        if hasattr(self, "autonomous_pdf_benchmark_result_id_var"):
+            benchmark_loaded = self.autonomous_pdf_benchmark_result_id_var.get().strip() or None
+        from .autonomous_pdf_benchmark import load_autonomous_pdf_benchmark_result
+        if benchmark_loaded:
+            loaded_benchmark = load_autonomous_pdf_benchmark_result(benchmark_loaded)
+            benchmark_payload = loaded_benchmark.get("benchmark_result") if isinstance(loaded_benchmark, dict) else None
+            if isinstance(benchmark_payload, dict):
+                metrics = benchmark_payload.get("stage_metrics") or {}
+                autonomous_pdf_benchmark_release_classification = str(benchmark_payload.get("release_classification") or autonomous_pdf_benchmark_release_classification)
+                autonomous_pdf_benchmark_native_text_coverage = f"{(((metrics.get('native_text_page_coverage') or {}).get('value')) or 0) * 100:.2f}%" if ((metrics.get("native_text_page_coverage") or {}).get("value")) is not None else "null"
+                autonomous_pdf_benchmark_anchor_recall = f"{(((metrics.get('section_anchor_recall') or {}).get('value')) or 0) * 100:.2f}%" if ((metrics.get("section_anchor_recall") or {}).get("value")) is not None else "null"
+                autonomous_pdf_benchmark_citation_precision = f"{(((metrics.get('citation_precision') or {}).get('value')) or 0) * 100:.2f}%" if ((metrics.get("citation_precision") or {}).get("value")) is not None else "null"
+                autonomous_pdf_benchmark_citation_recall = f"{(((metrics.get('citation_recall') or {}).get('value')) or 0) * 100:.2f}%" if ((metrics.get("citation_recall") or {}).get("value")) is not None else "null"
+                autonomous_pdf_benchmark_proposal_precision = f"{(((metrics.get('proposal_precision') or {}).get('value')) or 0) * 100:.2f}%" if ((metrics.get("proposal_precision") or {}).get("value")) is not None else "null"
+                autonomous_pdf_benchmark_proposal_recall = f"{(((metrics.get('proposal_recall') or {}).get('value')) or 0) * 100:.2f}%" if ((metrics.get("proposal_recall") or {}).get("value")) is not None else "null"
+                autonomous_pdf_benchmark_rule_precision = f"{(((metrics.get('rule_activation_precision') or {}).get('value')) or 0) * 100:.2f}%" if ((metrics.get("rule_activation_precision") or {}).get("value")) is not None else "null"
+                autonomous_pdf_benchmark_certification_correctness = f"{(((metrics.get('certification_correctness') or {}).get('value')) or 0) * 100:.2f}%" if ((metrics.get("certification_correctness") or {}).get("value")) is not None else "null"
+                autonomous_pdf_benchmark_safety_count = len(benchmark_payload.get("critical_safety_violations", []) or [])
+                autonomous_pdf_benchmark_mismatch_count = len(benchmark_payload.get("mismatches", []) or [])
+        autonomous_pdf_benchmark_health = getattr(self, "_autonomous_pdf_benchmark_health", None)
+        if isinstance(autonomous_pdf_benchmark_health, dict):
+            autonomous_pdf_benchmark_run_status = str(autonomous_pdf_benchmark_health.get("status") or autonomous_pdf_benchmark_run_status)
         selection = getattr(self, "_pdf_viewport_selection", None)
         if isinstance(selection, dict) and selection.get("selection_status") == "selected":
             selected_text = str(selection.get("selected_text") or "")[:80] or "selected"
@@ -3021,6 +5521,90 @@ class DesktopRightPanelMixin:
             f"Rule Revalidation Certification Receipt ID: {rule_revalidation_receipt_id}\n"
             f"Rule Revalidation Status: {rule_revalidation_status}\n"
             f"Rule Revalidation Rollback Verified: {rule_revalidation_rollback_verified}\n"
+            f"Rule Supersession Old Rule Status: {rule_supersession_old_rule_status}\n"
+            f"Rule Supersession Old Rule Certification: {rule_supersession_old_rule_certification}\n"
+            f"Rule Supersession Proposal Status: {rule_supersession_proposal_status}\n"
+            f"Rule Supersession Mapping Status: {rule_supersession_mapping_status}\n"
+            f"Rule Supersession Compatibility: {rule_supersession_compatibility}\n"
+            f"Rule Supersession Scope Change: {rule_supersession_scope_change}\n"
+            f"Rule Supersession Review Status: {rule_supersession_review_status}\n"
+            f"Rule Supersession New Rule ID: {rule_supersession_new_rule_id}\n"
+            f"Rule Supersession Version Chain ID: {rule_supersession_version_chain_id}\n"
+            f"Rule Supersession Receipt ID: {rule_supersession_receipt_id}\n"
+            f"Rule Supersession Revalidation Status: {rule_supersession_revalidation_status}\n"
+            f"Rule Supersession Rollback Available: {rule_supersession_rollback_available}\n"
+            f"Rule Effectiveness Certification Status: {rule_effectiveness_certification}\n"
+            f"Rule Effectiveness Dataset Status: {rule_effectiveness_dataset_status}\n"
+            f"Rule Effectiveness Records Planned: {rule_effectiveness_records_planned}\n"
+            f"Rule Effectiveness Records Evaluated: {rule_effectiveness_records_evaluated}\n"
+            f"Rule Effectiveness Matched Count: {rule_effectiveness_matched}\n"
+            f"Rule Effectiveness Not-Matched Count: {rule_effectiveness_not_matched}\n"
+            f"Rule Effectiveness Error Count: {rule_effectiveness_errors}\n"
+            f"Rule Effectiveness Match Coverage: {rule_effectiveness_match_coverage}\n"
+            f"Rule Effectiveness Outcome Labels Available: {rule_effectiveness_labels}\n"
+            f"Rule Effectiveness Precision: {rule_effectiveness_precision}\n"
+            f"Rule Effectiveness Recall: {rule_effectiveness_recall}\n"
+            f"Rule Effectiveness Specificity: {rule_effectiveness_specificity}\n"
+            f"Rule Effectiveness Balanced Accuracy: {rule_effectiveness_balanced_accuracy}\n"
+            f"Rule Effectiveness Comparison Rule ID: {rule_effectiveness_comparison}\n"
+            f"Rule Effectiveness Disagreement Rate: {rule_effectiveness_disagreement}\n"
+            f"Rule Effectiveness Persistent Mutation Detected: {rule_effectiveness_mutation}\n"
+            f"Rule Effectiveness Recommendation Rule ID: {rule_effectiveness_recommendation_rule_id}\n"
+            f"Rule Effectiveness Recommendation Analysis Status: {rule_effectiveness_recommendation_analysis_status}\n"
+            f"Rule Effectiveness Recommendation Policy Status: {rule_effectiveness_recommendation_policy_status}\n"
+            f"Rule Effectiveness Recommendation Type: {rule_effectiveness_recommendation_type}\n"
+            f"Rule Effectiveness Recommendation Status: {rule_effectiveness_recommendation_status}\n"
+            f"Rule Effectiveness Recommendation Triggered Condition Count: {rule_effectiveness_recommendation_triggered}\n"
+            f"Rule Effectiveness Recommendation Outcome Metrics Available: {rule_effectiveness_recommendation_outcome_metrics}\n"
+            f"Rule Effectiveness Recommendation Version Comparison Available: {rule_effectiveness_recommendation_comparison_available}\n"
+            f"Rule Effectiveness Recommendation Review Status: {rule_effectiveness_recommendation_review_status}\n"
+            f"Rule Effectiveness Recommendation Action Candidate Type: {rule_effectiveness_recommendation_action_type}\n"
+            f"Rule Effectiveness Recommendation Action Candidate Status: {rule_effectiveness_recommendation_action_status}\n"
+            f"Rule Effectiveness Recommendation Automatic Action Performed: No\n"
+            f"Rule Batch Dataset Status: {rule_batch_dataset_status}\n"
+            f"Rule Batch Policy Status: {rule_batch_policy_status}\n"
+            f"Rule Batch Document Status: {rule_batch_document_status}\n"
+            f"Rule Batch Revision Lock Status: {rule_batch_revision_lock_status}\n"
+            f"Rule Batch Selected Rule Count: {rule_batch_selected_rule_count}\n"
+            f"Rule Batch Eligible Rule Count: {rule_batch_eligible_rule_count}\n"
+            f"Rule Batch Blocked Rule Count: {rule_batch_blocked_rule_count}\n"
+            f"Rule Batch Rules Omitted by Limit: {rule_batch_rules_omitted_by_limit}\n"
+            f"Rule Batch Foreign-Document Rule Count: {rule_batch_foreign_document_rule_count}\n"
+            f"Rule Batch Foreign-Revision Rule Count: {rule_batch_foreign_revision_rule_count}\n"
+            f"Rule Batch Total Planned Evaluations: {rule_batch_total_planned_evaluations}\n"
+            f"Rule Batch Status: {rule_batch_status}\n"
+            f"Rule Batch Processed Count: {rule_batch_processed_count}\n"
+            f"Rule Batch Successful Count: {rule_batch_successful_count}\n"
+            f"Rule Batch Failed Count: {rule_batch_failed_count}\n"
+            f"Rule Batch Blocked Count: {rule_batch_blocked_count}\n"
+            f"Rule Batch Next Item Index: {rule_batch_next_item_index}\n"
+            f"Rule Batch Continue Recommendation Count: {rule_batch_continue_count}\n"
+            f"Rule Batch Monitor Recommendation Count: {rule_batch_monitor_count}\n"
+            f"Rule Batch Rollback-Candidate Count: {rule_batch_rollback_count}\n"
+            f"Rule Batch Supersession-Candidate Count: {rule_batch_supersession_count}\n"
+            f"Rule Batch Insufficient-Evidence Count: {rule_batch_insufficient_count}\n"
+            f"Autonomous PDF Document Status: {autonomous_pdf_document_status}\n"
+            f"Autonomous PDF Native Text Status: {autonomous_pdf_native_text_status}\n"
+            f"Autonomous PDF Class: {autonomous_pdf_class}\n"
+            f"Autonomous PDF Readiness: {autonomous_pdf_readiness}\n"
+            f"Autonomous PDF Plan Status: {autonomous_pdf_plan_status}\n"
+            f"Autonomous PDF Run Status: {autonomous_pdf_run_status}\n"
+            f"Autonomous PDF Certified Rule Count: {autonomous_pdf_certified_rule_count}\n"
+            f"Autonomous PDF Blocked Item Count: {autonomous_pdf_blocked_item_count}\n"
+            f"Autonomous PDF Receipt ID: {autonomous_pdf_receipt_id}\n"
+            f"Autonomous PDF Benchmark Manifest Status: {autonomous_pdf_benchmark_manifest_status}\n"
+            f"Autonomous PDF Benchmark Run Status: {autonomous_pdf_benchmark_run_status}\n"
+            f"Autonomous PDF Benchmark Release Classification: {autonomous_pdf_benchmark_release_classification}\n"
+            f"Autonomous PDF Benchmark Native-Text Coverage: {autonomous_pdf_benchmark_native_text_coverage}\n"
+            f"Autonomous PDF Benchmark Section-Anchor Recall: {autonomous_pdf_benchmark_anchor_recall}\n"
+            f"Autonomous PDF Benchmark Citation Precision: {autonomous_pdf_benchmark_citation_precision}\n"
+            f"Autonomous PDF Benchmark Citation Recall: {autonomous_pdf_benchmark_citation_recall}\n"
+            f"Autonomous PDF Benchmark Proposal Precision: {autonomous_pdf_benchmark_proposal_precision}\n"
+            f"Autonomous PDF Benchmark Proposal Recall: {autonomous_pdf_benchmark_proposal_recall}\n"
+            f"Autonomous PDF Benchmark Rule-Activation Precision: {autonomous_pdf_benchmark_rule_precision}\n"
+            f"Autonomous PDF Benchmark Certification Correctness: {autonomous_pdf_benchmark_certification_correctness}\n"
+            f"Autonomous PDF Benchmark Critical Safety Violation Count: {autonomous_pdf_benchmark_safety_count}\n"
+            f"Autonomous PDF Benchmark Mismatch Count: {autonomous_pdf_benchmark_mismatch_count}\n"
             f"Selected Text: {selected_text}\n"
             f"Recommended Action: {recommended}"
         )

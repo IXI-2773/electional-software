@@ -16,16 +16,17 @@ from .proposal_promotion import (
     _proposal_locator,
     validate_proposal_promotion_provenance,
 )
-from .rules import (
-    ACTIVE_RULE_INDEX,
-    RULE_REPOSITORY_DIR,
-    active_rule_index_hash,
-    ensure_mutable_rule_repository,
-    list_rules,
-    load_rule,
-    save_rule,
-    update_rule,
-    validate_mutable_rule_record,
+from .canonical_rule_runtime import (
+    _hash_payload as _canonical_hash_payload,
+    _index_path as _canonical_rule_index_path,
+    _load_index as _load_canonical_rule_index,
+    _rule_path as _canonical_rule_path,
+    create_canonical_rule,
+    deactivate_canonical_rule,
+    get_canonical_rule_runtime_capability,
+    load_canonical_rule,
+    list_canonical_rules,
+    validate_canonical_rule_record,
 )
 from .source_documents import SOURCE_DOCUMENT_ROOT
 from .source_impact_analysis import QUEUE_INDEX, _queue_item_path, _update_queue_index, ensure_source_impact_dirs, list_source_revalidation_queue
@@ -282,10 +283,13 @@ def activate_rule_from_promoted_proposal(rule_activation_review_id: str, confirm
     candidate_fingerprint = _rule_fingerprint(candidate)
     if candidate_fingerprint != review.get("candidate_fingerprint"):
         return _blocked("rule_activation_invalid", blockers=["approved_candidate_fingerprint_mismatch"])
-    ensure_mutable_rule_repository(base)
+    capability = get_canonical_rule_runtime_capability(root=base)
+    if not capability.get("available"):
+        return _blocked("rule_activation_invalid", blockers=["rule_activation_storage_unavailable"])
     ensure_source_impact_dirs(base)
     if existing_receipt is not None:
-        rule = load_rule(str(existing_receipt.get("rule_id") or ""), root=base)
+        loaded_rule = load_canonical_rule(str(existing_receipt.get("rule_id") or ""), root=base)
+        rule = loaded_rule.get("rule") if loaded_rule.get("status") == "loaded" else None
         revalidation = _load_rule_activation_revalidation(base, str(existing_receipt.get("activation_receipt_id") or ""), reason="proposal_rule_activation")
         if (
             isinstance(rule, dict)
@@ -333,10 +337,10 @@ def activate_rule_from_promoted_proposal(rule_activation_review_id: str, confirm
         "created_at_utc": _now(),
         "updated_at_utc": _now(),
     }
-    schema_blockers = validate_mutable_rule_record(rule_payload)
-    if schema_blockers:
-        return _blocked("rule_activation_invalid", blockers=schema_blockers)
-    before_rule_index_hash = active_rule_index_hash(root=base)
+    validation = validate_canonical_rule_record(rule_payload, require_active=True)
+    if not validation.get("valid"):
+        return _blocked("rule_activation_invalid", blockers=list(validation.get("blockers", [])))
+    before_rule_index_hash = _canonical_hash_payload(_load_canonical_rule_index(base))
     revalidation_id = _rule_activation_revalidation_id(receipt_id, "activation")
     receipt_payload = {
         "schema_version": RULE_ACTIVATION_RECEIPT_SCHEMA_VERSION,
@@ -384,8 +388,8 @@ def activate_rule_from_promoted_proposal(rule_activation_review_id: str, confirm
     review_path = _rule_activation_review_path(base, rule_activation_review_id)
     revalidation_path = _queue_item_path(base, revalidation_id)
     write_targets = {
-        _rule_record_path(base, rule_id): _read_json(_rule_record_path(base, rule_id)),
-        base / "indexes" / ACTIVE_RULE_INDEX: _read_json(base / "indexes" / ACTIVE_RULE_INDEX),
+        _canonical_rule_path(base, rule_id): _read_json(_canonical_rule_path(base, rule_id)),
+        _canonical_rule_index_path(base): _read_json(_canonical_rule_index_path(base)),
         receipt_path: _read_json(receipt_path),
         base / "indexes" / RULE_ACTIVATION_RECEIPT_INDEX: _read_json(base / "indexes" / RULE_ACTIVATION_RECEIPT_INDEX),
         review_path: _read_json(review_path),
@@ -394,9 +398,15 @@ def activate_rule_from_promoted_proposal(rule_activation_review_id: str, confirm
         base / "indexes" / QUEUE_INDEX: _read_json(base / "indexes" / QUEUE_INDEX),
     }
     try:
-        saved_rule = save_rule(rule_payload, root=base)
+        created_rule = create_canonical_rule(rule_payload, confirmation="CREATE_RULE", root=base)
+        if created_rule.get("status") not in {"created", "already_created"}:
+            raise RuntimeError("canonical_rule_creation_failed")
+        saved_rule_result = load_canonical_rule(rule_id, require_active=True, root=base)
+        if saved_rule_result.get("status") != "loaded":
+            raise RuntimeError("canonical_rule_load_failed")
+        saved_rule = dict(saved_rule_result["rule"])
         receipt_payload["created_rule_hash"] = _hash_payload(saved_rule)
-        receipt_payload["after_rule_index_hash"] = active_rule_index_hash(root=base)
+        receipt_payload["after_rule_index_hash"] = _canonical_hash_payload(_load_canonical_rule_index(base))
         _atomic_write_json(receipt_path, receipt_payload)
         _update_rule_activation_receipt_index(base)
         _atomic_write_json(review_path, updated_review)
@@ -436,7 +446,8 @@ def rollback_proposal_rule_activation(activation_receipt_id: str, confirmation: 
     if receipt is None:
         return _blocked("activation_receipt_missing", blockers=["activation_receipt_missing"])
     rule_id = str(receipt.get("rule_id") or "")
-    rule = load_rule(rule_id, root=base)
+    loaded_rule = load_canonical_rule(rule_id, root=base)
+    rule = loaded_rule.get("rule") if loaded_rule.get("status") == "loaded" else None
     if not isinstance(rule, dict):
         return _blocked("rule_activation_state_diverged", blockers=["rule_activation_state_diverged"])
     if receipt.get("created_rule_hash") != _hash_payload(rule):
@@ -475,24 +486,22 @@ def rollback_proposal_rule_activation(activation_receipt_id: str, confirmation: 
     receipt_path = _rule_activation_receipt_path(base, activation_receipt_id)
     rollback_path = _queue_item_path(base, rollback_revalidation_id)
     write_targets = {
-        _rule_record_path(base, rule_id): _read_json(_rule_record_path(base, rule_id)),
-        base / "indexes" / ACTIVE_RULE_INDEX: _read_json(base / "indexes" / ACTIVE_RULE_INDEX),
+        _canonical_rule_path(base, rule_id): _read_json(_canonical_rule_path(base, rule_id)),
+        _canonical_rule_index_path(base): _read_json(_canonical_rule_index_path(base)),
         receipt_path: _read_json(receipt_path),
         base / "indexes" / RULE_ACTIVATION_RECEIPT_INDEX: _read_json(base / "indexes" / RULE_ACTIVATION_RECEIPT_INDEX),
         rollback_path: _read_json(rollback_path),
         base / "indexes" / QUEUE_INDEX: _read_json(base / "indexes" / QUEUE_INDEX),
     }
     try:
-        update_rule(
+        deactivated = deactivate_canonical_rule(
             rule_id,
-            {
-                "status": "rolled_back",
-                "enabled": False,
-                "rolled_back_at_utc": _now(),
-                "rollback_activation_receipt_id": activation_receipt_id,
-            },
+            reason=f"proposal_rule_activation:{activation_receipt_id}",
+            confirmation="DEACTIVATE_RULE",
             root=base,
         )
+        if deactivated.get("status") not in {"deactivated", "already_deactivated"}:
+            raise RuntimeError("canonical_rule_deactivation_failed")
         _atomic_write_json(receipt_path, updated_receipt)
         _update_rule_activation_receipt_index(base)
         _atomic_write_json(rollback_path, rollback_revalidation)
@@ -509,7 +518,7 @@ def rollback_proposal_rule_activation(activation_receipt_id: str, confirmation: 
         "status": "rollback_completed",
         "activation_receipt_id": activation_receipt_id,
         "rule_id": rule_id,
-        "rule_removed_from_active_index": load_rule(rule_id, root=base).get("status") != "active",
+        "rule_removed_from_active_index": (load_canonical_rule(rule_id, root=base).get("rule") or {}).get("status") != "active",
         "rollback_verified": True,
         "rollback_revalidation_id": rollback_revalidation_id,
         "warnings": [],
@@ -610,8 +619,9 @@ def _ensure_rule_activation_dirs(root: Path | str) -> Path:
 
 
 def _validate_candidate_schema(candidate: Mapping[str, object]) -> list[str]:
-    return validate_mutable_rule_record(
+    validation = validate_canonical_rule_record(
         {
+            "schema_version": "canonical_mutable_rule_v1",
             "rule_id": "candidate_preview",
             "rule_type": candidate.get("rule_type"),
             "target": candidate.get("target"),
@@ -622,13 +632,17 @@ def _validate_candidate_schema(candidate: Mapping[str, object]) -> list[str]:
             "priority": candidate.get("priority"),
             "enabled": candidate.get("enabled"),
             "status": "active",
+            "source_proposal_id": "proposal_preview",
+            "source_revision": "preview_revision",
         }
     )
+    return list(validation.get("blockers", []))
 
 
 def _canonical_rule_store_state(root: Path) -> dict[str, object]:
-    ensure_mutable_rule_repository(root)
-    return {"available": True, "active_rules": list_rules(root=root, active_only=False), "reason": "ok"}
+    capability = get_canonical_rule_runtime_capability(root=root)
+    listed = list_canonical_rules(limit=500, root=root) if capability.get("available") else {"items": []}
+    return {"available": bool(capability.get("available")), "active_rules": list(listed.get("items", [])), "reason": "ok" if capability.get("available") else "unavailable"}
 
 
 def _rule_activation_review_id(proposal_id: str) -> str:
@@ -759,7 +773,8 @@ def _load_rule_activation_revalidation(root: Path, activation_receipt_id: str, *
 
 
 def _post_activation_validation(root: Path, proposal_id: str, rule_id: str, receipt_id: str, candidate_fingerprint: str | None) -> bool:
-    rule = load_rule(rule_id, root=root)
+    loaded = load_canonical_rule(rule_id, require_active=True, root=root)
+    rule = loaded.get("rule") if loaded.get("status") == "loaded" else None
     receipt = _load_rule_activation_receipt_by_id(root, receipt_id)
     revalidation = _load_rule_activation_revalidation(root, receipt_id, reason="proposal_rule_activation")
     if not isinstance(rule, dict) or str(rule.get("status") or "") != "active":
@@ -770,7 +785,7 @@ def _post_activation_validation(root: Path, proposal_id: str, rule_id: str, rece
         return False
     if not isinstance(revalidation, dict) or revalidation.get("rule_id") != rule_id:
         return False
-    duplicates = [item for item in list_rules(root=root, active_only=True) if _rule_fingerprint(item) == candidate_fingerprint]
+    duplicates = [item for item in list_canonical_rules(status="active", limit=500, root=root).get("items", []) if _rule_fingerprint(item) == candidate_fingerprint]
     return len(duplicates) == 1 and receipt.get("proposal_id") == proposal_id
 
 
@@ -778,10 +793,6 @@ def _rollback_paths(targets: Mapping[Path, Any]) -> bool:
     for path, payload in targets.items():
         _restore_json(path, payload)
     return all(_read_json(path) == payload for path, payload in targets.items())
-
-
-def _rule_record_path(root: Path, rule_id: str) -> Path:
-    return root / RULE_REPOSITORY_DIR / f"{_safe_id(rule_id)}.json"
 
 
 def _safe_id(value: str) -> str:

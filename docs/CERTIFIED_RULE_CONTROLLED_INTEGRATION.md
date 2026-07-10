@@ -1,0 +1,88 @@
+Phase 9T orchestrates one qualified Phase 9S release candidate into one explicit isolated non-production target by reusing the authoritative Phase 9T.0A adapter contract.
+
+Implemented behavior:
+
+- Scope:
+  - one canonical rule
+  - one document and source revision
+  - one qualified release-candidate result
+  - one reviewed authorization using the exact decision `authorize_for_later_integration`
+  - one bound scoring preview and one bound Fast Lane preview
+  - one explicit isolated non-production target
+- Adapter relationship:
+  - reuses `get_controlled_integration_adapter_manifest`
+  - reuses `get_isolated_controlled_integration_target_workspace`
+  - reuses `validate_controlled_integration_package`
+  - reuses `preflight_controlled_integration_transaction`
+  - reuses `apply_controlled_integration_transaction`
+  - reuses `read_controlled_integration_target_state`
+  - reuses `commit_controlled_integration_transaction`
+  - reuses `rollback_controlled_integration_transaction`
+  - does not modify the adapter contract
+- Eligibility:
+  - active rule required
+  - completed current certification required
+  - current document/source revision required
+  - no pending rollback, supersession, or unresolved critical remediation
+  - Phase 9S result and receipt must exist, match, remain current, and remain `qualified` or `qualified_with_warnings`
+  - Phase 9R result and receipt must exist, match, remain current, remain `authorized`, and keep decision `authorize_for_later_integration`
+  - bound Phase 9P and 9Q IDs and fingerprints must still match the qualified and authorized evidence chain
+  - target workspace must remain `isolated_non_production`
+  - adapter must support transactional preflight, pending-only apply, independent read-back, explicit commit, and rollback
+- Deterministic package:
+  - builds one adapter package using the adapter schema version
+  - package fingerprint changes when rule, certification, release candidate, authorization, scoring, Fast Lane, adapter, or target evidence changes
+  - package validation is delegated to the adapter as the final authority
+- Deterministic plan:
+  - plan stores package fingerprint, transaction ID, namespace ID, and pre-apply target-state fingerprint from adapter preflight
+  - preflight remains read-only
+  - identical evidence and target state produce the same plan identity and plan fingerprint
+- Execution sequence:
+  - exact confirmation required: `EXECUTE_CONTROLLED_INTEGRATION`
+  - reloads plan, evidence, rule, certification, revision, and target workspace
+  - revalidates package and reruns adapter preflight
+  - applies pending state only
+  - independently verifies pending state through adapter read-back
+  - commits explicitly using the verified pending-state fingerprint
+  - independently verifies committed state through adapter read-back
+  - persists one immutable result and one immutable receipt
+- Failure handling:
+  - apply, verification, or commit failure does not produce completion
+  - rollback is attempted through the adapter when a transaction was created
+  - rollback evidence is recorded in the result and receipt
+- Idempotency:
+  - rerunning an already completed plan returns `already_completed`
+  - rerun performs zero writes after independently confirming the committed namespace still matches
+  - evidence drift or target drift makes the stored result stale instead of reapplying automatically
+- Production-safety assertions:
+  - isolated staging only
+  - no rule activation
+  - no production deployment
+  - no production score writes
+  - no live Fast Lane execution
+  - no canonical rollback or supersession
+  - successful Phase 9T execution does not authorize production deployment
+- Storage:
+  - `data/source_documents/certified_rule_controlled_integration_plans/`
+  - `data/source_documents/certified_rule_controlled_integration_results/`
+  - `data/source_documents/certified_rule_controlled_integration_receipts/`
+  - matching indexes under `data/source_documents/indexes/`
+- API:
+  - `build_certified_rule_controlled_integration_workspace`
+  - `validate_certified_rule_controlled_integration_eligibility`
+  - `build_certified_rule_controlled_integration_plan`
+  - `execute_certified_rule_controlled_integration`
+  - `format_certified_rule_controlled_integration_report`
+- Desktop UI:
+  - Load Integration Workspace
+  - Validate Integration Eligibility
+  - Build Integration Plan
+  - Execute Controlled Integration
+  - Controlled Integration Health
+  - Copy Integration Report
+
+Why isolated staging does not activate or deploy a rule:
+
+- the adapter contract is explicitly isolated and non-production
+- execution writes only adapter-owned staging namespaces plus Phase 9T plans/results/receipts
+- Phase 9T never mutates production scoring, live Fast Lane, global activation, deployment routing, or upstream evidence

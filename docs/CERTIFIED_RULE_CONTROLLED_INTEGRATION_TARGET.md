@@ -1,0 +1,63 @@
+Phase 9T.0A aligns the controlled-integration target implementation with the authoritative adapter contract that Phase 9T consumes.
+
+Implemented behavior:
+
+- Authoritative adapter interface:
+  - `get_controlled_integration_adapter_manifest`
+  - `get_isolated_controlled_integration_target_workspace`
+  - `validate_controlled_integration_package`
+  - `preflight_controlled_integration_transaction`
+  - `apply_controlled_integration_transaction`
+  - `read_controlled_integration_target_state`
+  - `commit_controlled_integration_transaction`
+  - `rollback_controlled_integration_transaction`
+- Target contract:
+  - one repository-backed isolated target: `controlled_staging_primary`
+  - explicit `isolated_non_production` environment classification
+  - stable adapter identity: `filesystem_controlled_integration_target`
+  - stable adapter version: `1.1`
+  - deterministic adapter, target, package, transaction, pending-state, committed-state, and target-state fingerprints
+  - pending apply followed by explicit commit
+  - independent filesystem read-back for pending and committed state
+  - transaction-owned rollback and immutable rollback record
+- Storage:
+  - `data/source_documents/controlled_integration_targets/<target_id>/manifest.json`
+  - `data/source_documents/controlled_integration_targets/<target_id>/namespace_index.json`
+  - `data/source_documents/controlled_integration_targets/<target_id>/transactions/<transaction_id>.json`
+  - `data/source_documents/controlled_integration_targets/<target_id>/pending/<transaction_id>.json`
+  - `data/source_documents/controlled_integration_targets/<target_id>/namespaces/<namespace_id>.json`
+  - `data/source_documents/controlled_integration_targets/<target_id>/rollback_records/<transaction_id>.json`
+- Transaction states:
+  - `applying`
+  - `pending_verification`
+  - `committing`
+  - `committed`
+  - `apply_failed`
+  - `commit_failed`
+  - `rolling_back`
+  - `rolled_back`
+  - `rollback_failed`
+- Backward-compatible functions retained:
+  - `get_controlled_integration_target_manifest`
+  - `validate_controlled_integration_target`
+  - `preflight_controlled_integration_target`
+  - `apply_controlled_integration_rule`
+  - `verify_controlled_integration_rule`
+  - `rollback_controlled_integration_rule`
+  - `get_controlled_integration_target_health`
+  - these now delegate to the authoritative transaction interface where safe
+- Safety:
+  - no production activation
+  - no canonical rule mutation
+  - no scoring mutation
+  - no live Fast Lane execution
+  - bounded side effects inside the isolated target storage only
+- Idempotency:
+  - identical committed package returns `already_committed` at transaction preflight and commit
+  - compatibility apply returns `already_applied`
+- Path safety:
+  - adapter-derived paths only
+  - rejects traversal, separators, drive syntax, URIs, null bytes, whitespace-only IDs, and production-like target IDs
+- Relationship to Phase 9T:
+  - this adapter does not orchestrate release-candidate execution
+  - it only provides the stable package, transaction, read-back, commit, and rollback boundaries required by Phase 9T

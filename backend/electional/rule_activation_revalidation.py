@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Mapping
 
 from .citation_draft_review import _atomic_write_json, _hash_payload, _now, _read_json, _restore_json
 from .pdf_viewport import _blocked
@@ -14,7 +14,7 @@ from .proposal_rule_activation import (
     _rule_fingerprint,
     rollback_proposal_rule_activation,
 )
-from .rules import active_rule_index_hash, active_rule_index_state, load_rule
+from .canonical_rule_runtime import evaluate_canonical_rule, get_canonical_rule_runtime_capability, load_canonical_rule
 from .source_documents import SOURCE_DOCUMENT_ROOT
 from .source_impact_analysis import QUEUE_INDEX, _queue_item_path, _update_queue_index, ensure_source_impact_dirs, list_source_revalidation_queue
 from .source_knowledge import ensure_source_knowledge_dirs
@@ -49,7 +49,7 @@ def build_rule_activation_revalidation_workspace(revalidation_id: str, *, root: 
         "proposal_id": queue_item.get("proposal_id"),
         "activation_receipt_id": queue_item.get("activation_receipt_id"),
         "activation_provenance_status": "valid" if provenance.get("valid") else "invalid",
-        "runtime_evaluator_status": "available" if _load_canonical_rule_evaluator() is not None else "unavailable",
+        "runtime_evaluator_status": "available" if get_canonical_rule_runtime_capability(root=base).get("single_rule_evaluator_available") else "unavailable",
         "contract_plan_status": "ready" if not plan.get("blockers") else "blocked",
         "runtime_validation_status": str((runtime_validation or {}).get("status") or "not_run"),
         "review_status": str((review or {}).get("review_status") or "pending"),
@@ -71,7 +71,8 @@ def validate_rule_activation_revalidation_provenance(revalidation_id: str, *, ro
     if queue_item.get("status") != "pending_review":
         blockers.append("revalidation_not_pending_review")
     rule_id = str(queue_item.get("rule_id") or "")
-    rule = load_rule(rule_id, root=base) if rule_id else None
+    rule_result = load_canonical_rule(rule_id, root=base) if rule_id else {"status": "not_found"}
+    rule = rule_result.get("rule") if rule_result.get("status") == "loaded" else None
     activation_receipt = _load_rule_activation_receipt_by_id(base, str(queue_item.get("activation_receipt_id") or ""))
     proposal = _load_proposal(base, str(queue_item.get("proposal_id") or ""))
     promotion_receipt = _load_receipt_for_proposal(base, str(queue_item.get("proposal_id") or "")) if proposal is not None else None
@@ -95,8 +96,7 @@ def validate_rule_activation_revalidation_provenance(revalidation_id: str, *, ro
             blockers.append("rule_hash_mismatch")
         if activation_receipt.get("candidate_fingerprint") != _rule_fingerprint(rule):
             blockers.append("candidate_fingerprint_mismatch")
-    active_index_ids = {str(entry.get("rule_id") or "") for entry in active_rule_index_state(root=base).get("entries", []) if isinstance(entry, dict)}
-    if rule_id and rule_id not in active_index_ids:
+    if rule_result.get("status") == "blocked" and "canonical_rule_state_diverged" in set(rule_result.get("blockers", [])):
         blockers.append("active_rule_index_membership_missing")
     return {
         "revalidation_id": revalidation_id,
@@ -118,7 +118,8 @@ def build_rule_runtime_contract_plan(revalidation_id: str, *, root: Path | str =
     provenance = validate_rule_activation_revalidation_provenance(revalidation_id, root=base)
     if provenance.get("blockers"):
         return {"revalidation_id": revalidation_id, "cases": [], "warnings": [], "blockers": list(provenance.get("blockers", []))}
-    rule = load_rule(str(provenance.get("rule_id") or ""), root=base)
+    rule_result = load_canonical_rule(str(provenance.get("rule_id") or ""), root=base)
+    rule = rule_result.get("rule") if rule_result.get("status") == "loaded" else None
     condition = dict((rule or {}).get("condition") or {})
     field = str(condition.get("field") or "")
     operator = str(condition.get("operator") or (rule or {}).get("operator") or "")
@@ -140,7 +141,7 @@ def build_rule_runtime_contract_plan(revalidation_id: str, *, root: Path | str =
         "revalidation_id": revalidation_id,
         "rule_id": provenance.get("rule_id"),
         "rule_fingerprint": _rule_fingerprint(rule if isinstance(rule, Mapping) else None),
-        "evaluator_identity": "canonical_rule_evaluator" if _load_canonical_rule_evaluator() is not None else "rule_runtime_evaluator_unavailable",
+        "evaluator_identity": "canonical_rule_evaluator" if get_canonical_rule_runtime_capability(root=base).get("single_rule_evaluator_available") else "rule_runtime_evaluator_unavailable",
         "cases": cases,
         "warnings": [],
         "blockers": blockers,
@@ -156,7 +157,8 @@ def run_rule_runtime_contract_validation(revalidation_id: str, regenerate: bool 
     plan = build_rule_runtime_contract_plan(revalidation_id, root=base)
     runtime_validation_id = _runtime_validation_id(revalidation_id)
     queue_item = _load_revalidation_item(base, revalidation_id) or {}
-    rule = load_rule(str(queue_item.get("rule_id") or ""), root=base)
+    rule_result = load_canonical_rule(str(queue_item.get("rule_id") or ""), root=base)
+    rule = rule_result.get("rule") if rule_result.get("status") == "loaded" else None
     result = {
         "schema_version": RUNTIME_VALIDATION_SCHEMA_VERSION,
         "runtime_validation_id": runtime_validation_id,
@@ -174,8 +176,8 @@ def run_rule_runtime_contract_validation(revalidation_id: str, regenerate: bool 
         "warnings": [],
         "blockers": list(dict.fromkeys([*provenance.get("blockers", []), *plan.get("blockers", [])])),
     }
-    evaluator = _load_canonical_rule_evaluator()
-    if evaluator is None:
+    capability = get_canonical_rule_runtime_capability(root=base)
+    if not capability.get("single_rule_evaluator_available"):
         result["blockers"] = list(dict.fromkeys([*result.get("blockers", []), "rule_runtime_evaluator_unavailable"]))
         _save_runtime_validation(base, result)
         return result
@@ -186,10 +188,11 @@ def run_rule_runtime_contract_validation(revalidation_id: str, regenerate: bool 
         failed = 0
         exceptions = 0
         for case in plan.get("cases", []):
-            actual = _normalize_evaluator_result(evaluator(rule, case.get("input", {})))
+            evaluation = evaluate_canonical_rule(rule or {}, case.get("input", {}), root=base)
+            actual = _normalize_evaluator_result(evaluation)
             expected = bool(case.get("expected_match"))
             status = "pass" if actual == expected else "fail"
-            normalized_cases.append({"case_id": case.get("case_id"), "expected_match": expected, "actual_match": actual, "status": status})
+            normalized_cases.append({"case_id": case.get("case_id"), "expected_match": expected, "actual_match": actual, "status": status, "result": evaluation.get("result")})
             if status == "pass":
                 passed += 1
             elif case.get("required"):
@@ -484,7 +487,7 @@ def format_rule_activation_revalidation_report(
             f"- Resolution: {(_load_revalidation_item(base, target_revalidation_id) or {}).get('resolution', 'pending')}",
             "",
             "Important:",
-            "The rule was evaluated through the canonical read-only evaluator." if _load_canonical_rule_evaluator() is not None else "No safe single-rule canonical evaluator was discovered in this repository.",
+            "The rule was evaluated through the canonical read-only evaluator." if get_canonical_rule_runtime_capability(root=base).get("single_rule_evaluator_available") else "No safe single-rule canonical evaluator was discovered in this repository.",
             "No scoring, objective-pack, Fast Lane, or historical-replay workflow was executed.",
         ]
     )
@@ -504,10 +507,6 @@ def _ensure_rule_activation_revalidation_dirs(root: Path | str) -> Path:
         if not path.exists():
             _atomic_write_json(path, {"entries": [], "updated_at_utc": _now()})
     return base
-
-
-def _load_canonical_rule_evaluator() -> Callable[[Mapping[str, Any] | None, Mapping[str, Any]], Any] | None:
-    return None
 
 
 def _build_operator_cases(field: str, operator: str, value: Any) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
@@ -561,6 +560,15 @@ def _build_operator_cases(field: str, operator: str, value: Any) -> tuple[dict[s
             {"case_id": "negative_nonmatch", "case_type": "negative", "input": {field: plus}, "expected_match": False, "required": True},
             {"case_id": "boundary_match", "case_type": "boundary", "input": {field: minus}, "expected_match": True, "required": False},
         )
+    if operator == "between" and isinstance(value, (list, tuple)) and len(value) == 2:
+        lower, upper = value
+        if all(isinstance(item, (int, float)) and not isinstance(item, bool) for item in (lower, upper)):
+            midpoint = lower if lower == upper else lower + ((upper - lower) / 2)
+            return (
+                {"case_id": "positive_match", "case_type": "positive", "input": {field: midpoint}, "expected_match": True, "required": True},
+                {"case_id": "negative_nonmatch", "case_type": "negative", "input": {field: upper + 1}, "expected_match": False, "required": True},
+                {"case_id": "boundary_match", "case_type": "boundary", "input": {field: lower}, "expected_match": True, "required": False},
+            )
     return None, None, None
 
 
@@ -575,23 +583,19 @@ def _different_value(value: Any) -> Any:
 
 
 def _normalize_evaluator_result(result: Any) -> bool:
-    if isinstance(result, bool):
-        return result
     if isinstance(result, Mapping):
-        if isinstance(result.get("matched"), bool):
+        if result.get("result") in {"matched", "not_matched"} and isinstance(result.get("matched"), bool):
             return bool(result.get("matched"))
-        if isinstance(result.get("match"), bool):
-            return bool(result.get("match"))
-        if str(result.get("status") or "") in {"matched", "not_matched"}:
-            return str(result.get("status")) == "matched"
+        if result.get("result") in {"unsupported", "error", "blocked"}:
+            raise ValueError("canonical_evaluator_result_unsupported")
     raise ValueError("canonical_evaluator_result_unsupported")
 
 
 def _revalidation_persistent_state_hash(root: Path, queue_item: Mapping[str, Any]) -> str:
     payload = {
-        "rule": load_rule(str(queue_item.get("rule_id") or ""), root=root),
+        "rule": load_canonical_rule(str(queue_item.get("rule_id") or ""), root=root).get("rule"),
         "queue_item": _load_revalidation_item(root, str(queue_item.get("queue_item_id") or "")),
-        "active_rule_index_hash": active_rule_index_hash(root=root),
+        "runtime_capability": get_canonical_rule_runtime_capability(root=root),
     }
     return _hash_payload(payload)
 

@@ -40,7 +40,56 @@ from .certified_rule_controlled_integration import build_certified_rule_controll
 from .certified_rule_production_authorization import build_certified_rule_production_authorization_plan, build_certified_rule_production_authorization_workspace, format_certified_rule_production_authorization_report, get_certified_rule_production_authorization_health, save_certified_rule_production_authorization_decision, validate_certified_rule_production_authorization_eligibility
 from .certified_rule_production_deployment import build_certified_rule_production_deployment_plan, build_certified_rule_production_deployment_workspace, execute_certified_rule_production_deployment, format_certified_rule_production_deployment_report, get_certified_rule_production_deployment_health, validate_certified_rule_production_deployment_eligibility
 from .certified_rule_post_deployment_acceptance import build_certified_rule_post_deployment_acceptance_plan, build_certified_rule_post_deployment_acceptance_workspace, format_certified_rule_post_deployment_acceptance_report, get_certified_rule_post_deployment_acceptance_health, save_certified_rule_post_deployment_acceptance_decision, validate_certified_rule_post_deployment_acceptance_eligibility
-from .api import build_deployed_rule_effectiveness_readiness_plan, build_deployed_rule_effectiveness_readiness_workspace, build_deployed_rule_operational_snapshot, build_deployed_rule_operational_telemetry_workspace, format_deployed_rule_effectiveness_readiness_report, format_deployed_rule_operational_telemetry_report, get_deployed_rule_effectiveness_readiness_health, get_deployed_rule_effectiveness_readiness_manifest, get_deployed_rule_operational_telemetry_health, list_deployed_rule_operational_events, load_deployed_rule_effectiveness_readiness_result, record_deployed_rule_effectiveness_readiness_result, validate_deployed_rule_effectiveness_readiness_eligibility, validate_deployed_rule_operational_telemetry_eligibility
+from .api import (
+    build_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate,
+    build_deployed_rule_outcome_truth_record_set_qa_gate,
+    build_deployed_rule_effectiveness_readiness_plan,
+    build_deployed_rule_effectiveness_readiness_workspace,
+    build_deployed_rule_effectiveness_scoring_contract_plan,
+    build_deployed_rule_effectiveness_scoring_contract_workspace,
+    build_deployed_rule_effectiveness_scoring_result_public_safe_export_pack,
+    build_deployed_rule_effectiveness_scoring_result_summary_surface,
+    build_deployed_rule_effectiveness_scoring_result_plan,
+    build_deployed_rule_effectiveness_scoring_result_workspace,
+    build_deployed_rule_operational_snapshot,
+    build_deployed_rule_operational_telemetry_workspace,
+    build_deployed_rule_outcome_truth_source_plan,
+    build_deployed_rule_outcome_truth_source_workspace,
+    format_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report,
+    format_deployed_rule_outcome_truth_record_set_qa_gate_report,
+    format_deployed_rule_effectiveness_readiness_report,
+    format_deployed_rule_effectiveness_scoring_contract_report,
+    format_deployed_rule_effectiveness_scoring_result_public_safe_export_report,
+    format_deployed_rule_effectiveness_scoring_result_summary_surface_report,
+    format_deployed_rule_effectiveness_scoring_result_report,
+    format_deployed_rule_operational_telemetry_report,
+    format_deployed_rule_outcome_truth_source_report,
+    get_deployed_rule_effectiveness_readiness_health,
+    get_deployed_rule_effectiveness_readiness_manifest,
+    get_deployed_rule_effectiveness_scoring_contract_health,
+    get_deployed_rule_effectiveness_scoring_result_health,
+    get_deployed_rule_effectiveness_scoring_result_manifest,
+    get_deployed_rule_operational_telemetry_health,
+    get_deployed_rule_outcome_truth_source_health,
+    list_deployed_rule_operational_events,
+    list_deployed_rule_outcome_truth_record_sets,
+    load_deployed_rule_effectiveness_readiness_result,
+    load_deployed_rule_effectiveness_scoring_contract_result,
+    load_deployed_rule_effectiveness_scoring_result,
+    load_deployed_rule_outcome_truth_record_set,
+    load_deployed_rule_outcome_truth_source_result,
+    record_deployed_rule_effectiveness_readiness_result,
+    record_deployed_rule_effectiveness_scoring_contract_result,
+    record_deployed_rule_effectiveness_scoring_result,
+    record_deployed_rule_outcome_truth_source_result,
+    register_deployed_rule_outcome_truth_record_set,
+    validate_deployed_rule_effectiveness_readiness_eligibility,
+    validate_deployed_rule_effectiveness_scoring_contract_eligibility,
+    validate_deployed_rule_effectiveness_scoring_result_eligibility,
+    validate_deployed_rule_operational_telemetry_eligibility,
+    validate_deployed_rule_outcome_truth_record_set,
+    validate_deployed_rule_outcome_truth_source_eligibility,
+)
 from .topic_taxonomy import build_taxonomy_search_expansion, format_topic_taxonomy_report, load_controlled_topic, resolve_controlled_topic_label, save_controlled_topic, validate_topic_taxonomy
 from .taxonomy_topic_search import build_taxonomy_topic_search_plan, format_taxonomy_topic_search_report, get_taxonomy_topic_search_health, resolve_taxonomy_search_query, search_taxonomy_aware_topic_content, get_taxonomy_topic_search_summary
 from .locator_migration_planner import audit_document_locator_contracts, build_locator_migration_plan, format_locator_migration_report, get_locator_migration_health, load_locator_migration_plan, preview_locator_correction
@@ -1019,6 +1068,57 @@ class DesktopRightPanelMixin:
         self.deployed_rule_effectiveness_readiness_confirmation_var = tk.StringVar(value="RECORD_EFFECTIVENESS_READINESS_RESULT")
         self.deployed_rule_effectiveness_readiness_status_var = tk.StringVar(value="Phase 9V Status: unknown\nDeployed Rule Status: unknown\nCanonical Source Rule Status: unknown\nTelemetry Snapshot Status: unknown\nExecution Producer Availability: unknown\nExecution Producer ID: unknown\nExecution Producer Fingerprint: unknown\nValid Execution Attempt Count: 0\nCompleted Event Count: 0\nFailed Event Count: 0\nMinimum Execution Attempts: 30\nSample Sufficiency Status: unknown\nDenominator Readiness: unknown\nObservation-Window Readiness: unknown\nReadiness Status: unknown\nReadiness Plan ID: none\nReadiness Result ID: none\nHealth Scope: repository-wide\nReadiness Health: unknown\nEffectiveness Evaluation Status: not_performed\nBlocker Count: 0\nWarning Count: 0\nRecommended Action: Load one explicit readiness workspace from a completed Phase 9V deployment and Phase 9X snapshot.")
         self._register_deployed_rule_effectiveness_readiness_traces()
+        self.deployed_rule_outcome_truth_rule_id_var = tk.StringVar(value="")
+        self.deployed_rule_outcome_truth_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_outcome_truth_target_id_var = tk.StringVar(value="production_target_primary")
+        self.deployed_rule_outcome_truth_deployed_rule_id_var = tk.StringVar(value="")
+        self.deployed_rule_outcome_truth_snapshot_id_var = tk.StringVar(value="")
+        self.deployed_rule_outcome_truth_readiness_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_outcome_truth_spec_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_outcome_truth_start_var = tk.StringVar(value="")
+        self.deployed_rule_outcome_truth_end_var = tk.StringVar(value="")
+        self.deployed_rule_outcome_truth_source_id_var = tk.StringVar(value="")
+        self.deployed_rule_outcome_truth_record_set_id_var = tk.StringVar(value="")
+        self.deployed_rule_outcome_truth_record_json_var = tk.StringVar(value="")
+        self.deployed_rule_outcome_truth_plan_id_var = tk.StringVar(value="")
+        self.deployed_rule_outcome_truth_result_record_id_var = tk.StringVar(value="")
+        self.deployed_rule_outcome_truth_registration_confirmation_var = tk.StringVar(value="REGISTER_OUTCOME_TRUTH_RECORD_SET")
+        self.deployed_rule_outcome_truth_result_confirmation_var = tk.StringVar(value="RECORD_OUTCOME_TRUTH_SOURCE_RESULT")
+        self.deployed_rule_outcome_truth_status_var = tk.StringVar(value="Outcome-Truth Source Status: unknown\nSource ID: unknown\nSource Type: unknown\nSource Authority Class: unknown\nSource Fingerprint: unknown\nRecord-Set ID: none\nRecord Count: 0\nValid Record Count: 0\nIncomplete Record Count: 0\nUnsupported Record Count: 0\nBinding Status: unknown\nExpected Outcome Availability: unknown\nActual/Adjudicated Outcome Availability: unknown\nScoring Support Status: unknown\nEffectiveness Score Calculated: no\nPlan ID: none\nResult ID: none\nHealth Scope: repository-wide\nOutcome-Truth Health: unknown\nBlocker Count: 0\nWarning Count: 0\nRecommended Action: Load one explicit outcome-truth workspace from a completed Phase 9V deployment, Phase 9X snapshot, readiness result, and effectiveness spec.")
+        self._register_deployed_rule_outcome_truth_traces()
+        self.deployed_rule_effectiveness_scoring_contract_rule_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_contract_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_contract_target_id_var = tk.StringVar(value="production_target_primary")
+        self.deployed_rule_effectiveness_scoring_contract_deployed_rule_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_contract_snapshot_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_contract_readiness_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_contract_spec_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_contract_outcome_truth_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_contract_record_set_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_contract_start_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_contract_end_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_contract_plan_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_contract_result_record_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_contract_confirmation_var = tk.StringVar(value="RECORD_EFFECTIVENESS_SCORING_CONTRACT_RESULT")
+        self.deployed_rule_effectiveness_scoring_contract_status_var = tk.StringVar(value="Scoring-Contract Status: unknown\nMetric Family Count: 0\nMetric Families: none\nAccuracy-Like Contract Status: unknown\nFalse-Positive/False-Negative Contract Status: unknown\nPrecision/Recall-Like Contract Status: unknown\nCalibration-Like Contract Status: unknown\nRuntime-Reliability Contract Status: unknown\nNumerator Contract Status: unknown\nDenominator Contract Status: unknown\nOutcome-Truth Readiness: unknown\nScoring Support Status: unknown\nReadiness Result ID: none\nEffectiveness Spec Result ID: none\nOutcome-Truth Source Result ID: none\nOutcome-Truth Record-Set ID: none\nScoring Contract Plan ID: none\nScoring Contract Result ID: none\nHealth Scope: repository-wide\nScoring-Contract Health: unknown\nEffectiveness Score Calculated: no\nCorrectness Calculated: no\nRates Calculated: no\nBlocker Count: 0\nWarning Count: 0\nRecommended Action: Load one explicit scoring-contract workspace from completed readiness, spec, and outcome-truth evidence.")
+        self._register_deployed_rule_effectiveness_scoring_contract_traces()
+        self.deployed_rule_effectiveness_scoring_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_result_rule_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_result_deployment_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_result_target_id_var = tk.StringVar(value="production_target_primary")
+        self.deployed_rule_effectiveness_scoring_result_deployed_rule_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_result_snapshot_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_result_readiness_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_result_spec_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_result_outcome_truth_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_result_record_set_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_result_contract_result_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_result_start_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_result_end_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_result_plan_id_var = tk.StringVar(value="")
+        self.deployed_rule_effectiveness_scoring_result_confirmation_var = tk.StringVar(value="RECORD_EFFECTIVENESS_SCORING_RESULT")
+        self.deployed_rule_effectiveness_scoring_result_status_var = tk.StringVar(value="Persisted Scoring Result Status: unknown\nWorkflow Sequence: 1. Validate eligibility 2. Build persisted scoring result plan 3. Record persisted scoring result with exact confirmation 4. Load result / health / summary / report\nRequired Confirmation: RECORD_EFFECTIVENESS_SCORING_RESULT\nCurrent Confirmation Input: none\nAuthority Scope: unknown\nScore Family: accuracy_like_contract\nCanonical Rule ID: none\nPhase 9V Deployment Result ID: none\nProduction Target ID: none\nDeployed Rule ID: none\nTelemetry Snapshot ID: none\nReadiness Result ID: none\nEffectiveness Spec Result ID: none\nOutcome Truth Source Result ID: none\nOutcome Truth Record Set ID: none\nScoring Contract Result ID: none\nObservation Start: none\nObservation End: none\nScoring Result Plan ID: none\nScoring Result ID: none\nPersisted Accuracy-Like Score Ratio: unknown\nPersisted Accuracy-Like Score Percentage: unknown\nExact Match Count: 0\nMismatch Count: 0\nDenominator Count: 0\nEligible Record Count: 0\nExcluded Record Count: 0\nDuplicate Collapsed Count: 0\nConflict Count: 0\nDeployment Safety Claimed: no\nProduction Correctness Claimed: no\nProfitability Claimed: no\nPrediction Quality Claimed: no\nPhase 9W Used As Scoring Input: no\nRuntime Completion Used As Correctness: no\nSource Availability Used As Effectiveness: no\nHealth Scope: repository-wide\nPersisted Scoring Result Health: unknown\nBlocker Count: 0\nWarning Count: 0\nBlockers: none\nWarnings: none\nRecommended Action: Validate eligibility first, then build one persisted scoring-result plan and record it with the exact confirmation string.")
+        self._register_deployed_rule_effectiveness_scoring_result_traces()
         for variable in (
             self.pdf_viewport_id_var,
             self.pdf_reader_workspace_id_var,
@@ -1529,6 +1629,133 @@ class DesktopRightPanelMixin:
             ("Copy Readiness Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_effectiveness_readiness_report")),
         ):
             ttk.Button(readiness_actions, text=label, command=command, style="Compact.TButton").pack(fill=tk.X, pady=(0, 3))
+        outcome_truth_box = ttk.Frame(parent, style="Panel.TFrame")
+        outcome_truth_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(outcome_truth_box, text="Deployed Rule Outcome Truth Source", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for label_text, variable in (
+            ("Canonical Rule ID", self.deployed_rule_outcome_truth_rule_id_var),
+            ("Phase 9V Deployment Result ID", self.deployed_rule_outcome_truth_result_id_var),
+            ("Production Target ID", self.deployed_rule_outcome_truth_target_id_var),
+            ("Deployed Rule ID", self.deployed_rule_outcome_truth_deployed_rule_id_var),
+            ("Telemetry Snapshot ID", self.deployed_rule_outcome_truth_snapshot_id_var),
+            ("Readiness Result ID", self.deployed_rule_outcome_truth_readiness_result_id_var),
+            ("Effectiveness Spec Result ID", self.deployed_rule_outcome_truth_spec_result_id_var),
+            ("Observation Start", self.deployed_rule_outcome_truth_start_var),
+            ("Observation End", self.deployed_rule_outcome_truth_end_var),
+            ("Outcome Truth Source ID", self.deployed_rule_outcome_truth_source_id_var),
+            ("Outcome Truth Record Set ID", self.deployed_rule_outcome_truth_record_set_id_var),
+            ("Outcome Truth Record JSON", self.deployed_rule_outcome_truth_record_json_var),
+            ("Outcome Truth Plan ID", self.deployed_rule_outcome_truth_plan_id_var),
+            ("Outcome Truth Result ID", self.deployed_rule_outcome_truth_result_record_id_var),
+            ("Record Set Registration Confirmation", self.deployed_rule_outcome_truth_registration_confirmation_var),
+            ("Outcome Truth Result Confirmation", self.deployed_rule_outcome_truth_result_confirmation_var),
+        ):
+            tk.Label(outcome_truth_box, text=label_text, bg=PALETTE["panel"], fg=PALETTE["muted"], font=("Segoe UI", 8), anchor="w").pack(fill=tk.X, pady=(4, 0))
+            tk.Entry(outcome_truth_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(outcome_truth_box, textvariable=self.deployed_rule_outcome_truth_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(outcome_truth_box, text="Outcome-Truth Record-Set QA", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 8, "bold"), anchor="w").pack(fill=tk.X, pady=(4, 0))
+        outcome_truth_actions = ttk.Frame(outcome_truth_box, style="Panel.TFrame")
+        outcome_truth_actions.pack(fill=tk.X, pady=(4, 0))
+        for label, command in (
+            ("Load Outcome Truth Workspace", lambda: self._run_pdf_viewport_action("load_deployed_rule_outcome_truth_workspace")),
+            ("Validate Outcome Truth Eligibility", lambda: self._run_pdf_viewport_action("validate_deployed_rule_outcome_truth_eligibility")),
+            ("Build Outcome Truth Plan", lambda: self._run_pdf_viewport_action("build_deployed_rule_outcome_truth_plan")),
+            ("Record Outcome Truth Result", lambda: self._run_pdf_viewport_action("record_deployed_rule_outcome_truth_result")),
+            ("Validate Record Set", lambda: self._run_pdf_viewport_action("validate_deployed_rule_outcome_truth_record_set")),
+            ("Register Record Set", lambda: self._run_pdf_viewport_action("register_deployed_rule_outcome_truth_record_set")),
+            ("Load Record Set", lambda: self._run_pdf_viewport_action("load_deployed_rule_outcome_truth_record_set")),
+            ("List Record Sets", lambda: self._run_pdf_viewport_action("list_deployed_rule_outcome_truth_record_sets")),
+            ("Load Outcome-Truth Record-Set QA Gate", lambda: self._run_pdf_viewport_action("load_deployed_rule_outcome_truth_record_set_qa_gate")),
+            ("Copy Outcome-Truth Record-Set QA Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_outcome_truth_record_set_qa_gate_report")),
+            ("Load Registration Pipeline QA Gate", lambda: self._run_pdf_viewport_action("load_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate")),
+            ("Copy Registration Pipeline QA Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report")),
+            ("Load Outcome Truth Result", lambda: self._run_pdf_viewport_action("load_deployed_rule_outcome_truth_result")),
+            ("Outcome Truth Health", lambda: self._run_pdf_viewport_action("deployed_rule_outcome_truth_health")),
+            ("Copy Outcome Truth Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_outcome_truth_report")),
+        ):
+            ttk.Button(outcome_truth_actions, text=label, command=command, style="Compact.TButton").pack(fill=tk.X, pady=(0, 3))
+        scoring_contract_box = ttk.Frame(parent, style="Panel.TFrame")
+        scoring_contract_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(scoring_contract_box, text="Deployed Rule Effectiveness Scoring Contract", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        for label_text, variable in (
+            ("Canonical Rule ID", self.deployed_rule_effectiveness_scoring_contract_rule_id_var),
+            ("Phase 9V Deployment Result ID", self.deployed_rule_effectiveness_scoring_contract_result_id_var),
+            ("Production Target ID", self.deployed_rule_effectiveness_scoring_contract_target_id_var),
+            ("Deployed Rule ID", self.deployed_rule_effectiveness_scoring_contract_deployed_rule_id_var),
+            ("Telemetry Snapshot ID", self.deployed_rule_effectiveness_scoring_contract_snapshot_id_var),
+            ("Readiness Result ID", self.deployed_rule_effectiveness_scoring_contract_readiness_result_id_var),
+            ("Effectiveness Spec Result ID", self.deployed_rule_effectiveness_scoring_contract_spec_result_id_var),
+            ("Outcome Truth Source Result ID", self.deployed_rule_effectiveness_scoring_contract_outcome_truth_result_id_var),
+            ("Outcome Truth Record Set ID", self.deployed_rule_effectiveness_scoring_contract_record_set_id_var),
+            ("Observation Start", self.deployed_rule_effectiveness_scoring_contract_start_var),
+            ("Observation End", self.deployed_rule_effectiveness_scoring_contract_end_var),
+            ("Scoring Contract Plan ID", self.deployed_rule_effectiveness_scoring_contract_plan_id_var),
+            ("Scoring Contract Result ID", self.deployed_rule_effectiveness_scoring_contract_result_record_id_var),
+            ("Scoring Contract Result Confirmation", self.deployed_rule_effectiveness_scoring_contract_confirmation_var),
+        ):
+            tk.Label(scoring_contract_box, text=label_text, bg=PALETTE["panel"], fg=PALETTE["muted"], font=("Segoe UI", 8), anchor="w").pack(fill=tk.X, pady=(4, 0))
+            tk.Entry(scoring_contract_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(scoring_contract_box, textvariable=self.deployed_rule_effectiveness_scoring_contract_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        scoring_contract_actions = ttk.Frame(scoring_contract_box, style="Panel.TFrame")
+        scoring_contract_actions.pack(fill=tk.X, pady=(4, 0))
+        for label, command in (
+            ("Load Scoring Contract Workspace", lambda: self._run_pdf_viewport_action("load_deployed_rule_effectiveness_scoring_contract_workspace")),
+            ("Validate Scoring Contract Eligibility", lambda: self._run_pdf_viewport_action("validate_deployed_rule_effectiveness_scoring_contract_eligibility")),
+            ("Build Scoring Contract Plan", lambda: self._run_pdf_viewport_action("build_deployed_rule_effectiveness_scoring_contract_plan")),
+            ("Record Scoring Contract Result", lambda: self._run_pdf_viewport_action("record_deployed_rule_effectiveness_scoring_contract_result")),
+            ("Load Scoring Contract Result", lambda: self._run_pdf_viewport_action("load_deployed_rule_effectiveness_scoring_contract_result")),
+            ("Scoring Contract Health", lambda: self._run_pdf_viewport_action("deployed_rule_effectiveness_scoring_contract_health")),
+            ("Copy Scoring Contract Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_effectiveness_scoring_contract_report")),
+        ):
+            ttk.Button(scoring_contract_actions, text=label, command=command, style="Compact.TButton").pack(fill=tk.X, pady=(0, 3))
+        scoring_result_box = ttk.Frame(parent, style="Panel.TFrame")
+        scoring_result_box.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(scoring_result_box, text="Persisted Effectiveness Scoring Result", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
+        tk.Label(
+            scoring_result_box,
+            text="Operator Workflow: 1. Validate eligibility  2. Build persisted scoring result plan  3. Record with exact confirmation: RECORD_EFFECTIVENESS_SCORING_RESULT  4. Load result / health / summary / report",
+            bg=PALETTE["panel"],
+            fg=PALETTE["muted"],
+            font=("Segoe UI", 8),
+            wraplength=320,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(4, 0))
+        for label_text, variable in (
+            ("Scoring Result ID", self.deployed_rule_effectiveness_scoring_result_id_var),
+            ("Canonical Rule ID", self.deployed_rule_effectiveness_scoring_result_rule_id_var),
+            ("Phase 9V Deployment Result ID", self.deployed_rule_effectiveness_scoring_result_deployment_result_id_var),
+            ("Production Target ID", self.deployed_rule_effectiveness_scoring_result_target_id_var),
+            ("Deployed Rule ID", self.deployed_rule_effectiveness_scoring_result_deployed_rule_id_var),
+            ("Telemetry Snapshot ID", self.deployed_rule_effectiveness_scoring_result_snapshot_id_var),
+            ("Readiness Result ID", self.deployed_rule_effectiveness_scoring_result_readiness_result_id_var),
+            ("Effectiveness Spec Result ID", self.deployed_rule_effectiveness_scoring_result_spec_result_id_var),
+            ("Outcome Truth Source Result ID", self.deployed_rule_effectiveness_scoring_result_outcome_truth_result_id_var),
+            ("Outcome Truth Record Set ID", self.deployed_rule_effectiveness_scoring_result_record_set_id_var),
+            ("Scoring Contract Result ID", self.deployed_rule_effectiveness_scoring_result_contract_result_id_var),
+            ("Observation Start", self.deployed_rule_effectiveness_scoring_result_start_var),
+            ("Observation End", self.deployed_rule_effectiveness_scoring_result_end_var),
+            ("Scoring Result Plan ID", self.deployed_rule_effectiveness_scoring_result_plan_id_var),
+            ("Scoring Result Confirmation", self.deployed_rule_effectiveness_scoring_result_confirmation_var),
+        ):
+            tk.Label(scoring_result_box, text=label_text, bg=PALETTE["panel"], fg=PALETTE["muted"], font=("Segoe UI", 8), anchor="w").pack(fill=tk.X, pady=(4, 0))
+            tk.Entry(scoring_result_box, textvariable=variable, bg=PALETTE["panel_alt"], fg=PALETTE["text"], relief=tk.FLAT).pack(fill=tk.X, pady=(4, 0))
+        tk.Label(scoring_result_box, textvariable=self.deployed_rule_effectiveness_scoring_result_status_var, bg=PALETTE["panel_alt"], fg=PALETTE["text"], font=("Segoe UI", 8), wraplength=320, justify=tk.LEFT, anchor="w", padx=7, pady=6).pack(fill=tk.X, pady=(4, 0))
+        scoring_result_actions = ttk.Frame(scoring_result_box, style="Panel.TFrame")
+        scoring_result_actions.pack(fill=tk.X, pady=(4, 0))
+        for label, command in (
+            ("Validate Persisted Scoring Result Eligibility", lambda: self._run_pdf_viewport_action("validate_deployed_rule_effectiveness_scoring_result_eligibility")),
+            ("Build Persisted Scoring Result Plan", lambda: self._run_pdf_viewport_action("build_deployed_rule_effectiveness_scoring_result_plan")),
+            ("Record Persisted Scoring Result", lambda: self._run_pdf_viewport_action("record_deployed_rule_effectiveness_scoring_result")),
+            ("Load Persisted Scoring Result", lambda: self._run_pdf_viewport_action("load_deployed_rule_effectiveness_scoring_result")),
+            ("Persisted Scoring Result Health", lambda: self._run_pdf_viewport_action("deployed_rule_effectiveness_scoring_result_health")),
+            ("Load Persisted Scoring Result Summary", lambda: self._run_pdf_viewport_action("load_deployed_rule_effectiveness_scoring_result_summary")),
+            ("Load Public-Safe Scoring Export Pack", lambda: self._run_pdf_viewport_action("load_deployed_rule_effectiveness_scoring_result_public_safe_export_pack")),
+            ("Copy Persisted Scoring Result Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_effectiveness_scoring_result_report")),
+            ("Copy Persisted Scoring Result Summary Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_effectiveness_scoring_result_summary_report")),
+            ("Copy Public-Safe Scoring Export Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_effectiveness_scoring_result_public_safe_export_report")),
+        ):
+            ttk.Button(scoring_result_actions, text=label, command=command, style="Compact.TButton").pack(fill=tk.X, pady=(0, 3))
         taxonomy_box = ttk.Frame(parent, style="Panel.TFrame")
         taxonomy_box.pack(fill=tk.X, pady=(0, 8))
         tk.Label(taxonomy_box, text="Controlled Topic Taxonomy", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
@@ -4416,6 +4643,301 @@ class DesktopRightPanelMixin:
                 self.clipboard_clear()
                 self.clipboard_append(text)
                 self.status_var.set("Public-safe deployed-rule effectiveness readiness report copied.")
+            elif action == "load_deployed_rule_outcome_truth_workspace":
+                if not self._validate_deployed_rule_outcome_truth_inputs(action):
+                    return
+                result = build_deployed_rule_outcome_truth_source_workspace(**self._deployed_rule_outcome_truth_common_kwargs())
+                self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Deployed rule outcome-truth workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_deployed_rule_outcome_truth_eligibility":
+                if not self._validate_deployed_rule_outcome_truth_inputs(action):
+                    return
+                result = validate_deployed_rule_outcome_truth_source_eligibility(**self._deployed_rule_outcome_truth_common_kwargs())
+                self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Deployed rule outcome-truth eligibility: {result.get('status', 'unknown')}.")
+            elif action == "build_deployed_rule_outcome_truth_plan":
+                if not self._validate_deployed_rule_outcome_truth_inputs(action):
+                    return
+                result = build_deployed_rule_outcome_truth_source_plan(**self._deployed_rule_outcome_truth_common_kwargs())
+                if isinstance(result, dict) and result.get("outcome_truth_source_plan_id"):
+                    self.deployed_rule_outcome_truth_plan_id_var.set(str(result.get("outcome_truth_source_plan_id") or ""))
+                self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Deployed rule outcome-truth plan: {result.get('status', 'unknown')}.")
+            elif action == "record_deployed_rule_outcome_truth_result":
+                if not self._validate_deployed_rule_outcome_truth_inputs(action):
+                    return
+                result = record_deployed_rule_outcome_truth_source_result(
+                    self.deployed_rule_outcome_truth_plan_id_var.get().strip(),
+                    confirmation=self.deployed_rule_outcome_truth_result_confirmation_var.get().strip(),
+                )
+                if isinstance(result, dict) and result.get("outcome_truth_source_result_id"):
+                    self.deployed_rule_outcome_truth_result_record_id_var.set(str(result.get("outcome_truth_source_result_id") or ""))
+                    loaded = load_deployed_rule_outcome_truth_source_result(str(result.get("outcome_truth_source_result_id") or ""))
+                    if isinstance(loaded, dict) and isinstance(loaded.get("outcome_truth_source_result"), dict):
+                        self._set_deployed_rule_outcome_truth_status(loaded["outcome_truth_source_result"])
+                    else:
+                        self._set_deployed_rule_outcome_truth_status(result)
+                else:
+                    self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Deployed rule outcome-truth result: {result.get('status', 'unknown')}.")
+            elif action == "validate_deployed_rule_outcome_truth_record_set":
+                if not self._validate_deployed_rule_outcome_truth_inputs(action):
+                    return
+                kwargs = self._deployed_rule_outcome_truth_record_set_kwargs(include_confirmation=False)
+                if kwargs is None:
+                    return
+                result = validate_deployed_rule_outcome_truth_record_set(**kwargs)
+                self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Deployed rule outcome-truth record-set validation: {result.get('status', 'unknown')}.")
+            elif action == "register_deployed_rule_outcome_truth_record_set":
+                if not self._validate_deployed_rule_outcome_truth_inputs(action):
+                    return
+                kwargs = self._deployed_rule_outcome_truth_record_set_kwargs(include_confirmation=True)
+                if kwargs is None:
+                    return
+                result = register_deployed_rule_outcome_truth_record_set(**kwargs)
+                if isinstance(result, dict) and result.get("outcome_truth_record_set_id"):
+                    self.deployed_rule_outcome_truth_record_set_id_var.set(str(result.get("outcome_truth_record_set_id") or ""))
+                self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Deployed rule outcome-truth record-set registration: {result.get('status', 'unknown')}.")
+            elif action == "load_deployed_rule_outcome_truth_record_set":
+                if not self._validate_deployed_rule_outcome_truth_inputs(action):
+                    return
+                loaded = load_deployed_rule_outcome_truth_record_set(self.deployed_rule_outcome_truth_record_set_id_var.get().strip())
+                payload = loaded.get("outcome_truth_record_set") if isinstance(loaded, dict) and isinstance(loaded.get("outcome_truth_record_set"), dict) else loaded
+                self._set_deployed_rule_outcome_truth_status(payload if isinstance(payload, dict) else loaded)
+                self.status_var.set(f"Deployed rule outcome-truth record-set load: {loaded.get('status', 'unknown')}.")
+            elif action == "list_deployed_rule_outcome_truth_record_sets":
+                if not self._validate_deployed_rule_outcome_truth_inputs(action):
+                    return
+                result = list_deployed_rule_outcome_truth_record_sets(
+                    self.deployed_rule_outcome_truth_rule_id_var.get().strip(),
+                    self.deployed_rule_outcome_truth_result_id_var.get().strip(),
+                    self.deployed_rule_outcome_truth_target_id_var.get().strip(),
+                    self.deployed_rule_outcome_truth_deployed_rule_id_var.get().strip(),
+                    self.deployed_rule_outcome_truth_snapshot_id_var.get().strip(),
+                )
+                items = list(result.get("items", [])) if isinstance(result, dict) else []
+                if items:
+                    first = dict(items[0])
+                    first["status"] = result.get("status", first.get("status", "listed"))
+                    self._set_deployed_rule_outcome_truth_status(first)
+                else:
+                    self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Deployed rule outcome-truth record-set listing: {result.get('status', 'unknown')}.")
+            elif action == "load_deployed_rule_outcome_truth_record_set_qa_gate":
+                if not self._validate_deployed_rule_outcome_truth_inputs(action):
+                    return
+                result = build_deployed_rule_outcome_truth_record_set_qa_gate(
+                    self.deployed_rule_outcome_truth_record_set_id_var.get().strip(),
+                )
+                self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Outcome-truth record-set QA gate: {result.get('status', 'unknown')}.")
+            elif action == "copy_deployed_rule_outcome_truth_record_set_qa_gate_report":
+                if not self._validate_deployed_rule_outcome_truth_inputs(action):
+                    return
+                text = format_deployed_rule_outcome_truth_record_set_qa_gate_report(
+                    self.deployed_rule_outcome_truth_record_set_id_var.get().strip(),
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe outcome-truth record-set QA report copied.")
+            elif action == "load_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate":
+                candidate_record_set = self._parse_deployed_rule_outcome_truth_candidate_record_set()
+                if candidate_record_set is None:
+                    return
+                result = build_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate(
+                    candidate_record_set,
+                )
+                self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Outcome-truth registration-pipeline QA gate: {result.get('status', 'unknown')}.")
+            elif action == "copy_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report":
+                candidate_record_set = self._parse_deployed_rule_outcome_truth_candidate_record_set()
+                if candidate_record_set is None:
+                    return
+                text = format_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report(
+                    candidate_record_set,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe outcome-truth registration-pipeline QA report copied.")
+            elif action == "load_deployed_rule_outcome_truth_result":
+                if not self._validate_deployed_rule_outcome_truth_inputs(action):
+                    return
+                loaded = load_deployed_rule_outcome_truth_source_result(
+                    self.deployed_rule_outcome_truth_result_record_id_var.get().strip(),
+                )
+                if isinstance(loaded, dict) and isinstance(loaded.get("outcome_truth_source_result"), dict):
+                    self._set_deployed_rule_outcome_truth_status(loaded["outcome_truth_source_result"])
+                else:
+                    self._set_deployed_rule_outcome_truth_status(loaded)
+                self.status_var.set(f"Deployed rule outcome-truth result load: {loaded.get('status', 'unknown')}.")
+            elif action == "deployed_rule_outcome_truth_health":
+                result = get_deployed_rule_outcome_truth_source_health()
+                result = dict(result)
+                result["outcome_truth_health"] = result.get("status", "unknown")
+                result["health_scope"] = "repository-wide"
+                self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Deployed rule outcome-truth health: {result.get('outcome_truth_health', result.get('status', 'unknown'))}.")
+            elif action == "copy_deployed_rule_outcome_truth_report":
+                if not self._validate_deployed_rule_outcome_truth_inputs(action):
+                    return
+                text = format_deployed_rule_outcome_truth_source_report(**self._deployed_rule_outcome_truth_common_kwargs())
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe deployed-rule outcome-truth report copied.")
+            elif action == "load_deployed_rule_effectiveness_scoring_contract_workspace":
+                if not self._validate_deployed_rule_effectiveness_scoring_contract_inputs(action):
+                    return
+                result = build_deployed_rule_effectiveness_scoring_contract_workspace(**self._deployed_rule_effectiveness_scoring_contract_common_kwargs())
+                self._set_deployed_rule_effectiveness_scoring_contract_status(result)
+                self.status_var.set(f"Deployed rule effectiveness scoring-contract workspace: {result.get('status', 'unknown')}.")
+            elif action == "validate_deployed_rule_effectiveness_scoring_contract_eligibility":
+                if not self._validate_deployed_rule_effectiveness_scoring_contract_inputs(action):
+                    return
+                result = validate_deployed_rule_effectiveness_scoring_contract_eligibility(**self._deployed_rule_effectiveness_scoring_contract_common_kwargs())
+                self._set_deployed_rule_effectiveness_scoring_contract_status(result)
+                self.status_var.set(f"Deployed rule effectiveness scoring-contract eligibility: {result.get('status', 'unknown')}.")
+            elif action == "build_deployed_rule_effectiveness_scoring_contract_plan":
+                if not self._validate_deployed_rule_effectiveness_scoring_contract_inputs(action):
+                    return
+                result = build_deployed_rule_effectiveness_scoring_contract_plan(**self._deployed_rule_effectiveness_scoring_contract_common_kwargs())
+                if isinstance(result, dict) and result.get("effectiveness_scoring_contract_plan_id"):
+                    self.deployed_rule_effectiveness_scoring_contract_plan_id_var.set(str(result.get("effectiveness_scoring_contract_plan_id") or ""))
+                self._set_deployed_rule_effectiveness_scoring_contract_status(result)
+                self.status_var.set(f"Deployed rule effectiveness scoring-contract plan: {result.get('status', 'unknown')}.")
+            elif action == "record_deployed_rule_effectiveness_scoring_contract_result":
+                if not self._validate_deployed_rule_effectiveness_scoring_contract_inputs(action):
+                    return
+                result = record_deployed_rule_effectiveness_scoring_contract_result(
+                    self.deployed_rule_effectiveness_scoring_contract_plan_id_var.get().strip(),
+                    confirmation=self.deployed_rule_effectiveness_scoring_contract_confirmation_var.get().strip(),
+                )
+                if isinstance(result, dict) and result.get("effectiveness_scoring_contract_result_id"):
+                    self.deployed_rule_effectiveness_scoring_contract_result_record_id_var.set(str(result.get("effectiveness_scoring_contract_result_id") or ""))
+                    loaded = load_deployed_rule_effectiveness_scoring_contract_result(
+                        str(result.get("effectiveness_scoring_contract_result_id") or ""),
+                    )
+                    if isinstance(loaded, dict) and isinstance(loaded.get("effectiveness_scoring_contract_result"), dict):
+                        self._set_deployed_rule_effectiveness_scoring_contract_status(loaded["effectiveness_scoring_contract_result"])
+                    else:
+                        self._set_deployed_rule_effectiveness_scoring_contract_status(result)
+                else:
+                    self._set_deployed_rule_effectiveness_scoring_contract_status(result)
+                self.status_var.set(f"Deployed rule effectiveness scoring-contract result: {result.get('status', 'unknown')}.")
+            elif action == "load_deployed_rule_effectiveness_scoring_contract_result":
+                if not self._validate_deployed_rule_effectiveness_scoring_contract_inputs(action):
+                    return
+                loaded = load_deployed_rule_effectiveness_scoring_contract_result(
+                    self.deployed_rule_effectiveness_scoring_contract_result_record_id_var.get().strip(),
+                )
+                if isinstance(loaded, dict) and isinstance(loaded.get("effectiveness_scoring_contract_result"), dict):
+                    self._set_deployed_rule_effectiveness_scoring_contract_status(loaded["effectiveness_scoring_contract_result"])
+                else:
+                    self._set_deployed_rule_effectiveness_scoring_contract_status(loaded)
+                self.status_var.set(f"Deployed rule effectiveness scoring-contract result load: {loaded.get('status', 'unknown')}.")
+            elif action == "deployed_rule_effectiveness_scoring_contract_health":
+                result = get_deployed_rule_effectiveness_scoring_contract_health()
+                result = dict(result)
+                result["scoring_contract_health"] = result.get("status", "unknown")
+                result["health_scope"] = "repository-wide"
+                self._set_deployed_rule_effectiveness_scoring_contract_status(result)
+                self.status_var.set(f"Deployed rule effectiveness scoring-contract health: {result.get('scoring_contract_health', result.get('status', 'unknown'))}.")
+            elif action == "copy_deployed_rule_effectiveness_scoring_contract_report":
+                if not self._validate_deployed_rule_effectiveness_scoring_contract_inputs(action):
+                    return
+                text = format_deployed_rule_effectiveness_scoring_contract_report(**self._deployed_rule_effectiveness_scoring_contract_common_kwargs())
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe deployed-rule effectiveness scoring-contract report copied.")
+            elif action == "build_deployed_rule_effectiveness_scoring_result_plan":
+                if not self._validate_deployed_rule_effectiveness_scoring_result_inputs(action):
+                    return
+                result = build_deployed_rule_effectiveness_scoring_result_plan(**self._deployed_rule_effectiveness_scoring_result_common_kwargs())
+                if isinstance(result, dict) and result.get("effectiveness_scoring_result_plan_id"):
+                    self.deployed_rule_effectiveness_scoring_result_plan_id_var.set(str(result.get("effectiveness_scoring_result_plan_id") or ""))
+                self._set_deployed_rule_effectiveness_scoring_result_status(result)
+                self.status_var.set(f"Persisted scoring result plan: {result.get('status', 'unknown')}.")
+            elif action == "record_deployed_rule_effectiveness_scoring_result":
+                if not self._validate_deployed_rule_effectiveness_scoring_result_inputs(action):
+                    return
+                result = record_deployed_rule_effectiveness_scoring_result(
+                    self.deployed_rule_effectiveness_scoring_result_plan_id_var.get().strip(),
+                    confirmation=self.deployed_rule_effectiveness_scoring_result_confirmation_var.get().strip(),
+                )
+                if isinstance(result, dict) and result.get("effectiveness_scoring_result_id"):
+                    self.deployed_rule_effectiveness_scoring_result_id_var.set(str(result.get("effectiveness_scoring_result_id") or ""))
+                    loaded = load_deployed_rule_effectiveness_scoring_result(
+                        str(result.get("effectiveness_scoring_result_id") or ""),
+                    )
+                    if isinstance(loaded, dict) and isinstance(loaded.get("effectiveness_scoring_result"), dict):
+                        self._set_deployed_rule_effectiveness_scoring_result_status(loaded["effectiveness_scoring_result"])
+                    else:
+                        self._set_deployed_rule_effectiveness_scoring_result_status(result)
+                else:
+                    self._set_deployed_rule_effectiveness_scoring_result_status(result)
+                self.status_var.set(f"Persisted scoring result record: {result.get('status', 'unknown')}.")
+            elif action == "load_deployed_rule_effectiveness_scoring_result":
+                if not self._validate_deployed_rule_effectiveness_scoring_result_inputs(action):
+                    return
+                loaded = load_deployed_rule_effectiveness_scoring_result(
+                    self.deployed_rule_effectiveness_scoring_result_id_var.get().strip(),
+                )
+                if isinstance(loaded, dict) and isinstance(loaded.get("effectiveness_scoring_result"), dict):
+                    self._set_deployed_rule_effectiveness_scoring_result_status(loaded["effectiveness_scoring_result"])
+                else:
+                    self._set_deployed_rule_effectiveness_scoring_result_status(loaded)
+                self.status_var.set(f"Persisted scoring result load: {loaded.get('status', 'unknown')}.")
+            elif action == "load_deployed_rule_effectiveness_scoring_result_summary":
+                result = build_deployed_rule_effectiveness_scoring_result_summary_surface(
+                    scoring_result_id=self.deployed_rule_effectiveness_scoring_result_id_var.get().strip() or None,
+                )
+                self._set_deployed_rule_effectiveness_scoring_result_status(result)
+                self.status_var.set(f"Persisted scoring result summary: {result.get('status', 'unknown')}.")
+            elif action == "load_deployed_rule_effectiveness_scoring_result_public_safe_export_pack":
+                if not self._validate_deployed_rule_effectiveness_scoring_result_inputs(action):
+                    return
+                result = build_deployed_rule_effectiveness_scoring_result_public_safe_export_pack(
+                    self.deployed_rule_effectiveness_scoring_result_id_var.get().strip(),
+                )
+                self._set_deployed_rule_effectiveness_scoring_result_status(result)
+                self.status_var.set(f"Public-safe persisted scoring export pack: {result.get('status', 'unknown')}.")
+            elif action == "validate_deployed_rule_effectiveness_scoring_result_eligibility":
+                if not self._validate_deployed_rule_effectiveness_scoring_result_inputs(action):
+                    return
+                result = validate_deployed_rule_effectiveness_scoring_result_eligibility(**self._deployed_rule_effectiveness_scoring_result_common_kwargs())
+                self._set_deployed_rule_effectiveness_scoring_result_status(result)
+                self.status_var.set(f"Persisted scoring result eligibility: {result.get('status', 'unknown')}.")
+            elif action == "deployed_rule_effectiveness_scoring_result_health":
+                result = get_deployed_rule_effectiveness_scoring_result_health()
+                result = dict(result)
+                result["persisted_scoring_result_health"] = result.get("status", "unknown")
+                result["health_scope"] = result.get("health_scope", "repository-wide")
+                self._set_deployed_rule_effectiveness_scoring_result_status(result)
+                self.status_var.set(f"Persisted scoring result health: {result.get('persisted_scoring_result_health', result.get('status', 'unknown'))}.")
+            elif action == "copy_deployed_rule_effectiveness_scoring_result_report":
+                if not self._validate_deployed_rule_effectiveness_scoring_result_inputs(action):
+                    return
+                text = format_deployed_rule_effectiveness_scoring_result_report(**self._deployed_rule_effectiveness_scoring_result_common_kwargs())
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe persisted scoring result report copied.")
+            elif action == "copy_deployed_rule_effectiveness_scoring_result_summary_report":
+                text = format_deployed_rule_effectiveness_scoring_result_summary_surface_report(
+                    scoring_result_id=self.deployed_rule_effectiveness_scoring_result_id_var.get().strip() or None,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe persisted scoring result summary report copied.")
+            elif action == "copy_deployed_rule_effectiveness_scoring_result_public_safe_export_report":
+                if not self._validate_deployed_rule_effectiveness_scoring_result_inputs(action):
+                    return
+                text = format_deployed_rule_effectiveness_scoring_result_public_safe_export_report(
+                    self.deployed_rule_effectiveness_scoring_result_id_var.get().strip(),
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe persisted scoring export report copied.")
             elif action == "copy":
                 text = format_pdf_text_layer_report(viewport_id=viewport_id or None, document_id=None if viewport_id else document_id, public_safe=True)
                 self.clipboard_clear()
@@ -5021,6 +5543,786 @@ class DesktopRightPanelMixin:
             f"Blocker Count: {len(payload.get('blockers', []) if isinstance(payload.get('blockers'), list) else [])}\n"
             f"Warning Count: {len(payload.get('warnings', []) if isinstance(payload.get('warnings'), list) else [])}\n"
             f"Recommended Action: {payload.get('recommended_action', 'Continue deployed-rule effectiveness-readiness review.')}"
+        )
+
+    def _deployed_rule_outcome_truth_common_kwargs(self) -> dict[str, object]:
+        return {
+            "canonical_rule_id": self.deployed_rule_outcome_truth_rule_id_var.get().strip(),
+            "production_deployment_result_id": self.deployed_rule_outcome_truth_result_id_var.get().strip(),
+            "production_target_id": self.deployed_rule_outcome_truth_target_id_var.get().strip(),
+            "deployed_rule_id": self.deployed_rule_outcome_truth_deployed_rule_id_var.get().strip(),
+            "telemetry_snapshot_id": self.deployed_rule_outcome_truth_snapshot_id_var.get().strip(),
+            "readiness_result_id": self.deployed_rule_outcome_truth_readiness_result_id_var.get().strip(),
+            "effectiveness_spec_result_id": self.deployed_rule_outcome_truth_spec_result_id_var.get().strip(),
+            "observation_window_start": self.deployed_rule_outcome_truth_start_var.get().strip(),
+            "observation_window_end": self.deployed_rule_outcome_truth_end_var.get().strip(),
+            "outcome_truth_source_id": self.deployed_rule_outcome_truth_source_id_var.get().strip() or None,
+            "outcome_truth_record_set_id": self.deployed_rule_outcome_truth_record_set_id_var.get().strip() or None,
+        }
+
+    def _parse_deployed_rule_outcome_truth_records(self) -> list[dict[str, object]] | None:
+        raw = self.deployed_rule_outcome_truth_record_json_var.get().strip()
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            self.deployed_rule_outcome_truth_status_var.set(
+                "Outcome-Truth Source Status: blocked\n"
+                "Source ID: unknown\n"
+                "Source Type: unknown\n"
+                "Source Authority Class: unknown\n"
+                "Source Fingerprint: unknown\n"
+                "Record-Set ID: none\n"
+                "Record Count: 0\n"
+                "Valid Record Count: 0\n"
+                "Incomplete Record Count: 0\n"
+                "Unsupported Record Count: 0\n"
+                "Binding Status: blocked\n"
+                "Expected Outcome Availability: unknown\n"
+                "Actual/Adjudicated Outcome Availability: unknown\n"
+                "Scoring Support Status: blocked\n"
+                "Effectiveness Score Calculated: no\n"
+                "Plan ID: none\n"
+                "Result ID: none\n"
+                "Health Scope: repository-wide\n"
+                "Outcome-Truth Health: blocked\n"
+                "Blocker Count: 1\n"
+                "Warning Count: 0\n"
+                "Recommended Action: Enter valid JSON for Outcome Truth Record JSON before validating or registering a record set."
+            )
+            self.status_var.set("Deployed rule outcome-truth action blocked: invalid Outcome Truth Record JSON.")
+            return None
+        if isinstance(parsed, dict):
+            return [parsed]
+        if isinstance(parsed, list):
+            return [item for item in parsed if isinstance(item, dict)]
+        self.status_var.set("Deployed rule outcome-truth action blocked: Outcome Truth Record JSON must decode to an object or list of objects.")
+        return None
+
+    def _parse_deployed_rule_outcome_truth_candidate_record_set(self) -> dict[str, object] | None:
+        raw = self.deployed_rule_outcome_truth_record_json_var.get().strip()
+        if not raw:
+            self.deployed_rule_outcome_truth_status_var.set(
+                "Outcome-Truth Source Status: blocked\n"
+                "Source ID: unknown\n"
+                "Source Type: unknown\n"
+                "Source Authority Class: unknown\n"
+                "Source Fingerprint: unknown\n"
+                "Record-Set ID: none\n"
+                "Record Count: 0\n"
+                "Valid Record Count: 0\n"
+                "Incomplete Record Count: 0\n"
+                "Unsupported Record Count: 0\n"
+                "Binding Status: blocked\n"
+                "Expected Outcome Availability: unknown\n"
+                "Actual/Adjudicated Outcome Availability: unknown\n"
+                "Scoring Support Status: blocked\n"
+                "Effectiveness Score Calculated: no\n"
+                "Plan ID: none\n"
+                "Result ID: none\n"
+                "Health Scope: repository-wide\n"
+                "Outcome-Truth Health: blocked\n"
+                "Blocker Count: 1\n"
+                "Warning Count: 0\n"
+                "Recommended Action: Enter Candidate Outcome-Truth Record Set JSON before running registration-pipeline QA: candidate_record_set_required."
+            )
+            self.status_var.set("Outcome-truth registration-pipeline QA action blocked: candidate_record_set_required.")
+            return None
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            self.deployed_rule_outcome_truth_status_var.set(
+                "Outcome-Truth Source Status: blocked\n"
+                "Source ID: unknown\n"
+                "Source Type: unknown\n"
+                "Source Authority Class: unknown\n"
+                "Source Fingerprint: unknown\n"
+                "Record-Set ID: none\n"
+                "Record Count: 0\n"
+                "Valid Record Count: 0\n"
+                "Incomplete Record Count: 0\n"
+                "Unsupported Record Count: 0\n"
+                "Binding Status: blocked\n"
+                "Expected Outcome Availability: unknown\n"
+                "Actual/Adjudicated Outcome Availability: unknown\n"
+                "Scoring Support Status: blocked\n"
+                "Effectiveness Score Calculated: no\n"
+                "Plan ID: none\n"
+                "Result ID: none\n"
+                "Health Scope: repository-wide\n"
+                "Outcome-Truth Health: blocked\n"
+                "Blocker Count: 1\n"
+                "Warning Count: 0\n"
+                "Recommended Action: Enter valid Candidate Outcome-Truth Record Set JSON before running registration-pipeline QA: candidate_record_set_malformed."
+            )
+            self.status_var.set("Outcome-truth registration-pipeline QA action blocked: candidate_record_set_malformed.")
+            return None
+        if not isinstance(parsed, dict):
+            self.status_var.set("Outcome-truth registration-pipeline QA action blocked: candidate_record_set_malformed.")
+            return None
+        return parsed
+
+    def _deployed_rule_outcome_truth_record_set_kwargs(self, *, include_confirmation: bool) -> dict[str, object] | None:
+        records = self._parse_deployed_rule_outcome_truth_records()
+        if records is None:
+            return None
+        payload: dict[str, object] = {
+            "canonical_rule_id": self.deployed_rule_outcome_truth_rule_id_var.get().strip(),
+            "production_deployment_result_id": self.deployed_rule_outcome_truth_result_id_var.get().strip(),
+            "production_target_id": self.deployed_rule_outcome_truth_target_id_var.get().strip(),
+            "deployed_rule_id": self.deployed_rule_outcome_truth_deployed_rule_id_var.get().strip(),
+            "telemetry_snapshot_id": self.deployed_rule_outcome_truth_snapshot_id_var.get().strip(),
+            "observation_window_start": self.deployed_rule_outcome_truth_start_var.get().strip(),
+            "observation_window_end": self.deployed_rule_outcome_truth_end_var.get().strip(),
+            "source_id": self.deployed_rule_outcome_truth_source_id_var.get().strip(),
+            "source_type": "external_authoritative_result",
+            "source_authority_class": "authoritative",
+            "records": records,
+            "outcome_truth_record_set_id": self.deployed_rule_outcome_truth_record_set_id_var.get().strip() or None,
+        }
+        if include_confirmation:
+            payload["confirmation"] = self.deployed_rule_outcome_truth_registration_confirmation_var.get().strip()
+        return payload
+
+    def _register_deployed_rule_outcome_truth_traces(self) -> None:
+        if getattr(self, "_deployed_rule_outcome_truth_traces_registered", False):
+            return
+        self._deployed_rule_outcome_truth_traces_registered = True
+        for variable in (
+            self.deployed_rule_outcome_truth_rule_id_var,
+            self.deployed_rule_outcome_truth_result_id_var,
+            self.deployed_rule_outcome_truth_target_id_var,
+            self.deployed_rule_outcome_truth_deployed_rule_id_var,
+            self.deployed_rule_outcome_truth_snapshot_id_var,
+            self.deployed_rule_outcome_truth_readiness_result_id_var,
+            self.deployed_rule_outcome_truth_spec_result_id_var,
+            self.deployed_rule_outcome_truth_start_var,
+            self.deployed_rule_outcome_truth_end_var,
+            self.deployed_rule_outcome_truth_source_id_var,
+            self.deployed_rule_outcome_truth_record_set_id_var,
+            self.deployed_rule_outcome_truth_record_json_var,
+            self.deployed_rule_outcome_truth_plan_id_var,
+            self.deployed_rule_outcome_truth_result_record_id_var,
+            self.deployed_rule_outcome_truth_registration_confirmation_var,
+            self.deployed_rule_outcome_truth_result_confirmation_var,
+        ):
+            trace_add = getattr(variable, "trace_add", None)
+            if callable(trace_add):
+                trace_add("write", self._on_deployed_rule_outcome_truth_input_changed)
+
+    def _on_deployed_rule_outcome_truth_input_changed(self, *_args: object) -> None:
+        self._mark_deployed_rule_outcome_truth_stale()
+
+    def _mark_deployed_rule_outcome_truth_stale(self) -> None:
+        self.deployed_rule_outcome_truth_status_var.set(
+            "Outcome-Truth Source Status: stale_due_to_input_change\n"
+            "Source ID: unknown\n"
+            "Source Type: unknown\n"
+            "Source Authority Class: unknown\n"
+            "Source Fingerprint: unknown\n"
+            "Record-Set ID: none\n"
+            "Record Count: 0\n"
+            "Valid Record Count: 0\n"
+            "Incomplete Record Count: 0\n"
+            "Unsupported Record Count: 0\n"
+            "Candidate Payload Status: stale_due_to_input_change\n"
+            "Binding Status: stale_due_to_input_change\n"
+            "Expected Outcome Availability: stale_due_to_input_change\n"
+            "Actual/Adjudicated Outcome Availability: stale_due_to_input_change\n"
+            "Scoring Support Status: stale_due_to_input_change\n"
+            "Effectiveness Score Calculated: no\n"
+            "Plan ID: none\n"
+            "Result ID: none\n"
+            "Health Scope: repository-wide\n"
+            "Outcome-Truth Health: stale\n"
+            "Blocker Count: 0\n"
+            "Warning Count: 1\n"
+            "Recommended Action: Refresh outcome-truth workspace, eligibility, plan, result, record set, health, or report after changing inputs."
+        )
+
+    def _validate_deployed_rule_outcome_truth_inputs(self, action: str) -> bool:
+        shared = (
+            ("canonical_rule_id", self.deployed_rule_outcome_truth_rule_id_var.get().strip()),
+            ("production_deployment_result_id", self.deployed_rule_outcome_truth_result_id_var.get().strip()),
+            ("production_target_id", self.deployed_rule_outcome_truth_target_id_var.get().strip()),
+            ("deployed_rule_id", self.deployed_rule_outcome_truth_deployed_rule_id_var.get().strip()),
+            ("telemetry_snapshot_id", self.deployed_rule_outcome_truth_snapshot_id_var.get().strip()),
+            ("readiness_result_id", self.deployed_rule_outcome_truth_readiness_result_id_var.get().strip()),
+            ("effectiveness_spec_result_id", self.deployed_rule_outcome_truth_spec_result_id_var.get().strip()),
+            ("observation_window_start", self.deployed_rule_outcome_truth_start_var.get().strip()),
+            ("observation_window_end", self.deployed_rule_outcome_truth_end_var.get().strip()),
+        )
+        record_set_shared = (
+            ("canonical_rule_id", self.deployed_rule_outcome_truth_rule_id_var.get().strip()),
+            ("production_deployment_result_id", self.deployed_rule_outcome_truth_result_id_var.get().strip()),
+            ("production_target_id", self.deployed_rule_outcome_truth_target_id_var.get().strip()),
+            ("deployed_rule_id", self.deployed_rule_outcome_truth_deployed_rule_id_var.get().strip()),
+            ("telemetry_snapshot_id", self.deployed_rule_outcome_truth_snapshot_id_var.get().strip()),
+            ("observation_window_start", self.deployed_rule_outcome_truth_start_var.get().strip()),
+            ("observation_window_end", self.deployed_rule_outcome_truth_end_var.get().strip()),
+            ("outcome_truth_record_json", self.deployed_rule_outcome_truth_record_json_var.get().strip()),
+        )
+        required_fields = {
+            "load_deployed_rule_outcome_truth_workspace": shared,
+            "validate_deployed_rule_outcome_truth_eligibility": shared,
+            "build_deployed_rule_outcome_truth_plan": shared,
+            "copy_deployed_rule_outcome_truth_report": shared,
+            "validate_deployed_rule_outcome_truth_record_set": record_set_shared,
+            "register_deployed_rule_outcome_truth_record_set": record_set_shared + (("registration_confirmation", self.deployed_rule_outcome_truth_registration_confirmation_var.get().strip()),),
+            "load_deployed_rule_outcome_truth_record_set": (("outcome_truth_record_set_id", self.deployed_rule_outcome_truth_record_set_id_var.get().strip()),),
+            "load_deployed_rule_outcome_truth_record_set_qa_gate": (("outcome_truth_record_set_id_required", self.deployed_rule_outcome_truth_record_set_id_var.get().strip()),),
+            "copy_deployed_rule_outcome_truth_record_set_qa_gate_report": (("outcome_truth_record_set_id_required", self.deployed_rule_outcome_truth_record_set_id_var.get().strip()),),
+            "load_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate": (),
+            "copy_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report": (),
+            "load_deployed_rule_outcome_truth_result": (("outcome_truth_source_result_id", self.deployed_rule_outcome_truth_result_record_id_var.get().strip()),),
+            "record_deployed_rule_outcome_truth_result": (
+                ("outcome_truth_source_plan_id", self.deployed_rule_outcome_truth_plan_id_var.get().strip()),
+                ("result_confirmation", self.deployed_rule_outcome_truth_result_confirmation_var.get().strip()),
+            ),
+            "list_deployed_rule_outcome_truth_record_sets": (
+                ("canonical_rule_id", self.deployed_rule_outcome_truth_rule_id_var.get().strip()),
+                ("production_deployment_result_id", self.deployed_rule_outcome_truth_result_id_var.get().strip()),
+                ("production_target_id", self.deployed_rule_outcome_truth_target_id_var.get().strip()),
+                ("deployed_rule_id", self.deployed_rule_outcome_truth_deployed_rule_id_var.get().strip()),
+                ("telemetry_snapshot_id", self.deployed_rule_outcome_truth_snapshot_id_var.get().strip()),
+            ),
+        }
+        missing = [name for name, value in required_fields.get(action, ()) if not value]
+        registration_confirmation = self.deployed_rule_outcome_truth_registration_confirmation_var.get().strip()
+        result_confirmation = self.deployed_rule_outcome_truth_result_confirmation_var.get().strip()
+        if action == "register_deployed_rule_outcome_truth_record_set" and registration_confirmation and registration_confirmation != "REGISTER_OUTCOME_TRUTH_RECORD_SET":
+            missing.append("registration_confirmation_exact_match_required")
+        if action == "record_deployed_rule_outcome_truth_result" and result_confirmation and result_confirmation != "RECORD_OUTCOME_TRUTH_SOURCE_RESULT":
+            missing.append("result_confirmation_exact_match_required")
+        if not missing:
+            return True
+        qa_gate_actions = {
+            "load_deployed_rule_outcome_truth_record_set_qa_gate",
+            "copy_deployed_rule_outcome_truth_record_set_qa_gate_report",
+            "load_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate",
+            "copy_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report",
+        }
+        if action in qa_gate_actions:
+            self.deployed_rule_outcome_truth_status_var.set(
+                "Outcome-Truth Source Status: blocked\n"
+                "Source ID: unknown\n"
+                "Source Type: unknown\n"
+                "Source Authority Class: unknown\n"
+                "Source Fingerprint: unknown\n"
+                f"Record-Set ID: {self.deployed_rule_outcome_truth_record_set_id_var.get().strip() or 'none'}\n"
+                "Record Count: 0\n"
+                "Valid Record Count: 0\n"
+                "Incomplete Record Count: 0\n"
+                "Unsupported Record Count: 0\n"
+                "Duplicate Record Count: 0\n"
+                "Conflict Count: 0\n"
+                "Missing Expected Outcome Count: 0\n"
+                "Missing Actual Outcome Count: 0\n"
+                "Source Metadata Warning Count: 0\n"
+                "Writes Performed: 0\n"
+                "Effectiveness Score Calculated: no\n"
+                f"Record-Set QA Status: blocked\n"
+                f"Recommended Action: Enter required outcome-truth record-set inputs before {action}: {', '.join(missing)}."
+            )
+            self.status_var.set(f"Outcome-truth record-set QA action blocked: missing {', '.join(missing)}.")
+            return False
+        self.deployed_rule_outcome_truth_status_var.set(
+            "Outcome-Truth Source Status: blocked\n"
+            "Source ID: unknown\n"
+            "Source Type: unknown\n"
+            "Source Authority Class: unknown\n"
+            "Source Fingerprint: unknown\n"
+            f"Record-Set ID: {self.deployed_rule_outcome_truth_record_set_id_var.get().strip() or 'none'}\n"
+            "Record Count: 0\n"
+            "Valid Record Count: 0\n"
+            "Incomplete Record Count: 0\n"
+            "Unsupported Record Count: 0\n"
+            "Binding Status: blocked\n"
+            "Expected Outcome Availability: blocked\n"
+            "Actual/Adjudicated Outcome Availability: blocked\n"
+            "Scoring Support Status: blocked\n"
+            "Effectiveness Score Calculated: no\n"
+            f"Plan ID: {self.deployed_rule_outcome_truth_plan_id_var.get().strip() or 'none'}\n"
+            f"Result ID: {self.deployed_rule_outcome_truth_result_record_id_var.get().strip() or 'none'}\n"
+            "Health Scope: repository-wide\n"
+            "Outcome-Truth Health: blocked\n"
+            f"Blocker Count: {len(missing)}\n"
+            "Warning Count: 0\n"
+            f"Recommended Action: Enter required outcome-truth identifiers before {action}: {', '.join(missing)}."
+        )
+        self.status_var.set(f"Deployed rule outcome-truth action blocked: missing {', '.join(missing)}.")
+        return False
+
+    def _set_deployed_rule_outcome_truth_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        limitations = payload.get("limitations", [])
+        if isinstance(limitations, list):
+            limitations_text = "; ".join(str(item) for item in limitations if str(item).strip()) or "none"
+        else:
+            limitations_text = str(limitations or "none")
+        self.deployed_rule_outcome_truth_status_var.set(
+            f"Outcome-Truth Source Status: {payload.get('source_status', payload.get('status', 'unknown'))}\n"
+            f"Source ID: {payload.get('outcome_truth_source_id', payload.get('source_id', 'unknown'))}\n"
+            f"Source Type: {payload.get('source_type', 'unknown')}\n"
+            f"Source Authority Class: {payload.get('source_authority_class', payload.get('authority_status', 'unknown'))}\n"
+            f"Source Fingerprint: {payload.get('source_fingerprint', payload.get('record_set_fingerprint', payload.get('result_fingerprint', 'unknown')))}\n"
+            f"Record-Set ID: {payload.get('outcome_truth_record_set_id', self.deployed_rule_outcome_truth_record_set_id_var.get().strip() or 'none')}\n"
+            f"Record Count: {payload.get('record_count', payload.get('candidate_record_count', 0))}\n"
+            f"Valid Record Count: {payload.get('valid_record_count', 0)}\n"
+            f"Incomplete Record Count: {payload.get('incomplete_record_count', 0)}\n"
+            f"Unsupported Record Count: {payload.get('unsupported_record_count', 0)}\n"
+            f"Eligible Record Count: {payload.get('eligible_record_count', payload.get('candidate_eligible_record_count', 0))}\n"
+            f"Excluded Record Count: {payload.get('excluded_record_count', payload.get('candidate_excluded_record_count', 0))}\n"
+            f"Duplicate Record Count: {payload.get('duplicate_record_count', 0)}\n"
+            f"Conflict Count: {payload.get('conflict_count', 0)}\n"
+            f"Missing Expected Outcome Count: {payload.get('missing_expected_outcome_count', 0)}\n"
+            f"Missing Actual Outcome Count: {payload.get('missing_actual_outcome_count', 0)}\n"
+            f"Source Metadata Warning Count: {payload.get('missing_source_metadata_count', 0)}\n"
+            f"Mixed-Scope Warning Count: {payload.get('mixed_scope_warning_count', 0)}\n"
+            f"Structurally Ready For Registration: {'yes' if payload.get('structurally_ready_for_registration') else 'no'}\n"
+            f"Binding Status: {payload.get('binding_status', payload.get('outcome_truth_binding_status', 'unknown'))}\n"
+            f"Expected Outcome Availability: {payload.get('expected_value_availability', payload.get('outcome_truth_expected_value_status', 'unknown'))}\n"
+            f"Actual/Adjudicated Outcome Availability: {payload.get('actual_or_adjudicated_value_availability', payload.get('outcome_truth_actual_value_status', 'unknown'))}\n"
+            f"Scoring Support Status: {payload.get('scoring_support_status', 'unknown')}\n"
+            "Effectiveness Score Calculated: no\n"
+            f"Record-Set QA Status: {payload.get('status', 'unknown')}\n"
+            f"Writes Performed: {payload.get('writes_performed', 0)}\n"
+            f"Plan ID: {payload.get('outcome_truth_source_plan_id', self.deployed_rule_outcome_truth_plan_id_var.get().strip() or 'none')}\n"
+            f"Result ID: {payload.get('outcome_truth_source_result_id', self.deployed_rule_outcome_truth_result_record_id_var.get().strip() or 'none')}\n"
+            f"Health Scope: {payload.get('health_scope', 'repository-wide')}\n"
+            f"Outcome-Truth Health: {payload.get('outcome_truth_health', payload.get('status', 'unknown'))}\n"
+            f"Blocker Count: {len(payload.get('blockers', []) if isinstance(payload.get('blockers'), list) else [])}\n"
+            f"Warning Count: {len(payload.get('warnings', []) if isinstance(payload.get('warnings'), list) else [])}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue deployed-rule outcome-truth source review.')}\n"
+            f"Limitations: {limitations_text}"
+        )
+
+    def _deployed_rule_effectiveness_scoring_contract_common_kwargs(self) -> dict[str, object]:
+        return {
+            "canonical_rule_id": self.deployed_rule_effectiveness_scoring_contract_rule_id_var.get().strip(),
+            "production_deployment_result_id": self.deployed_rule_effectiveness_scoring_contract_result_id_var.get().strip(),
+            "production_target_id": self.deployed_rule_effectiveness_scoring_contract_target_id_var.get().strip(),
+            "deployed_rule_id": self.deployed_rule_effectiveness_scoring_contract_deployed_rule_id_var.get().strip(),
+            "telemetry_snapshot_id": self.deployed_rule_effectiveness_scoring_contract_snapshot_id_var.get().strip(),
+            "readiness_result_id": self.deployed_rule_effectiveness_scoring_contract_readiness_result_id_var.get().strip(),
+            "effectiveness_spec_result_id": self.deployed_rule_effectiveness_scoring_contract_spec_result_id_var.get().strip(),
+            "outcome_truth_source_result_id": self.deployed_rule_effectiveness_scoring_contract_outcome_truth_result_id_var.get().strip(),
+            "outcome_truth_record_set_id": self.deployed_rule_effectiveness_scoring_contract_record_set_id_var.get().strip(),
+            "observation_window_start": self.deployed_rule_effectiveness_scoring_contract_start_var.get().strip(),
+            "observation_window_end": self.deployed_rule_effectiveness_scoring_contract_end_var.get().strip(),
+        }
+
+    def _register_deployed_rule_effectiveness_scoring_contract_traces(self) -> None:
+        if getattr(self, "_deployed_rule_effectiveness_scoring_contract_traces_registered", False):
+            return
+        self._deployed_rule_effectiveness_scoring_contract_traces_registered = True
+        for variable in (
+            self.deployed_rule_effectiveness_scoring_contract_rule_id_var,
+            self.deployed_rule_effectiveness_scoring_contract_result_id_var,
+            self.deployed_rule_effectiveness_scoring_contract_target_id_var,
+            self.deployed_rule_effectiveness_scoring_contract_deployed_rule_id_var,
+            self.deployed_rule_effectiveness_scoring_contract_snapshot_id_var,
+            self.deployed_rule_effectiveness_scoring_contract_readiness_result_id_var,
+            self.deployed_rule_effectiveness_scoring_contract_spec_result_id_var,
+            self.deployed_rule_effectiveness_scoring_contract_outcome_truth_result_id_var,
+            self.deployed_rule_effectiveness_scoring_contract_record_set_id_var,
+            self.deployed_rule_effectiveness_scoring_contract_start_var,
+            self.deployed_rule_effectiveness_scoring_contract_end_var,
+            self.deployed_rule_effectiveness_scoring_contract_plan_id_var,
+            self.deployed_rule_effectiveness_scoring_contract_result_record_id_var,
+            self.deployed_rule_effectiveness_scoring_contract_confirmation_var,
+        ):
+            trace_add = getattr(variable, "trace_add", None)
+            if callable(trace_add):
+                trace_add("write", self._on_deployed_rule_effectiveness_scoring_contract_input_changed)
+
+    def _on_deployed_rule_effectiveness_scoring_contract_input_changed(self, *_args: object) -> None:
+        self._mark_deployed_rule_effectiveness_scoring_contract_stale()
+
+    def _mark_deployed_rule_effectiveness_scoring_contract_stale(self) -> None:
+        self.deployed_rule_effectiveness_scoring_contract_status_var.set(
+            "Scoring-Contract Status: stale_due_to_input_change\n"
+            "Metric Family Count: 0\n"
+            "Metric Families: none\n"
+            "Accuracy-Like Contract Status: stale_due_to_input_change\n"
+            "False-Positive/False-Negative Contract Status: stale_due_to_input_change\n"
+            "Precision/Recall-Like Contract Status: stale_due_to_input_change\n"
+            "Calibration-Like Contract Status: stale_due_to_input_change\n"
+            "Runtime-Reliability Contract Status: stale_due_to_input_change\n"
+            "Numerator Contract Status: stale_due_to_input_change\n"
+            "Denominator Contract Status: stale_due_to_input_change\n"
+            "Outcome-Truth Readiness: stale_due_to_input_change\n"
+            "Scoring Support Status: stale_due_to_input_change\n"
+            "Readiness Result ID: none\n"
+            "Effectiveness Spec Result ID: none\n"
+            "Outcome-Truth Source Result ID: none\n"
+            "Outcome-Truth Record-Set ID: none\n"
+            "Scoring Contract Plan ID: none\n"
+            "Scoring Contract Result ID: none\n"
+            "Health Scope: repository-wide\n"
+            "Scoring-Contract Health: stale\n"
+            "Effectiveness Score Calculated: no\n"
+            "Correctness Calculated: no\n"
+            "Rates Calculated: no\n"
+            "Blocker Count: 0\n"
+            "Warning Count: 1\n"
+            "Recommended Action: Refresh scoring-contract workspace, eligibility, plan, result, health, or report after changing inputs."
+        )
+
+    def _validate_deployed_rule_effectiveness_scoring_contract_inputs(self, action: str) -> bool:
+        shared = (
+            ("canonical_rule_id", self.deployed_rule_effectiveness_scoring_contract_rule_id_var.get().strip()),
+            ("production_deployment_result_id", self.deployed_rule_effectiveness_scoring_contract_result_id_var.get().strip()),
+            ("production_target_id", self.deployed_rule_effectiveness_scoring_contract_target_id_var.get().strip()),
+            ("deployed_rule_id", self.deployed_rule_effectiveness_scoring_contract_deployed_rule_id_var.get().strip()),
+            ("telemetry_snapshot_id", self.deployed_rule_effectiveness_scoring_contract_snapshot_id_var.get().strip()),
+            ("readiness_result_id", self.deployed_rule_effectiveness_scoring_contract_readiness_result_id_var.get().strip()),
+            ("effectiveness_spec_result_id", self.deployed_rule_effectiveness_scoring_contract_spec_result_id_var.get().strip()),
+            ("outcome_truth_source_result_id", self.deployed_rule_effectiveness_scoring_contract_outcome_truth_result_id_var.get().strip()),
+            ("outcome_truth_record_set_id", self.deployed_rule_effectiveness_scoring_contract_record_set_id_var.get().strip()),
+            ("observation_window_start", self.deployed_rule_effectiveness_scoring_contract_start_var.get().strip()),
+            ("observation_window_end", self.deployed_rule_effectiveness_scoring_contract_end_var.get().strip()),
+        )
+        required_fields = {
+            "load_deployed_rule_effectiveness_scoring_contract_workspace": shared,
+            "validate_deployed_rule_effectiveness_scoring_contract_eligibility": shared,
+            "build_deployed_rule_effectiveness_scoring_contract_plan": shared,
+            "copy_deployed_rule_effectiveness_scoring_contract_report": shared,
+            "load_deployed_rule_effectiveness_scoring_contract_result": (
+                ("effectiveness_scoring_contract_result_id", self.deployed_rule_effectiveness_scoring_contract_result_record_id_var.get().strip()),
+            ),
+            "record_deployed_rule_effectiveness_scoring_contract_result": (
+                ("effectiveness_scoring_contract_plan_id", self.deployed_rule_effectiveness_scoring_contract_plan_id_var.get().strip()),
+                ("scoring_contract_result_confirmation_exact_match_required", self.deployed_rule_effectiveness_scoring_contract_confirmation_var.get().strip()),
+            ),
+        }
+        missing = [name for name, value in required_fields.get(action, ()) if not value]
+        confirmation = self.deployed_rule_effectiveness_scoring_contract_confirmation_var.get().strip()
+        if action == "record_deployed_rule_effectiveness_scoring_contract_result" and confirmation and confirmation != "RECORD_EFFECTIVENESS_SCORING_CONTRACT_RESULT":
+            missing.append("scoring_contract_result_confirmation_exact_match_required")
+        if not missing:
+            return True
+        self.deployed_rule_effectiveness_scoring_contract_status_var.set(
+            "Scoring-Contract Status: blocked\n"
+            "Metric Family Count: 0\n"
+            "Metric Families: none\n"
+            "Accuracy-Like Contract Status: blocked\n"
+            "False-Positive/False-Negative Contract Status: blocked\n"
+            "Precision/Recall-Like Contract Status: blocked\n"
+            "Calibration-Like Contract Status: blocked\n"
+            "Runtime-Reliability Contract Status: blocked\n"
+            "Numerator Contract Status: blocked\n"
+            "Denominator Contract Status: blocked\n"
+            "Outcome-Truth Readiness: blocked\n"
+            "Scoring Support Status: blocked\n"
+            f"Readiness Result ID: {self.deployed_rule_effectiveness_scoring_contract_readiness_result_id_var.get().strip() or 'none'}\n"
+            f"Effectiveness Spec Result ID: {self.deployed_rule_effectiveness_scoring_contract_spec_result_id_var.get().strip() or 'none'}\n"
+            f"Outcome-Truth Source Result ID: {self.deployed_rule_effectiveness_scoring_contract_outcome_truth_result_id_var.get().strip() or 'none'}\n"
+            f"Outcome-Truth Record-Set ID: {self.deployed_rule_effectiveness_scoring_contract_record_set_id_var.get().strip() or 'none'}\n"
+            f"Scoring Contract Plan ID: {self.deployed_rule_effectiveness_scoring_contract_plan_id_var.get().strip() or 'none'}\n"
+            f"Scoring Contract Result ID: {self.deployed_rule_effectiveness_scoring_contract_result_record_id_var.get().strip() or 'none'}\n"
+            "Health Scope: repository-wide\n"
+            "Scoring-Contract Health: blocked\n"
+            "Effectiveness Score Calculated: no\n"
+            "Correctness Calculated: no\n"
+            "Rates Calculated: no\n"
+            f"Blocker Count: {len(missing)}\n"
+            "Warning Count: 0\n"
+            f"Recommended Action: Enter required scoring-contract identifiers before {action}: {', '.join(missing)}."
+        )
+        self.status_var.set(f"Deployed rule effectiveness scoring-contract action blocked: missing {', '.join(missing)}.")
+        return False
+
+    def _set_deployed_rule_effectiveness_scoring_contract_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        metric_contracts = payload.get("metric_contracts")
+        if not isinstance(metric_contracts, dict):
+            metric_contracts = {}
+        denominator_contract = payload.get("denominator_contract")
+        numerator_contract = payload.get("numerator_contract")
+        metric_names = ", ".join(metric_contracts.keys()) if metric_contracts else "none"
+        self.deployed_rule_effectiveness_scoring_contract_status_var.set(
+            f"Scoring-Contract Status: {payload.get('scoring_contract_status', payload.get('status', 'unknown'))}\n"
+            f"Metric Family Count: {len(metric_contracts)}\n"
+            f"Metric Families: {metric_names}\n"
+            f"Accuracy-Like Contract Status: {metric_contracts.get('accuracy_like_contract', {}).get('metric_family_status', 'unknown')}\n"
+            f"False-Positive/False-Negative Contract Status: {metric_contracts.get('false_positive_false_negative_contract', {}).get('metric_family_status', 'unknown')}\n"
+            f"Precision/Recall-Like Contract Status: {metric_contracts.get('precision_recall_like_contract', {}).get('metric_family_status', 'unknown')}\n"
+            f"Calibration-Like Contract Status: {metric_contracts.get('calibration_like_contract', {}).get('metric_family_status', 'unknown')}\n"
+            f"Runtime-Reliability Contract Status: {metric_contracts.get('runtime_reliability_contract', {}).get('metric_family_status', 'unknown')}\n"
+            f"Numerator Contract Status: {('ready_for_engine_design' if isinstance(numerator_contract, dict) and numerator_contract.get('numerator_ready') else 'blocked') if isinstance(numerator_contract, dict) else 'unknown'}\n"
+            f"Denominator Contract Status: {('ready_for_engine_design' if isinstance(denominator_contract, dict) and denominator_contract.get('denominator_ready') else 'blocked') if isinstance(denominator_contract, dict) else 'unknown'}\n"
+            f"Outcome-Truth Readiness: {payload.get('outcome_truth_readiness', payload.get('criteria', {}).get('outcome_truth_source_available', 'unknown') if isinstance(payload.get('criteria'), dict) else 'unknown')}\n"
+            f"Scoring Support Status: {payload.get('scoring_support_status', 'unknown')}\n"
+            f"Readiness Result ID: {payload.get('readiness_result_id', self.deployed_rule_effectiveness_scoring_contract_readiness_result_id_var.get().strip() or 'none')}\n"
+            f"Effectiveness Spec Result ID: {payload.get('effectiveness_spec_result_id', self.deployed_rule_effectiveness_scoring_contract_spec_result_id_var.get().strip() or 'none')}\n"
+            f"Outcome-Truth Source Result ID: {payload.get('outcome_truth_source_result_id', self.deployed_rule_effectiveness_scoring_contract_outcome_truth_result_id_var.get().strip() or 'none')}\n"
+            f"Outcome-Truth Record-Set ID: {payload.get('outcome_truth_record_set_id', self.deployed_rule_effectiveness_scoring_contract_record_set_id_var.get().strip() or 'none')}\n"
+            f"Scoring Contract Plan ID: {payload.get('effectiveness_scoring_contract_plan_id', self.deployed_rule_effectiveness_scoring_contract_plan_id_var.get().strip() or 'none')}\n"
+            f"Scoring Contract Result ID: {payload.get('effectiveness_scoring_contract_result_id', self.deployed_rule_effectiveness_scoring_contract_result_record_id_var.get().strip() or 'none')}\n"
+            f"Health Scope: {payload.get('health_scope', 'repository-wide')}\n"
+            f"Scoring-Contract Health: {payload.get('scoring_contract_health', payload.get('status', 'unknown'))}\n"
+            f"Effectiveness Score Calculated: {'yes' if payload.get('effectiveness_score_calculated') else 'no'}\n"
+            f"Correctness Calculated: {'yes' if payload.get('correctness_calculated') else 'no'}\n"
+            f"Rates Calculated: {'yes' if payload.get('rates_calculated') else 'no'}\n"
+            f"Blocker Count: {len(payload.get('blockers', []) if isinstance(payload.get('blockers'), list) else [])}\n"
+            f"Warning Count: {len(payload.get('warnings', []) if isinstance(payload.get('warnings'), list) else [])}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue deployed-rule effectiveness scoring-contract review.')}"
+        )
+
+    def _deployed_rule_effectiveness_scoring_result_common_kwargs(self) -> dict[str, object]:
+        return {
+            "canonical_rule_id": self.deployed_rule_effectiveness_scoring_result_rule_id_var.get().strip(),
+            "production_deployment_result_id": self.deployed_rule_effectiveness_scoring_result_deployment_result_id_var.get().strip(),
+            "production_target_id": self.deployed_rule_effectiveness_scoring_result_target_id_var.get().strip(),
+            "deployed_rule_id": self.deployed_rule_effectiveness_scoring_result_deployed_rule_id_var.get().strip(),
+            "telemetry_snapshot_id": self.deployed_rule_effectiveness_scoring_result_snapshot_id_var.get().strip(),
+            "readiness_result_id": self.deployed_rule_effectiveness_scoring_result_readiness_result_id_var.get().strip(),
+            "effectiveness_spec_result_id": self.deployed_rule_effectiveness_scoring_result_spec_result_id_var.get().strip(),
+            "outcome_truth_source_result_id": self.deployed_rule_effectiveness_scoring_result_outcome_truth_result_id_var.get().strip(),
+            "outcome_truth_record_set_id": self.deployed_rule_effectiveness_scoring_result_record_set_id_var.get().strip(),
+            "effectiveness_scoring_contract_result_id": self.deployed_rule_effectiveness_scoring_result_contract_result_id_var.get().strip(),
+            "observation_window_start": self.deployed_rule_effectiveness_scoring_result_start_var.get().strip(),
+            "observation_window_end": self.deployed_rule_effectiveness_scoring_result_end_var.get().strip(),
+            "effectiveness_scoring_result_id": self.deployed_rule_effectiveness_scoring_result_id_var.get().strip() or None,
+        }
+
+    def _register_deployed_rule_effectiveness_scoring_result_traces(self) -> None:
+        if getattr(self, "_deployed_rule_effectiveness_scoring_result_traces_registered", False):
+            return
+        self._deployed_rule_effectiveness_scoring_result_traces_registered = True
+        for variable in (
+            self.deployed_rule_effectiveness_scoring_result_id_var,
+            self.deployed_rule_effectiveness_scoring_result_rule_id_var,
+            self.deployed_rule_effectiveness_scoring_result_deployment_result_id_var,
+            self.deployed_rule_effectiveness_scoring_result_target_id_var,
+            self.deployed_rule_effectiveness_scoring_result_deployed_rule_id_var,
+            self.deployed_rule_effectiveness_scoring_result_snapshot_id_var,
+            self.deployed_rule_effectiveness_scoring_result_readiness_result_id_var,
+            self.deployed_rule_effectiveness_scoring_result_spec_result_id_var,
+            self.deployed_rule_effectiveness_scoring_result_outcome_truth_result_id_var,
+            self.deployed_rule_effectiveness_scoring_result_record_set_id_var,
+            self.deployed_rule_effectiveness_scoring_result_contract_result_id_var,
+            self.deployed_rule_effectiveness_scoring_result_start_var,
+            self.deployed_rule_effectiveness_scoring_result_end_var,
+            self.deployed_rule_effectiveness_scoring_result_plan_id_var,
+            self.deployed_rule_effectiveness_scoring_result_confirmation_var,
+        ):
+            trace_add = getattr(variable, "trace_add", None)
+            if callable(trace_add):
+                trace_add("write", self._on_deployed_rule_effectiveness_scoring_result_input_changed)
+
+    def _on_deployed_rule_effectiveness_scoring_result_input_changed(self, *_args: object) -> None:
+        self._mark_deployed_rule_effectiveness_scoring_result_stale()
+
+    def _deployed_rule_effectiveness_scoring_result_workflow_line(self) -> str:
+        return "Workflow Sequence: 1. Validate eligibility 2. Build persisted scoring result plan 3. Record persisted scoring result with exact confirmation 4. Load result / health / summary / report"
+
+    def _deployed_rule_effectiveness_scoring_result_common_status_prefix(self) -> str:
+        def _value(name: str) -> str:
+            variable = getattr(self, name, None)
+            getter = getattr(variable, "get", None)
+            return getter().strip() if callable(getter) and getter().strip() else "none"
+
+        return (
+            f"{self._deployed_rule_effectiveness_scoring_result_workflow_line()}\n"
+            "Required Confirmation: RECORD_EFFECTIVENESS_SCORING_RESULT\n"
+            f"Current Confirmation Input: {_value('deployed_rule_effectiveness_scoring_result_confirmation_var')}\n"
+            f"Canonical Rule ID: {_value('deployed_rule_effectiveness_scoring_result_rule_id_var')}\n"
+            f"Phase 9V Deployment Result ID: {_value('deployed_rule_effectiveness_scoring_result_deployment_result_id_var')}\n"
+            f"Production Target ID: {_value('deployed_rule_effectiveness_scoring_result_target_id_var')}\n"
+            f"Deployed Rule ID: {_value('deployed_rule_effectiveness_scoring_result_deployed_rule_id_var')}\n"
+            f"Telemetry Snapshot ID: {_value('deployed_rule_effectiveness_scoring_result_snapshot_id_var')}\n"
+            f"Readiness Result ID: {_value('deployed_rule_effectiveness_scoring_result_readiness_result_id_var')}\n"
+            f"Effectiveness Spec Result ID: {_value('deployed_rule_effectiveness_scoring_result_spec_result_id_var')}\n"
+            f"Outcome Truth Source Result ID: {_value('deployed_rule_effectiveness_scoring_result_outcome_truth_result_id_var')}\n"
+            f"Outcome Truth Record Set ID: {_value('deployed_rule_effectiveness_scoring_result_record_set_id_var')}\n"
+            f"Scoring Contract Result ID: {_value('deployed_rule_effectiveness_scoring_result_contract_result_id_var')}\n"
+            f"Observation Start: {_value('deployed_rule_effectiveness_scoring_result_start_var')}\n"
+            f"Observation End: {_value('deployed_rule_effectiveness_scoring_result_end_var')}"
+        )
+
+    def _mark_deployed_rule_effectiveness_scoring_result_stale(self) -> None:
+        self.deployed_rule_effectiveness_scoring_result_status_var.set(
+            "Persisted Scoped Accuracy-Like Exact-Match Scoring Result Status: stale\n"
+            f"{self._deployed_rule_effectiveness_scoring_result_common_status_prefix()}\n"
+            "Authority Scope: unknown\n"
+            "Score Family: accuracy_like_contract\n"
+            f"Scoring Result Plan ID: {self.deployed_rule_effectiveness_scoring_result_plan_id_var.get().strip() or 'none'}\n"
+            f"Scoring Result ID: {self.deployed_rule_effectiveness_scoring_result_id_var.get().strip() or 'none'}\n"
+            "Persisted Accuracy-Like Score Ratio: unknown\n"
+            "Persisted Accuracy-Like Score Percentage: unknown\n"
+            "Exact Match Count: 0\n"
+            "Mismatch Count: 0\n"
+            "Denominator Count: 0\n"
+            "Eligible Record Count: 0\n"
+            "Excluded Record Count: 0\n"
+            "Duplicate Collapsed Count: 0\n"
+            "Conflict Count: 0\n"
+            "Deployment Safety Claimed: no\n"
+            "Production Correctness Claimed: no\n"
+            "Profitability Claimed: no\n"
+            "Prediction Quality Claimed: no\n"
+            "Phase 9W Used As Scoring Input: no\n"
+            "Runtime Completion Used As Correctness: no\n"
+            "Source Availability Used As Effectiveness: no\n"
+            "Health Scope: repository-wide\n"
+            "Persisted Scoring Result Health: stale\n"
+            "Blocker Count: 0\n"
+            "Warning Count: 1\n"
+            "Blockers: none\n"
+            "Warnings: inputs_changed_state_marked_stale\n"
+            "Recommended Action: Refresh the persisted scoped accuracy-like exact-match scoring result plan, record, load, eligibility, health, or report after changing inputs."
+        )
+
+    def _validate_deployed_rule_effectiveness_scoring_result_inputs(self, action: str) -> bool:
+        shared = (
+            ("canonical_rule_id", self.deployed_rule_effectiveness_scoring_result_rule_id_var.get().strip()),
+            ("production_deployment_result_id", self.deployed_rule_effectiveness_scoring_result_deployment_result_id_var.get().strip()),
+            ("production_target_id", self.deployed_rule_effectiveness_scoring_result_target_id_var.get().strip()),
+            ("deployed_rule_id", self.deployed_rule_effectiveness_scoring_result_deployed_rule_id_var.get().strip()),
+            ("telemetry_snapshot_id", self.deployed_rule_effectiveness_scoring_result_snapshot_id_var.get().strip()),
+            ("readiness_result_id", self.deployed_rule_effectiveness_scoring_result_readiness_result_id_var.get().strip()),
+            ("effectiveness_spec_result_id", self.deployed_rule_effectiveness_scoring_result_spec_result_id_var.get().strip()),
+            ("outcome_truth_source_result_id", self.deployed_rule_effectiveness_scoring_result_outcome_truth_result_id_var.get().strip()),
+            ("outcome_truth_record_set_id", self.deployed_rule_effectiveness_scoring_result_record_set_id_var.get().strip()),
+            ("effectiveness_scoring_contract_result_id", self.deployed_rule_effectiveness_scoring_result_contract_result_id_var.get().strip()),
+            ("observation_window_start", self.deployed_rule_effectiveness_scoring_result_start_var.get().strip()),
+            ("observation_window_end", self.deployed_rule_effectiveness_scoring_result_end_var.get().strip()),
+        )
+        required_fields = {
+            "build_deployed_rule_effectiveness_scoring_result_plan": shared,
+            "load_deployed_rule_effectiveness_scoring_result": (
+                ("scoring_result_id_required", self.deployed_rule_effectiveness_scoring_result_id_var.get().strip()),
+            ),
+            "load_deployed_rule_effectiveness_scoring_result_public_safe_export_pack": (
+                ("scoring_result_id_required", self.deployed_rule_effectiveness_scoring_result_id_var.get().strip()),
+            ),
+            "validate_deployed_rule_effectiveness_scoring_result_eligibility": shared,
+            "copy_deployed_rule_effectiveness_scoring_result_report": shared,
+            "copy_deployed_rule_effectiveness_scoring_result_public_safe_export_report": (
+                ("scoring_result_id_required", self.deployed_rule_effectiveness_scoring_result_id_var.get().strip()),
+            ),
+            "record_deployed_rule_effectiveness_scoring_result": (
+                ("scoring_result_plan_id_required", self.deployed_rule_effectiveness_scoring_result_plan_id_var.get().strip()),
+                ("scoring_result_confirmation_exact_match_required", self.deployed_rule_effectiveness_scoring_result_confirmation_var.get().strip()),
+            ),
+        }
+        missing = [name for name, value in required_fields.get(action, ()) if not value]
+        confirmation = self.deployed_rule_effectiveness_scoring_result_confirmation_var.get().strip()
+        if action == "record_deployed_rule_effectiveness_scoring_result" and confirmation and confirmation != "RECORD_EFFECTIVENESS_SCORING_RESULT":
+            missing.append("scoring_result_confirmation_exact_match_required")
+        if not missing:
+            return True
+        if action in {
+            "load_deployed_rule_effectiveness_scoring_result",
+            "load_deployed_rule_effectiveness_scoring_result_public_safe_export_pack",
+            "copy_deployed_rule_effectiveness_scoring_result_public_safe_export_report",
+        }:
+            blocker = "scoring_result_id_required"
+        elif action == "record_deployed_rule_effectiveness_scoring_result" and "scoring_result_plan_id_required" in missing:
+            blocker = "scoring_result_plan_id_required"
+        elif action == "record_deployed_rule_effectiveness_scoring_result":
+            blocker = "scoring_result_confirmation_exact_match_required"
+        else:
+            blocker = "scoring_result_identity_required"
+        self.deployed_rule_effectiveness_scoring_result_status_var.set(
+            "Persisted Scoped Accuracy-Like Exact-Match Scoring Result Status: blocked\n"
+            f"{self._deployed_rule_effectiveness_scoring_result_common_status_prefix()}\n"
+            "Authority Scope: unknown\n"
+            "Score Family: accuracy_like_contract\n"
+            f"Scoring Result Plan ID: {self.deployed_rule_effectiveness_scoring_result_plan_id_var.get().strip() or 'none'}\n"
+            f"Scoring Result ID: {self.deployed_rule_effectiveness_scoring_result_id_var.get().strip() or 'none'}\n"
+            "Persisted Accuracy-Like Score Ratio: unknown\n"
+            "Persisted Accuracy-Like Score Percentage: unknown\n"
+            "Exact Match Count: 0\n"
+            "Mismatch Count: 0\n"
+            "Denominator Count: 0\n"
+            "Eligible Record Count: 0\n"
+            "Excluded Record Count: 0\n"
+            "Duplicate Collapsed Count: 0\n"
+            "Conflict Count: 0\n"
+            "Deployment Safety Claimed: no\n"
+            "Production Correctness Claimed: no\n"
+            "Profitability Claimed: no\n"
+            "Prediction Quality Claimed: no\n"
+            "Phase 9W Used As Scoring Input: no\n"
+            "Runtime Completion Used As Correctness: no\n"
+            "Source Availability Used As Effectiveness: no\n"
+            "Health Scope: repository-wide\n"
+            "Persisted Scoring Result Health: blocked\n"
+            "Blocker Count: 1\n"
+            "Warning Count: 0\n"
+            f"Blockers: {blocker}\n"
+            "Warnings: none\n"
+            f"Recommended Action: Provide the missing persisted scoped accuracy-like exact-match scoring result identifiers before {action}: {', '.join(missing)}.\n"
+            "Record action remains confirmation-gated; read-only actions remain confirmation-free."
+        )
+        self.status_var.set(f"Persisted scoped accuracy-like exact-match scoring result action blocked: missing {', '.join(missing)}.")
+        return False
+
+    def _set_deployed_rule_effectiveness_scoring_result_status(self, payload: dict[str, object] | None) -> None:
+        if not isinstance(payload, dict):
+            return
+        loaded_summary = payload.get("loaded_result_summary") if isinstance(payload.get("loaded_result_summary"), dict) else {}
+        summary_mode = "summary_schema_version" in payload
+        authority_scope = loaded_summary.get("authority_scope", payload.get("authority_scope", "unknown"))
+        score_family = loaded_summary.get("score_family", payload.get("score_family", "accuracy_like_contract"))
+        scoring_result_id = loaded_summary.get(
+            "scoring_result_id",
+            payload.get("effectiveness_scoring_result_id", self.deployed_rule_effectiveness_scoring_result_id_var.get().strip() or "none"),
+        )
+        persisted_ratio = loaded_summary.get("persisted_accuracy_like_score_ratio", payload.get("persisted_accuracy_like_score_ratio", "unknown"))
+        persisted_percentage = loaded_summary.get(
+            "persisted_accuracy_like_score_percentage",
+            payload.get("persisted_accuracy_like_score_percentage", "unknown"),
+        )
+        exact_match_count = loaded_summary.get("exact_match_count", payload.get("exact_match_count", 0))
+        mismatch_count = loaded_summary.get("mismatch_count", payload.get("mismatch_count", 0))
+        denominator_count = loaded_summary.get("denominator_count", payload.get("denominator_count", 0))
+        eligible_record_count = loaded_summary.get("eligible_record_count", payload.get("eligible_record_count", 0))
+        excluded_record_count = loaded_summary.get("excluded_record_count", payload.get("excluded_record_count", 0))
+        duplicate_collapsed_count = loaded_summary.get("duplicate_collapsed_count", payload.get("duplicate_collapsed_count", 0))
+        conflict_count = loaded_summary.get("conflict_count", payload.get("conflict_count", 0))
+        blockers = payload.get("blockers", []) if isinstance(payload.get("blockers"), list) else []
+        warnings = payload.get("warnings", []) if isinstance(payload.get("warnings"), list) else []
+        self.deployed_rule_effectiveness_scoring_result_status_var.set(
+            f"Persisted Scoped Accuracy-Like Exact-Match Scoring Result Status: {payload.get('status', 'unknown')}\n"
+            f"{self._deployed_rule_effectiveness_scoring_result_common_status_prefix()}\n"
+            f"Authority Scope: {authority_scope}\n"
+            f"Score Family: {score_family}\n"
+            f"Scoring Result Plan ID: {payload.get('effectiveness_scoring_result_plan_id', self.deployed_rule_effectiveness_scoring_result_plan_id_var.get().strip() or 'none')}\n"
+            f"Scoring Result ID: {scoring_result_id}\n"
+            f"Persisted Accuracy-Like Score Ratio: {persisted_ratio}\n"
+            f"Persisted Accuracy-Like Score Percentage: {persisted_percentage}\n"
+            f"Exact Match Count: {exact_match_count}\n"
+            f"Mismatch Count: {mismatch_count}\n"
+            f"Denominator Count: {denominator_count}\n"
+            f"Eligible Record Count: {eligible_record_count}\n"
+            f"Excluded Record Count: {excluded_record_count}\n"
+            f"Duplicate Collapsed Count: {duplicate_collapsed_count}\n"
+            f"Conflict Count: {conflict_count}\n"
+            f"Deployment Safety Claimed: {'yes' if loaded_summary.get('deployment_safety_claimed', payload.get('deployment_safety_claimed')) else 'no'}\n"
+            f"Production Correctness Claimed: {'yes' if loaded_summary.get('production_correctness_claimed', payload.get('production_correctness_claimed')) else 'no'}\n"
+            f"Profitability Claimed: {'yes' if loaded_summary.get('profitability_claimed', payload.get('profitability_claimed')) else 'no'}\n"
+            f"Prediction Quality Claimed: {'yes' if loaded_summary.get('prediction_quality_claimed', payload.get('prediction_quality_claimed')) else 'no'}\n"
+            f"Phase 9W Used As Scoring Input: {'yes' if loaded_summary.get('phase9w_used_as_scoring_input', payload.get('phase9w_used_as_scoring_input')) else 'no'}\n"
+            f"Runtime Completion Used As Correctness: {'yes' if loaded_summary.get('runtime_completion_used_as_correctness', payload.get('runtime_completion_used_as_correctness')) else 'no'}\n"
+            f"Source Availability Used As Effectiveness: {'yes' if loaded_summary.get('source_availability_used_as_effectiveness', payload.get('source_availability_used_as_effectiveness')) else 'no'}\n"
+            f"Health Scope: {payload.get('health_scope', 'repository-wide')}\n"
+            f"Persisted Scoring Result Health: {payload.get('persisted_scoring_result_health', payload.get('status', 'unknown'))}\n"
+            f"Total Result Count: {payload.get('total_result_count', 0) if summary_mode else 'n/a'}\n"
+            f"Valid Result Count: {payload.get('valid_result_count', 0) if summary_mode else 'n/a'}\n"
+            f"Corrupt Result Count: {payload.get('corrupt_result_count', 0) if summary_mode else 'n/a'}\n"
+            f"Blocked Result Count: {payload.get('blocked_result_count', 0) if summary_mode else 'n/a'}\n"
+            f"Authority Scope Counts: {payload.get('authority_scope_counts', {}) if summary_mode else 'n/a'}\n"
+            f"Score Family Counts: {payload.get('score_family_counts', {}) if summary_mode else 'n/a'}\n"
+            f"Blocker Count: {len(blockers)}\n"
+            f"Warning Count: {len(warnings)}\n"
+            f"Blockers: {', '.join(str(item) for item in blockers) if blockers else 'none'}\n"
+            f"Warnings: {', '.join(str(item) for item in warnings) if warnings else 'none'}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue persisted scoped accuracy-like exact-match scoring result review.')}"
         )
 
     def _set_pdf_viewport_status(self, *, viewport: dict[str, object] | None, render: dict[str, object] | None) -> None:

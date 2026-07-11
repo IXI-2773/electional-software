@@ -295,6 +295,48 @@ from .deployed_rule_effectiveness_readiness import (
     record_deployed_rule_effectiveness_readiness_result,
     validate_deployed_rule_effectiveness_readiness_eligibility,
 )
+from .deployed_rule_outcome_truth_source import (
+    build_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate as _build_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_backend,
+    build_deployed_rule_outcome_truth_record_set_qa_gate as _build_deployed_rule_outcome_truth_record_set_qa_gate_backend,
+    build_deployed_rule_outcome_truth_source_plan as _build_deployed_rule_outcome_truth_source_plan_backend,
+    build_deployed_rule_outcome_truth_source_workspace as _build_deployed_rule_outcome_truth_source_workspace_backend,
+    format_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report as _format_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report_backend,
+    format_deployed_rule_outcome_truth_record_set_qa_gate_report as _format_deployed_rule_outcome_truth_record_set_qa_gate_report_backend,
+    format_deployed_rule_outcome_truth_source_report as _format_deployed_rule_outcome_truth_source_report_backend,
+    get_deployed_rule_outcome_truth_source_health as _get_deployed_rule_outcome_truth_source_health_backend,
+    get_deployed_rule_outcome_truth_source_manifest as _get_deployed_rule_outcome_truth_source_manifest_backend,
+    list_deployed_rule_outcome_truth_record_sets as _list_deployed_rule_outcome_truth_record_sets_backend,
+    load_deployed_rule_outcome_truth_record_set as _load_deployed_rule_outcome_truth_record_set_backend,
+    load_deployed_rule_outcome_truth_source_result as _load_deployed_rule_outcome_truth_source_result_backend,
+    record_deployed_rule_outcome_truth_source_result as _record_deployed_rule_outcome_truth_source_result_backend,
+    register_deployed_rule_outcome_truth_record_set as _register_deployed_rule_outcome_truth_record_set_backend,
+    validate_deployed_rule_outcome_truth_record_set as _validate_deployed_rule_outcome_truth_record_set_backend,
+    validate_deployed_rule_outcome_truth_source_eligibility as _validate_deployed_rule_outcome_truth_source_eligibility_backend,
+)
+from .deployed_rule_effectiveness_scoring_contract import (
+    build_deployed_rule_effectiveness_scoring_contract_plan as _build_deployed_rule_effectiveness_scoring_contract_plan_backend,
+    build_deployed_rule_effectiveness_scoring_contract_workspace as _build_deployed_rule_effectiveness_scoring_contract_workspace_backend,
+    format_deployed_rule_effectiveness_scoring_contract_report as _format_deployed_rule_effectiveness_scoring_contract_report_backend,
+    get_deployed_rule_effectiveness_scoring_contract_health as _get_deployed_rule_effectiveness_scoring_contract_health_backend,
+    get_deployed_rule_effectiveness_scoring_contract_manifest as _get_deployed_rule_effectiveness_scoring_contract_manifest_backend,
+    load_deployed_rule_effectiveness_scoring_contract_result as _load_deployed_rule_effectiveness_scoring_contract_result_backend,
+    record_deployed_rule_effectiveness_scoring_contract_result as _record_deployed_rule_effectiveness_scoring_contract_result_backend,
+    validate_deployed_rule_effectiveness_scoring_contract_eligibility as _validate_deployed_rule_effectiveness_scoring_contract_eligibility_backend,
+)
+from .deployed_rule_effectiveness_scoring_result import (
+    build_deployed_rule_effectiveness_scoring_result_public_safe_export_pack as _build_deployed_rule_effectiveness_scoring_result_public_safe_export_pack_backend,
+    build_deployed_rule_effectiveness_scoring_result_summary_surface as _build_deployed_rule_effectiveness_scoring_result_summary_surface_backend,
+    build_deployed_rule_effectiveness_scoring_result_plan as _build_deployed_rule_effectiveness_scoring_result_plan_backend,
+    build_deployed_rule_effectiveness_scoring_result_workspace as _build_deployed_rule_effectiveness_scoring_result_workspace_backend,
+    format_deployed_rule_effectiveness_scoring_result_public_safe_export_report as _format_deployed_rule_effectiveness_scoring_result_public_safe_export_report_backend,
+    format_deployed_rule_effectiveness_scoring_result_summary_surface_report as _format_deployed_rule_effectiveness_scoring_result_summary_surface_report_backend,
+    format_deployed_rule_effectiveness_scoring_result_report as _format_deployed_rule_effectiveness_scoring_result_report_backend,
+    get_deployed_rule_effectiveness_scoring_result_health as _get_deployed_rule_effectiveness_scoring_result_health_backend,
+    get_deployed_rule_effectiveness_scoring_result_manifest as _get_deployed_rule_effectiveness_scoring_result_manifest_backend,
+    load_deployed_rule_effectiveness_scoring_result as _load_deployed_rule_effectiveness_scoring_result_backend,
+    record_deployed_rule_effectiveness_scoring_result as _record_deployed_rule_effectiveness_scoring_result_backend,
+    validate_deployed_rule_effectiveness_scoring_result_eligibility as _validate_deployed_rule_effectiveness_scoring_result_eligibility_backend,
+)
 from .certified_rule_controlled_integration_target import (
     apply_controlled_integration_rule,
     get_controlled_integration_target_health,
@@ -433,14 +475,714 @@ def load_audit_snapshot(path: Path | str) -> dict[str, object]:
     return load_audit_snapshot_tolerant(path)
 
 
+def get_deployed_rule_outcome_truth_source_manifest(*, root=Path("data/source_documents")):
+    return _get_deployed_rule_outcome_truth_source_manifest_backend(root=root)
+
+
+def build_deployed_rule_outcome_truth_source_workspace(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    readiness_result_id: str,
+    effectiveness_spec_result_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    outcome_truth_source_id: str | None = None,
+    outcome_truth_record_set_id: str | None = None,
+    root=Path("data/source_documents"),
+):
+    return _build_deployed_rule_outcome_truth_source_workspace_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        readiness_result_id,
+        effectiveness_spec_result_id,
+        observation_window_start,
+        observation_window_end,
+        outcome_truth_source_id=outcome_truth_source_id,
+        outcome_truth_record_set_id=outcome_truth_record_set_id,
+        root=root,
+    )
+
+
+def validate_deployed_rule_outcome_truth_source_eligibility(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    readiness_result_id: str,
+    effectiveness_spec_result_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    outcome_truth_source_id: str | None = None,
+    outcome_truth_record_set_id: str | None = None,
+    root=Path("data/source_documents"),
+):
+    return _validate_deployed_rule_outcome_truth_source_eligibility_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        readiness_result_id,
+        effectiveness_spec_result_id,
+        observation_window_start,
+        observation_window_end,
+        outcome_truth_source_id=outcome_truth_source_id,
+        outcome_truth_record_set_id=outcome_truth_record_set_id,
+        root=root,
+    )
+
+
+def build_deployed_rule_outcome_truth_source_plan(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    readiness_result_id: str,
+    effectiveness_spec_result_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    outcome_truth_source_id: str | None = None,
+    outcome_truth_record_set_id: str | None = None,
+    root=Path("data/source_documents"),
+):
+    return _build_deployed_rule_outcome_truth_source_plan_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        readiness_result_id,
+        effectiveness_spec_result_id,
+        observation_window_start,
+        observation_window_end,
+        outcome_truth_source_id=outcome_truth_source_id,
+        outcome_truth_record_set_id=outcome_truth_record_set_id,
+        root=root,
+    )
+
+
+def record_deployed_rule_outcome_truth_source_result(
+    outcome_truth_source_plan_id: str,
+    confirmation: str | None = None,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _record_deployed_rule_outcome_truth_source_result_backend(
+        outcome_truth_source_plan_id,
+        confirmation=confirmation,
+        root=root,
+    )
+
+
+def load_deployed_rule_outcome_truth_source_result(
+    outcome_truth_source_result_id: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _load_deployed_rule_outcome_truth_source_result_backend(
+        outcome_truth_source_result_id,
+        root=root,
+    )
+
+
+def get_deployed_rule_outcome_truth_source_health(*, root=Path("data/source_documents")):
+    return _get_deployed_rule_outcome_truth_source_health_backend(root=root)
+
+
+def format_deployed_rule_outcome_truth_source_report(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    readiness_result_id: str,
+    effectiveness_spec_result_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    outcome_truth_source_id: str | None = None,
+    outcome_truth_record_set_id: str | None = None,
+    root=Path("data/source_documents"),
+):
+    return _format_deployed_rule_outcome_truth_source_report_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        readiness_result_id,
+        effectiveness_spec_result_id,
+        observation_window_start,
+        observation_window_end,
+        outcome_truth_source_id=outcome_truth_source_id,
+        outcome_truth_record_set_id=outcome_truth_record_set_id,
+        root=root,
+    )
+
+
+def validate_deployed_rule_outcome_truth_record_set(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    source_id: str,
+    source_type: str,
+    source_authority_class: str,
+    records,
+    outcome_truth_record_set_id: str | None = None,
+    root=Path("data/source_documents"),
+):
+    return _validate_deployed_rule_outcome_truth_record_set_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        observation_window_start,
+        observation_window_end,
+        source_id=source_id,
+        source_type=source_type,
+        source_authority_class=source_authority_class,
+        records=records,
+        outcome_truth_record_set_id=outcome_truth_record_set_id,
+        root=root,
+    )
+
+
+def register_deployed_rule_outcome_truth_record_set(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    source_id: str,
+    source_type: str,
+    source_authority_class: str,
+    records,
+    confirmation: str | None = None,
+    outcome_truth_record_set_id: str | None = None,
+    root=Path("data/source_documents"),
+):
+    return _register_deployed_rule_outcome_truth_record_set_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        observation_window_start,
+        observation_window_end,
+        source_id=source_id,
+        source_type=source_type,
+        source_authority_class=source_authority_class,
+        records=records,
+        confirmation=confirmation,
+        outcome_truth_record_set_id=outcome_truth_record_set_id,
+        root=root,
+    )
+
+
+def load_deployed_rule_outcome_truth_record_set(
+    outcome_truth_record_set_id: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _load_deployed_rule_outcome_truth_record_set_backend(
+        outcome_truth_record_set_id,
+        root=root,
+    )
+
+
+def list_deployed_rule_outcome_truth_record_sets(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _list_deployed_rule_outcome_truth_record_sets_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        root=root,
+    )
+
+
+def build_deployed_rule_outcome_truth_record_set_qa_gate(
+    outcome_truth_record_set_id: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _build_deployed_rule_outcome_truth_record_set_qa_gate_backend(
+        outcome_truth_record_set_id,
+        root=root,
+    )
+
+
+def format_deployed_rule_outcome_truth_record_set_qa_gate_report(
+    outcome_truth_record_set_id: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _format_deployed_rule_outcome_truth_record_set_qa_gate_report_backend(
+        outcome_truth_record_set_id,
+        root=root,
+    )
+
+
+def build_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate(
+    candidate_record_set,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _build_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_backend(
+        candidate_record_set,
+        root=root,
+    )
+
+
+def format_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report(
+    candidate_record_set,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _format_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report_backend(
+        candidate_record_set,
+        root=root,
+    )
+
+
+def get_deployed_rule_effectiveness_scoring_contract_manifest(*, root=Path("data/source_documents")):
+    return _get_deployed_rule_effectiveness_scoring_contract_manifest_backend(root=root)
+
+
+def build_deployed_rule_effectiveness_scoring_contract_workspace(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    readiness_result_id: str,
+    effectiveness_spec_result_id: str,
+    outcome_truth_source_result_id: str,
+    outcome_truth_record_set_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _build_deployed_rule_effectiveness_scoring_contract_workspace_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        readiness_result_id,
+        effectiveness_spec_result_id,
+        outcome_truth_source_result_id,
+        outcome_truth_record_set_id,
+        observation_window_start,
+        observation_window_end,
+        root=root,
+    )
+
+
+def validate_deployed_rule_effectiveness_scoring_contract_eligibility(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    readiness_result_id: str,
+    effectiveness_spec_result_id: str,
+    outcome_truth_source_result_id: str,
+    outcome_truth_record_set_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _validate_deployed_rule_effectiveness_scoring_contract_eligibility_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        readiness_result_id,
+        effectiveness_spec_result_id,
+        outcome_truth_source_result_id,
+        outcome_truth_record_set_id,
+        observation_window_start,
+        observation_window_end,
+        root=root,
+    )
+
+
+def build_deployed_rule_effectiveness_scoring_contract_plan(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    readiness_result_id: str,
+    effectiveness_spec_result_id: str,
+    outcome_truth_source_result_id: str,
+    outcome_truth_record_set_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _build_deployed_rule_effectiveness_scoring_contract_plan_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        readiness_result_id,
+        effectiveness_spec_result_id,
+        outcome_truth_source_result_id,
+        outcome_truth_record_set_id,
+        observation_window_start,
+        observation_window_end,
+        root=root,
+    )
+
+
+def record_deployed_rule_effectiveness_scoring_contract_result(
+    effectiveness_scoring_contract_plan_id: str,
+    confirmation: str | None = None,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _record_deployed_rule_effectiveness_scoring_contract_result_backend(
+        effectiveness_scoring_contract_plan_id,
+        confirmation=confirmation,
+        root=root,
+    )
+
+
+def load_deployed_rule_effectiveness_scoring_contract_result(
+    effectiveness_scoring_contract_result_id: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _load_deployed_rule_effectiveness_scoring_contract_result_backend(
+        effectiveness_scoring_contract_result_id,
+        root=root,
+    )
+
+
+def get_deployed_rule_effectiveness_scoring_contract_health(*, root=Path("data/source_documents")):
+    return _get_deployed_rule_effectiveness_scoring_contract_health_backend(root=root)
+
+
+def format_deployed_rule_effectiveness_scoring_contract_report(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    readiness_result_id: str,
+    effectiveness_spec_result_id: str,
+    outcome_truth_source_result_id: str,
+    outcome_truth_record_set_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _format_deployed_rule_effectiveness_scoring_contract_report_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        readiness_result_id,
+        effectiveness_spec_result_id,
+        outcome_truth_source_result_id,
+        outcome_truth_record_set_id,
+        observation_window_start,
+        observation_window_end,
+        root=root,
+    )
+
+
+def get_deployed_rule_effectiveness_scoring_result_manifest(*, root=Path("data/source_documents")):
+    return _get_deployed_rule_effectiveness_scoring_result_manifest_backend(root=root)
+
+
+def build_deployed_rule_effectiveness_scoring_result_workspace(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    readiness_result_id: str,
+    effectiveness_spec_result_id: str,
+    outcome_truth_source_result_id: str,
+    outcome_truth_record_set_id: str,
+    effectiveness_scoring_contract_result_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    effectiveness_scoring_result_id: str | None = None,
+    root=Path("data/source_documents"),
+):
+    return _build_deployed_rule_effectiveness_scoring_result_workspace_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        readiness_result_id,
+        effectiveness_spec_result_id,
+        outcome_truth_source_result_id,
+        outcome_truth_record_set_id,
+        effectiveness_scoring_contract_result_id,
+        observation_window_start,
+        observation_window_end,
+        effectiveness_scoring_result_id=effectiveness_scoring_result_id,
+        root=root,
+    )
+
+
+def build_deployed_rule_effectiveness_scoring_result_summary_surface(
+    scoring_result_id: str | None = None,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _build_deployed_rule_effectiveness_scoring_result_summary_surface_backend(
+        scoring_result_id=scoring_result_id,
+        root=root,
+    )
+
+
+def build_deployed_rule_effectiveness_scoring_result_public_safe_export_pack(
+    scoring_result_id: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _build_deployed_rule_effectiveness_scoring_result_public_safe_export_pack_backend(
+        scoring_result_id,
+        root=root,
+    )
+
+
+def build_deployed_rule_effectiveness_scoring_result_plan(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    readiness_result_id: str,
+    effectiveness_spec_result_id: str,
+    outcome_truth_source_result_id: str,
+    outcome_truth_record_set_id: str,
+    effectiveness_scoring_contract_result_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _build_deployed_rule_effectiveness_scoring_result_plan_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        readiness_result_id,
+        effectiveness_spec_result_id,
+        outcome_truth_source_result_id,
+        outcome_truth_record_set_id,
+        effectiveness_scoring_contract_result_id,
+        observation_window_start,
+        observation_window_end,
+        root=root,
+    )
+
+
+def validate_deployed_rule_effectiveness_scoring_result_eligibility(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    readiness_result_id: str,
+    effectiveness_spec_result_id: str,
+    outcome_truth_source_result_id: str,
+    outcome_truth_record_set_id: str,
+    effectiveness_scoring_contract_result_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    effectiveness_scoring_result_id: str | None = None,
+    root=Path("data/source_documents"),
+):
+    return _validate_deployed_rule_effectiveness_scoring_result_eligibility_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        readiness_result_id,
+        effectiveness_spec_result_id,
+        outcome_truth_source_result_id,
+        outcome_truth_record_set_id,
+        effectiveness_scoring_contract_result_id,
+        observation_window_start,
+        observation_window_end,
+        effectiveness_scoring_result_id=effectiveness_scoring_result_id,
+        root=root,
+    )
+
+
+def record_deployed_rule_effectiveness_scoring_result(
+    effectiveness_scoring_result_plan_id: str,
+    confirmation: str | None = None,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _record_deployed_rule_effectiveness_scoring_result_backend(
+        effectiveness_scoring_result_plan_id,
+        confirmation=confirmation,
+        root=root,
+    )
+
+
+def load_deployed_rule_effectiveness_scoring_result(
+    effectiveness_scoring_result_id: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _load_deployed_rule_effectiveness_scoring_result_backend(
+        effectiveness_scoring_result_id,
+        root=root,
+    )
+
+
+def get_deployed_rule_effectiveness_scoring_result_health(*, root=Path("data/source_documents")):
+    return _get_deployed_rule_effectiveness_scoring_result_health_backend(root=root)
+
+
+def format_deployed_rule_effectiveness_scoring_result_report(
+    canonical_rule_id: str,
+    production_deployment_result_id: str,
+    production_target_id: str,
+    deployed_rule_id: str,
+    telemetry_snapshot_id: str,
+    readiness_result_id: str,
+    effectiveness_spec_result_id: str,
+    outcome_truth_source_result_id: str,
+    outcome_truth_record_set_id: str,
+    effectiveness_scoring_contract_result_id: str,
+    observation_window_start: str,
+    observation_window_end: str,
+    *,
+    effectiveness_scoring_result_id: str | None = None,
+    root=Path("data/source_documents"),
+):
+    return _format_deployed_rule_effectiveness_scoring_result_report_backend(
+        canonical_rule_id,
+        production_deployment_result_id,
+        production_target_id,
+        deployed_rule_id,
+        telemetry_snapshot_id,
+        readiness_result_id,
+        effectiveness_spec_result_id,
+        outcome_truth_source_result_id,
+        outcome_truth_record_set_id,
+        effectiveness_scoring_contract_result_id,
+        observation_window_start,
+        observation_window_end,
+        effectiveness_scoring_result_id=effectiveness_scoring_result_id,
+        root=root,
+    )
+
+
+def format_deployed_rule_effectiveness_scoring_result_summary_surface_report(
+    scoring_result_id: str | None = None,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _format_deployed_rule_effectiveness_scoring_result_summary_surface_report_backend(
+        scoring_result_id=scoring_result_id,
+        root=root,
+    )
+
+
+def format_deployed_rule_effectiveness_scoring_result_public_safe_export_report(
+    scoring_result_id: str,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _format_deployed_rule_effectiveness_scoring_result_public_safe_export_report_backend(
+        scoring_result_id,
+        root=root,
+    )
+
+
 __all__ = [
     "analyze_election",
     "backup_reliability_data",
+    "build_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate",
+    "build_deployed_rule_outcome_truth_source_plan",
+    "build_deployed_rule_outcome_truth_record_set_qa_gate",
+    "build_deployed_rule_outcome_truth_source_workspace",
+    "build_deployed_rule_effectiveness_scoring_contract_plan",
+    "build_deployed_rule_effectiveness_scoring_contract_workspace",
+    "build_deployed_rule_effectiveness_scoring_result_public_safe_export_pack",
+    "build_deployed_rule_effectiveness_scoring_result_summary_surface",
+    "build_deployed_rule_effectiveness_scoring_result_plan",
+    "build_deployed_rule_effectiveness_scoring_result_workspace",
+    "format_deployed_rule_effectiveness_scoring_contract_report",
+    "format_deployed_rule_effectiveness_scoring_result_public_safe_export_report",
+    "format_deployed_rule_effectiveness_scoring_result_summary_surface_report",
+    "format_deployed_rule_effectiveness_scoring_result_report",
+    "format_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report",
+    "format_deployed_rule_outcome_truth_record_set_qa_gate_report",
+    "format_deployed_rule_outcome_truth_source_report",
+    "get_deployed_rule_effectiveness_scoring_contract_health",
+    "get_deployed_rule_effectiveness_scoring_contract_manifest",
+    "get_deployed_rule_effectiveness_scoring_result_health",
+    "get_deployed_rule_effectiveness_scoring_result_manifest",
+    "get_deployed_rule_outcome_truth_source_health",
+    "get_deployed_rule_outcome_truth_source_manifest",
+    "list_deployed_rule_outcome_truth_record_sets",
     "load_audit_snapshot",
+    "load_deployed_rule_effectiveness_scoring_contract_result",
+    "load_deployed_rule_effectiveness_scoring_result",
+    "load_deployed_rule_outcome_truth_record_set",
+    "load_deployed_rule_outcome_truth_source_result",
     "load_objective_pack",
     "load_source_document",
     "load_search_profile",
     "list_source_documents",
+    "record_deployed_rule_outcome_truth_source_result",
+    "record_deployed_rule_effectiveness_scoring_contract_result",
+    "record_deployed_rule_effectiveness_scoring_result",
+    "register_deployed_rule_outcome_truth_record_set",
     "restore_reliability_data",
     "run_fast_lane",
     "run_historical_replay",
@@ -448,6 +1190,10 @@ __all__ = [
     "save_audit_snapshot",
     "save_search_profile",
     "search_windows",
+    "validate_deployed_rule_outcome_truth_record_set",
+    "validate_deployed_rule_outcome_truth_source_eligibility",
+    "validate_deployed_rule_effectiveness_scoring_contract_eligibility",
+    "validate_deployed_rule_effectiveness_scoring_result_eligibility",
     "extract_pdf_text",
     "get_extracted_text",
     "register_pdf_source",

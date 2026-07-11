@@ -323,7 +323,7 @@ def load_deployed_rule_effectiveness_readiness_result(
     *,
     root: Path | str = SOURCE_DOCUMENT_ROOT,
 ) -> dict[str, Any]:
-    base = _ensure_dirs(root)
+    base = Path(root)
     payload = _read_json(_result_path(base, effectiveness_readiness_result_id))
     if not isinstance(payload, Mapping):
         return {"status": "blocked", "effectiveness_readiness_result_id": effectiveness_readiness_result_id, "warnings": [], "blockers": ["effectiveness_readiness_result_missing"]}
@@ -340,7 +340,7 @@ def load_deployed_rule_effectiveness_readiness_result(
 
 
 def get_deployed_rule_effectiveness_readiness_health(*, root: Path | str = SOURCE_DOCUMENT_ROOT) -> dict[str, Any]:
-    base = _ensure_dirs(root)
+    base = Path(root)
     plan_items = _load_all(base / PLAN_DIR)
     result_items = _load_all(base / RESULT_DIR)
     receipt_items = _load_all(base / RECEIPT_DIR)
@@ -426,28 +426,49 @@ def _readiness_context(
     post_deployment_result_id: str | None,
     root: Path | str,
 ) -> dict[str, Any]:
-    base = _ensure_dirs(root)
+    base = Path(root)
     manifest = get_deployed_rule_effectiveness_readiness_manifest(root=base)
     telemetry_manifest = telemetry_backend.get_deployed_rule_operational_telemetry_manifest(root=base)
-    deployment_loaded = deployment_backend.load_certified_rule_production_deployment_result(production_deployment_result_id, root=base)
-    deployment_result = deployment_loaded.get("production_deployment_result") if isinstance(deployment_loaded.get("production_deployment_result"), Mapping) else {}
-    receipt_payload = deployment_backend._find_receipt_for_result(
-        base,
+    telemetry_health = telemetry_backend.get_deployed_rule_operational_telemetry_health(
+        canonical_rule_id,
         production_deployment_result_id,
-    ) or {}
-    snapshot = _read_json(telemetry_backend._snapshot_path(base, telemetry_snapshot_id))
-    current_state = adapter_backend.read_production_deployment_state(
-        production_target_id,
-        transaction_id=str((deployment_result or {}).get("production_transaction_id") or ""),
+        deployed_rule_id=deployed_rule_id,
         root=base,
     )
-    source_rule_loaded = load_canonical_rule(canonical_rule_id, root=base)
+    snapshot = _read_json(telemetry_backend._snapshot_path(base, telemetry_snapshot_id))
+    deployment_result_path = deployment_backend._result_path(base, production_deployment_result_id)
+    deployment_loaded = (
+        deployment_backend.load_certified_rule_production_deployment_result(production_deployment_result_id, root=base)
+        if deployment_result_path.exists()
+        else {"status": "missing"}
+    )
+    deployment_result = deployment_loaded.get("production_deployment_result") if isinstance(deployment_loaded.get("production_deployment_result"), Mapping) else {}
+    receipt_payload = (
+        deployment_backend._find_receipt_for_result(base, production_deployment_result_id) or {}
+        if deployment_result
+        else {}
+    )
+    current_state = (
+        adapter_backend.read_production_deployment_state(
+            production_target_id,
+            transaction_id=str((deployment_result or {}).get("production_transaction_id") or ""),
+            root=base,
+        )
+        if deployment_result
+        else {}
+    )
+    source_rule_loaded = load_canonical_rule(canonical_rule_id, root=base) if deployment_result else {"status": "missing"}
     source_rule = source_rule_loaded.get("rule") if isinstance(source_rule_loaded.get("rule"), Mapping) else {}
-    deployed_rule_loaded = load_canonical_rule(deployed_rule_id, root=base)
+    deployed_rule_loaded = load_canonical_rule(deployed_rule_id, root=base) if deployment_result else {"status": "missing"}
     deployed_rule = deployed_rule_loaded.get("rule") if isinstance(deployed_rule_loaded.get("rule"), Mapping) else {}
     acceptance_result = None
     if post_deployment_result_id:
-        acceptance_loaded = acceptance_backend.load_certified_rule_post_deployment_acceptance_result(post_deployment_result_id, root=base)
+        acceptance_result_path = acceptance_backend._result_path(base, post_deployment_result_id)
+        acceptance_loaded = (
+            acceptance_backend.load_certified_rule_post_deployment_acceptance_result(post_deployment_result_id, root=base)
+            if acceptance_result_path.exists()
+            else {"status": "missing"}
+        )
         acceptance_result = acceptance_loaded.get("post_deployment_acceptance_result") if isinstance(acceptance_loaded.get("post_deployment_acceptance_result"), Mapping) else {}
 
     blockers: list[str] = []
@@ -471,6 +492,14 @@ def _readiness_context(
         "phase_9w_not_used_as_effectiveness_evidence",
         "effectiveness_not_performed",
     )}
+
+    telemetry_health_blockers = [str(item) for item in telemetry_health.get("blockers", []) if str(item)]
+    telemetry_health_warnings = [str(item) for item in telemetry_health.get("warnings", []) if str(item)]
+    if telemetry_health_blockers:
+        blockers.append("telemetry_storage_corrupt_or_incomplete")
+        warnings.extend(telemetry_health_warnings)
+    else:
+        warnings.extend(telemetry_health_warnings)
 
     producer = _execution_producer(telemetry_manifest)
     if producer:
@@ -579,6 +608,7 @@ def _readiness_context(
         "base": base,
         "manifest": manifest,
         "telemetry_manifest": telemetry_manifest,
+        "telemetry_health": telemetry_health,
         "execution_producer": producer,
         "deployment_result": dict(deployment_result) if isinstance(deployment_result, Mapping) else {},
         "snapshot": dict(snapshot) if isinstance(snapshot, Mapping) else {},
@@ -604,7 +634,7 @@ def _readiness_context(
 def _readiness_status(criteria: Mapping[str, bool], blockers: list[str], execution_event_count: int, producer_available: bool) -> str:
     if not producer_available:
         return "blocked_no_execution_producer"
-    if any(item in {"telemetry_snapshot_fingerprint_invalid", "execution_events_invalid_or_corrupt"} for item in blockers):
+    if any(item in {"telemetry_snapshot_fingerprint_invalid", "execution_events_invalid_or_corrupt", "telemetry_storage_corrupt_or_incomplete"} for item in blockers):
         return "corrupt"
     if any("stale" in item or "drifted" in item for item in blockers):
         return "stale"

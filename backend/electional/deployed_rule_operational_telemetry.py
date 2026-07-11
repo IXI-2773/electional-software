@@ -52,7 +52,7 @@ PUBLIC_FUNCTIONS = [
 
 
 def get_deployed_rule_operational_telemetry_manifest(*, root: Path | str = SOURCE_DOCUMENT_ROOT) -> dict[str, Any]:
-    base = _ensure_dirs(root)
+    base = Path(root)
     state_producer = {
         "producer_id": STATE_PRODUCER_ID,
         "producer_kind": "authoritative_state_observer",
@@ -114,7 +114,7 @@ def build_deployed_rule_operational_telemetry_workspace(
     *,
     root: Path | str = SOURCE_DOCUMENT_ROOT,
 ) -> dict[str, Any]:
-    base = _ensure_dirs(root)
+    base = Path(root)
     eligibility = validate_deployed_rule_operational_telemetry_eligibility(
         canonical_rule_id,
         production_deployment_result_id,
@@ -157,7 +157,7 @@ def validate_deployed_rule_operational_telemetry_eligibility(
     *,
     root: Path | str = SOURCE_DOCUMENT_ROOT,
 ) -> dict[str, Any]:
-    base = _ensure_dirs(root)
+    base = Path(root)
     manifest = get_deployed_rule_operational_telemetry_manifest(root=base)
     context = _telemetry_context(
         base,
@@ -393,7 +393,7 @@ def list_deployed_rule_operational_events(
     max_results: int = 100,
     root: Path | str = SOURCE_DOCUMENT_ROOT,
 ) -> dict[str, Any]:
-    base = _ensure_dirs(root)
+    base = Path(root)
     if not _text(deployed_rule_id) or not _text(production_deployment_result_id):
         return {"status": "blocked", "items": [], "warnings": [], "blockers": ["deployed_rule_id_and_deployment_result_id_required"]}
     if isinstance(max_results, bool) or not isinstance(max_results, int) or max_results <= 0:
@@ -403,7 +403,20 @@ def list_deployed_rule_operational_events(
     if (start_timestamp and not start_norm) or (end_timestamp and not end_norm):
         return {"status": "blocked", "items": [], "warnings": [], "blockers": ["telemetry_timestamp_filter_invalid"]}
 
-    entries = _load_event_index_entries(base)
+    entries, event_index_issues = _load_event_index_entries(base)
+    if event_index_issues:
+        return {
+            "status": "corrupt",
+            "deployed_rule_id": deployed_rule_id,
+            "production_deployment_result_id": production_deployment_result_id,
+            "total_matching_event_count": 0,
+            "returned_event_count": 0,
+            "items": [],
+            "invalid_or_corrupt_records": [],
+            "warnings": [],
+            "blockers": list(event_index_issues),
+            "writes_performed": 0,
+        }
     matching = []
     corrupt_entries = []
     for entry in entries:
@@ -577,7 +590,7 @@ def get_deployed_rule_operational_telemetry_health(
     deployed_rule_id: str | None = None,
     root: Path | str = SOURCE_DOCUMENT_ROOT,
 ) -> dict[str, Any]:
-    base = _ensure_dirs(root)
+    base = Path(root)
     manifest = get_deployed_rule_operational_telemetry_manifest(root=base)
     context = _telemetry_context(
         base,
@@ -589,8 +602,10 @@ def get_deployed_rule_operational_telemetry_health(
     )
     warnings = list(context["warnings"])
     blockers = list(context["blockers"])
-    event_index_entries = _load_event_index_entries(base)
-    snapshot_index_entries = _load_snapshot_index_entries(base)
+    event_index_entries, event_index_issues = _load_event_index_entries(base)
+    snapshot_index_entries, snapshot_index_issues = _load_snapshot_index_entries(base)
+    blockers.extend(event_index_issues)
+    blockers.extend(snapshot_index_issues)
     orphan_event_files = _orphan_files(base / EVENT_DIR, {str(item.get("relative_path") or "") for item in event_index_entries})
     orphan_snapshot_files = _orphan_files(base / SNAPSHOT_DIR, {str(item.get("relative_path") or "") for item in snapshot_index_entries})
     event_index_missing = []
@@ -715,6 +730,10 @@ def format_deployed_rule_operational_telemetry_report(
         lines.append("Warnings: " + ", ".join(str(item) for item in workspace.get("warnings", [])))
     if workspace.get("blockers"):
         lines.append("Blockers: " + ", ".join(str(item) for item in workspace.get("blockers", [])))
+    if health.get("warnings"):
+        lines.append("Health Warnings: " + ", ".join(str(item) for item in health.get("warnings", [])))
+    if health.get("blockers"):
+        lines.append("Health Blockers: " + ", ".join(str(item) for item in health.get("blockers", [])))
     return "\n".join(lines)
 
 
@@ -729,6 +748,34 @@ def _telemetry_context(
 ) -> dict[str, Any]:
     warnings: list[str] = []
     blockers: list[str] = []
+    deployment_result_path = deployment_backend._result_path(base, production_deployment_result_id)
+    acceptance_result_path = acceptance_backend._result_path(base, phase_9w_result_id) if phase_9w_result_id else None
+    if not deployment_result_path.exists() or (acceptance_result_path is not None and not acceptance_result_path.exists()):
+        if not deployment_result_path.exists():
+            blockers.extend(
+                [
+                    "phase_9v_result_missing",
+                    "phase_9v_plan_missing",
+                    "phase_9v_receipt_missing",
+                    "production_transaction_state_missing",
+                    "canonical_source_rule_missing_or_inactive",
+                    "deployed_rule_missing",
+                ]
+            )
+        if acceptance_result_path is not None and not acceptance_result_path.exists():
+            blockers.append("phase_9w_result_missing")
+        return {
+            "deployment_loaded": {"status": "missing"},
+            "deployment_result": {},
+            "deployment_plan": {},
+            "deployment_receipt": {},
+            "acceptance_result": None,
+            "current_state": {"status": "missing"},
+            "source_rule": {},
+            "deployed_rule": {},
+            "warnings": _dedupe(warnings),
+            "blockers": _dedupe(blockers),
+        }
     deployment_loaded = deployment_backend.load_certified_rule_production_deployment_result(production_deployment_result_id, root=base)
     deployment_result = deployment_loaded.get("production_deployment_result") if isinstance(deployment_loaded.get("production_deployment_result"), Mapping) else {}
     deployment_plan = _read_json(deployment_backend._plan_path(base, str(deployment_result.get("production_deployment_plan_id") or ""))) if deployment_result else None
@@ -895,16 +942,27 @@ def _validate_event_payload(
     return _dedupe(blockers)
 
 
-def _load_event_index_entries(base: Path) -> list[dict[str, Any]]:
-    payload = _read_json(base / "indexes" / EVENT_INDEX)
-    items = payload.get("items", []) if isinstance(payload, Mapping) else []
-    return [dict(item) for item in items if isinstance(item, Mapping)]
+def _load_event_index_entries(base: Path) -> tuple[list[dict[str, Any]], list[str]]:
+    return _load_index_entries(base / "indexes" / EVENT_INDEX, "telemetry_event_index")
 
 
-def _load_snapshot_index_entries(base: Path) -> list[dict[str, Any]]:
-    payload = _read_json(base / "indexes" / SNAPSHOT_INDEX)
-    items = payload.get("items", []) if isinstance(payload, Mapping) else []
-    return [dict(item) for item in items if isinstance(item, Mapping)]
+def _load_snapshot_index_entries(base: Path) -> tuple[list[dict[str, Any]], list[str]]:
+    return _load_index_entries(base / "indexes" / SNAPSHOT_INDEX, "telemetry_snapshot_index")
+
+
+def _load_index_entries(path: Path, issue_prefix: str) -> tuple[list[dict[str, Any]], list[str]]:
+    if not path.exists():
+        return [], []
+    payload = _read_json(path)
+    if not isinstance(payload, Mapping):
+        return [], [f"{issue_prefix}_corrupt"]
+    items = payload.get("items", [])
+    if not isinstance(items, list):
+        return [], [f"{issue_prefix}_invalid_structure"]
+    entries = [dict(item) for item in items if isinstance(item, Mapping)]
+    if len(entries) != len(items):
+        return entries, [f"{issue_prefix}_invalid_structure"]
+    return entries, []
 
 
 def _update_event_index(base: Path) -> None:
@@ -1107,7 +1165,8 @@ def _execution_event_type(execution_envelope: Mapping[str, Any]) -> str:
 
 
 def _index_contains_event(base: Path, event_id: str, deployed_rule_id: Any, result_id: str) -> bool:
-    for item in _load_event_index_entries(base):
+    entries, _issues = _load_event_index_entries(base)
+    for item in entries:
         if (
             str(item.get("event_id") or "") == event_id
             and str(item.get("deployed_rule_id") or "") == str(deployed_rule_id or "")

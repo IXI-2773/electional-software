@@ -387,7 +387,7 @@ def load_deployed_rule_effectiveness_evaluation_spec_result(
     *,
     root: Path | str = SOURCE_DOCUMENT_ROOT,
 ) -> dict[str, Any]:
-    base = _ensure_dirs(root)
+    base = Path(root)
     payload = _read_json(_result_path(base, effectiveness_evaluation_spec_result_id))
     if not isinstance(payload, Mapping):
         return {
@@ -414,7 +414,7 @@ def load_deployed_rule_effectiveness_evaluation_spec_result(
 
 
 def get_deployed_rule_effectiveness_evaluation_spec_health(*, root: Path | str = SOURCE_DOCUMENT_ROOT) -> dict[str, Any]:
-    base = _ensure_dirs(root)
+    base = Path(root)
     plan_items = _load_all(base / PLAN_DIR)
     result_items = _load_all(base / RESULT_DIR)
     receipt_items = _load_all(base / RECEIPT_DIR)
@@ -507,7 +507,7 @@ def _spec_context(
     metric_contract_id: str | None,
     root: Path | str,
 ) -> dict[str, Any]:
-    base = _ensure_dirs(root)
+    base = Path(root)
     manifest = get_deployed_rule_effectiveness_evaluation_spec_manifest(root=base)
     readiness_loaded = readiness_backend.load_deployed_rule_effectiveness_readiness_result(readiness_result_id, root=base)
     readiness_result = readiness_loaded.get("effectiveness_readiness_result") if isinstance(readiness_loaded.get("effectiveness_readiness_result"), Mapping) else None

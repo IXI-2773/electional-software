@@ -41,6 +41,8 @@ from .certified_rule_production_authorization import build_certified_rule_produc
 from .certified_rule_production_deployment import build_certified_rule_production_deployment_plan, build_certified_rule_production_deployment_workspace, execute_certified_rule_production_deployment, format_certified_rule_production_deployment_report, get_certified_rule_production_deployment_health, validate_certified_rule_production_deployment_eligibility
 from .certified_rule_post_deployment_acceptance import build_certified_rule_post_deployment_acceptance_plan, build_certified_rule_post_deployment_acceptance_workspace, format_certified_rule_post_deployment_acceptance_report, get_certified_rule_post_deployment_acceptance_health, save_certified_rule_post_deployment_acceptance_decision, validate_certified_rule_post_deployment_acceptance_eligibility
 from .api import (
+    build_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan,
+    build_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan,
     build_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate,
     build_deployed_rule_outcome_truth_record_set_qa_gate,
     build_deployed_rule_effectiveness_readiness_plan,
@@ -55,6 +57,11 @@ from .api import (
     build_deployed_rule_operational_telemetry_workspace,
     build_deployed_rule_outcome_truth_source_plan,
     build_deployed_rule_outcome_truth_source_workspace,
+    format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run_report,
+    format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding_report,
+    format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_report,
+    format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding_report,
+    format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_report,
     format_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report,
     format_deployed_rule_outcome_truth_record_set_qa_gate_report,
     format_deployed_rule_effectiveness_readiness_report,
@@ -83,10 +90,13 @@ from .api import (
     record_deployed_rule_effectiveness_scoring_result,
     record_deployed_rule_outcome_truth_source_result,
     register_deployed_rule_outcome_truth_record_set,
+    run_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run,
     validate_deployed_rule_effectiveness_readiness_eligibility,
     validate_deployed_rule_effectiveness_scoring_contract_eligibility,
     validate_deployed_rule_effectiveness_scoring_result_eligibility,
     validate_deployed_rule_operational_telemetry_eligibility,
+    validate_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding,
+    validate_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding,
     validate_deployed_rule_outcome_truth_record_set,
     validate_deployed_rule_outcome_truth_source_eligibility,
 )
@@ -1085,6 +1095,16 @@ class DesktopRightPanelMixin:
         self.deployed_rule_outcome_truth_registration_confirmation_var = tk.StringVar(value="REGISTER_OUTCOME_TRUTH_RECORD_SET")
         self.deployed_rule_outcome_truth_result_confirmation_var = tk.StringVar(value="RECORD_OUTCOME_TRUTH_SOURCE_RESULT")
         self.deployed_rule_outcome_truth_status_var = tk.StringVar(value="Outcome-Truth Source Status: unknown\nSource ID: unknown\nSource Type: unknown\nSource Authority Class: unknown\nSource Fingerprint: unknown\nRecord-Set ID: none\nRecord Count: 0\nValid Record Count: 0\nIncomplete Record Count: 0\nUnsupported Record Count: 0\nBinding Status: unknown\nExpected Outcome Availability: unknown\nActual/Adjudicated Outcome Availability: unknown\nScoring Support Status: unknown\nEffectiveness Score Calculated: no\nPlan ID: none\nResult ID: none\nHealth Scope: repository-wide\nOutcome-Truth Health: unknown\nBlocker Count: 0\nWarning Count: 0\nRecommended Action: Load one explicit outcome-truth workspace from a completed Phase 9V deployment, Phase 9X snapshot, readiness result, and effectiveness spec.")
+        self.current_controlled_registration_backend_plan = None
+        self.current_controlled_registration_backend_plan_candidate_fingerprint = None
+        self.current_controlled_registration_backend_plan_stale = False
+        self.current_controlled_registration_backend_plan_binding_result = None
+        self.current_controlled_registration_transaction_plan = None
+        self.current_controlled_registration_transaction_plan_stale = False
+        self.current_controlled_registration_transaction_plan_binding_result = None
+        self.current_controlled_registration_transaction_binding_stale = False
+        self.current_controlled_registration_transaction_dry_run_result = None
+        self.current_controlled_registration_transaction_dry_run_stale = False
         self._register_deployed_rule_outcome_truth_traces()
         self.deployed_rule_effectiveness_scoring_contract_rule_id_var = tk.StringVar(value="")
         self.deployed_rule_effectiveness_scoring_contract_result_id_var = tk.StringVar(value="")
@@ -1674,6 +1694,28 @@ class DesktopRightPanelMixin:
             ("Copy Outcome Truth Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_outcome_truth_report")),
         ):
             ttk.Button(outcome_truth_actions, text=label, command=command, style="Compact.TButton").pack(fill=tk.X, pady=(0, 3))
+        tk.Label(outcome_truth_box, text="Controlled Registration Backend Plan", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 8, "bold"), anchor="w").pack(fill=tk.X, pady=(4, 0))
+        outcome_truth_backend_plan_actions = ttk.Frame(outcome_truth_box, style="Panel.TFrame")
+        outcome_truth_backend_plan_actions.pack(fill=tk.X, pady=(4, 0))
+        for label, command in (
+            ("Build Controlled Registration Backend Plan", lambda: self._run_pdf_viewport_action("build_deployed_rule_outcome_truth_controlled_registration_backend_plan")),
+            ("Validate Backend Plan Binding", lambda: self._run_pdf_viewport_action("validate_deployed_rule_outcome_truth_controlled_registration_backend_plan_binding")),
+            ("Copy Controlled Registration Backend Plan Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_outcome_truth_controlled_registration_backend_plan_report")),
+            ("Copy Backend Plan Binding Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_outcome_truth_controlled_registration_backend_plan_binding_report")),
+        ):
+            ttk.Button(outcome_truth_backend_plan_actions, text=label, command=command, style="Compact.TButton").pack(fill=tk.X, pady=(0, 3))
+        tk.Label(outcome_truth_box, text="Controlled Registration Transaction Plan", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 8, "bold"), anchor="w").pack(fill=tk.X, pady=(4, 0))
+        outcome_truth_transaction_plan_actions = ttk.Frame(outcome_truth_box, style="Panel.TFrame")
+        outcome_truth_transaction_plan_actions.pack(fill=tk.X, pady=(4, 0))
+        for label, command in (
+            ("Build Registration Transaction Plan", lambda: self._run_pdf_viewport_action("build_deployed_rule_outcome_truth_controlled_registration_transaction_plan")),
+            ("Validate Transaction Plan Binding", lambda: self._run_pdf_viewport_action("validate_deployed_rule_outcome_truth_controlled_registration_transaction_plan_binding")),
+            ("Run Registration Transaction Dry Run", lambda: self._run_pdf_viewport_action("run_deployed_rule_outcome_truth_controlled_registration_transaction_dry_run")),
+            ("Copy Registration Transaction Plan Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_outcome_truth_controlled_registration_transaction_plan_report")),
+            ("Copy Transaction Plan Binding Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_outcome_truth_controlled_registration_transaction_plan_binding_report")),
+            ("Copy Registration Transaction Dry-Run Report", lambda: self._run_pdf_viewport_action("copy_deployed_rule_outcome_truth_controlled_registration_transaction_dry_run_report")),
+        ):
+            ttk.Button(outcome_truth_transaction_plan_actions, text=label, command=command, style="Compact.TButton").pack(fill=tk.X, pady=(0, 3))
         scoring_contract_box = ttk.Frame(parent, style="Panel.TFrame")
         scoring_contract_box.pack(fill=tk.X, pady=(0, 8))
         tk.Label(scoring_contract_box, text="Deployed Rule Effectiveness Scoring Contract", bg=PALETTE["panel"], fg=PALETTE["accent_dark"], font=("Georgia", 9, "bold"), anchor="w").pack(fill=tk.X)
@@ -4761,6 +4803,372 @@ class DesktopRightPanelMixin:
                 self.clipboard_clear()
                 self.clipboard_append(text)
                 self.status_var.set("Public-safe outcome-truth registration-pipeline QA report copied.")
+            elif action == "build_deployed_rule_outcome_truth_controlled_registration_backend_plan":
+                candidate_record_set = self._parse_deployed_rule_outcome_truth_candidate_record_set()
+                if candidate_record_set is None:
+                    return
+                result = build_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan(
+                    candidate_record_set,
+                )
+                self.current_controlled_registration_backend_plan = dict(result) if isinstance(result, dict) else None
+                self.current_controlled_registration_backend_plan_candidate_fingerprint = (
+                    str(result.get("candidate_fingerprint") or "") if isinstance(result, dict) else None
+                )
+                self.current_controlled_registration_backend_plan_stale = False
+                self.current_controlled_registration_backend_plan_binding_result = None
+                self.current_controlled_registration_transaction_plan = None
+                self.current_controlled_registration_transaction_plan_stale = False
+                self.current_controlled_registration_transaction_plan_binding_result = None
+                self.current_controlled_registration_transaction_binding_stale = False
+                self.current_controlled_registration_transaction_dry_run_result = None
+                self.current_controlled_registration_transaction_dry_run_stale = False
+                self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Controlled registration backend plan: {result.get('status', 'unknown')}.")
+            elif action == "validate_deployed_rule_outcome_truth_controlled_registration_backend_plan_binding":
+                candidate_record_set = self._parse_deployed_rule_outcome_truth_candidate_record_set()
+                if candidate_record_set is None:
+                    return
+                if self.current_controlled_registration_backend_plan is None:
+                    blocked = self._controlled_registration_backend_plan_blocked_payload(
+                        "blocked",
+                        ["backend_plan_required"],
+                        "Build the controlled registration backend plan before validating binding.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration backend-plan binding blocked: backend_plan_required.")
+                    return
+                if not self._controlled_registration_backend_plan_loaded():
+                    blocked = self._controlled_registration_backend_plan_blocked_payload(
+                        "malformed",
+                        ["backend_plan_malformed"],
+                        "Rebuild the controlled registration backend plan before validating binding.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration backend-plan binding blocked: backend_plan_malformed.")
+                    return
+                result = validate_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding(
+                    self.current_controlled_registration_backend_plan,
+                    candidate_record_set,
+                )
+                self.current_controlled_registration_backend_plan_binding_result = dict(result) if isinstance(result, dict) else None
+                self.current_controlled_registration_backend_plan_stale = bool(
+                    isinstance(result, dict)
+                    and (
+                        result.get("status") in {"stale", "modified", "malformed", "blocked"}
+                        or result.get("stale_candidate_detected")
+                        or result.get("backend_plan_modified_detected")
+                        or not result.get("binding_valid")
+                    )
+                )
+                self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Controlled registration backend-plan binding: {result.get('status', 'unknown')}.")
+            elif action == "copy_deployed_rule_outcome_truth_controlled_registration_backend_plan_report":
+                candidate_record_set = self._parse_deployed_rule_outcome_truth_candidate_record_set()
+                if candidate_record_set is None:
+                    return
+                if self.current_controlled_registration_backend_plan_stale:
+                    blocked = self._controlled_registration_backend_plan_blocked_payload(
+                        "backend_plan_candidate_input_stale",
+                        ["backend_plan_candidate_input_stale"],
+                        "Rebuild the controlled registration backend plan before copying a current report.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration backend-plan report blocked: backend_plan_candidate_input_stale.")
+                    return
+                text = format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_report(
+                    candidate_record_set,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe controlled registration backend-plan report copied.")
+            elif action == "copy_deployed_rule_outcome_truth_controlled_registration_backend_plan_binding_report":
+                candidate_record_set = self._parse_deployed_rule_outcome_truth_candidate_record_set()
+                if candidate_record_set is None:
+                    return
+                if self.current_controlled_registration_backend_plan is None:
+                    blocked = self._controlled_registration_backend_plan_blocked_payload(
+                        "blocked",
+                        ["backend_plan_required"],
+                        "Build the controlled registration backend plan before copying a binding report.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration backend-plan binding report blocked: backend_plan_required.")
+                    return
+                if not self._controlled_registration_backend_plan_loaded():
+                    blocked = self._controlled_registration_backend_plan_blocked_payload(
+                        "malformed",
+                        ["backend_plan_malformed"],
+                        "Rebuild the controlled registration backend plan before copying a binding report.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration backend-plan binding report blocked: backend_plan_malformed.")
+                    return
+                text = format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding_report(
+                    self.current_controlled_registration_backend_plan,
+                    candidate_record_set,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe controlled registration backend-plan binding report copied.")
+            elif action == "build_deployed_rule_outcome_truth_controlled_registration_transaction_plan":
+                candidate_record_set = self._parse_deployed_rule_outcome_truth_candidate_record_set()
+                if candidate_record_set is None:
+                    return
+                if self.current_controlled_registration_backend_plan is None:
+                    blocked = self._controlled_registration_transaction_plan_blocked_payload(
+                        "blocked",
+                        ["backend_plan_required"],
+                        "Build the controlled registration backend plan before building a registration transaction plan.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction-plan build blocked: backend_plan_required.")
+                    return
+                if not self._controlled_registration_backend_plan_loaded():
+                    blocked = self._controlled_registration_transaction_plan_blocked_payload(
+                        "malformed",
+                        ["backend_plan_malformed"],
+                        "Rebuild the controlled registration backend plan before building a registration transaction plan.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction-plan build blocked: backend_plan_malformed.")
+                    return
+                result = build_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan(
+                    self.current_controlled_registration_backend_plan,
+                    candidate_record_set,
+                )
+                self.current_controlled_registration_transaction_plan = dict(result) if isinstance(result, dict) else None
+                self.current_controlled_registration_transaction_plan_stale = False
+                self.current_controlled_registration_transaction_plan_binding_result = None
+                self.current_controlled_registration_transaction_binding_stale = False
+                self.current_controlled_registration_transaction_dry_run_result = None
+                self.current_controlled_registration_transaction_dry_run_stale = False
+                self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Controlled registration transaction plan: {result.get('status', 'unknown')}.")
+            elif action == "validate_deployed_rule_outcome_truth_controlled_registration_transaction_plan_binding":
+                candidate_record_set = self._parse_deployed_rule_outcome_truth_candidate_record_set()
+                if candidate_record_set is None:
+                    return
+                if self.current_controlled_registration_backend_plan is None:
+                    blocked = self._controlled_registration_transaction_plan_binding_blocked_payload(
+                        "blocked",
+                        ["backend_plan_required"],
+                        "Build the controlled registration backend plan before validating the transaction-plan binding.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction-plan binding blocked: backend_plan_required.")
+                    return
+                if not self._controlled_registration_backend_plan_loaded():
+                    blocked = self._controlled_registration_transaction_plan_binding_blocked_payload(
+                        "malformed",
+                        ["backend_plan_malformed"],
+                        "Rebuild the controlled registration backend plan before validating the transaction-plan binding.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction-plan binding blocked: backend_plan_malformed.")
+                    return
+                if self.current_controlled_registration_transaction_plan is None:
+                    blocked = self._controlled_registration_transaction_plan_binding_blocked_payload(
+                        "missing",
+                        ["transaction_plan_required"],
+                        "Build the registration transaction plan before validating transaction-plan binding.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction-plan binding blocked: transaction_plan_required.")
+                    return
+                if not self._controlled_registration_transaction_plan_loaded():
+                    blocked = self._controlled_registration_transaction_plan_binding_blocked_payload(
+                        "malformed",
+                        ["transaction_plan_malformed"],
+                        "Rebuild the registration transaction plan before validating transaction-plan binding.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction-plan binding blocked: transaction_plan_malformed.")
+                    return
+                result = validate_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding(
+                    self.current_controlled_registration_transaction_plan,
+                    self.current_controlled_registration_backend_plan,
+                    candidate_record_set,
+                )
+                self.current_controlled_registration_transaction_plan_binding_result = dict(result) if isinstance(result, dict) else None
+                self.current_controlled_registration_transaction_binding_stale = False
+                self.current_controlled_registration_transaction_dry_run_result = None
+                self.current_controlled_registration_transaction_dry_run_stale = False
+                self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Controlled registration transaction-plan binding: {result.get('status', 'unknown')}.")
+            elif action == "run_deployed_rule_outcome_truth_controlled_registration_transaction_dry_run":
+                candidate_record_set = self._parse_deployed_rule_outcome_truth_candidate_record_set()
+                if candidate_record_set is None:
+                    return
+                if self.current_controlled_registration_backend_plan is None:
+                    blocked = self._controlled_registration_transaction_dry_run_blocked_payload(
+                        "blocked",
+                        ["backend_plan_required"],
+                        "Build the controlled registration backend plan before running a transaction dry run.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction dry run blocked: backend_plan_required.")
+                    return
+                if not self._controlled_registration_backend_plan_loaded():
+                    blocked = self._controlled_registration_transaction_dry_run_blocked_payload(
+                        "malformed",
+                        ["backend_plan_malformed"],
+                        "Rebuild the controlled registration backend plan before running a transaction dry run.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction dry run blocked: backend_plan_malformed.")
+                    return
+                if self.current_controlled_registration_transaction_plan is None:
+                    blocked = self._controlled_registration_transaction_dry_run_blocked_payload(
+                        "missing",
+                        ["transaction_plan_required"],
+                        "Build the registration transaction plan before running the dry run.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction dry run blocked: transaction_plan_required.")
+                    return
+                if not self._controlled_registration_transaction_plan_loaded():
+                    blocked = self._controlled_registration_transaction_dry_run_blocked_payload(
+                        "malformed",
+                        ["transaction_plan_malformed"],
+                        "Rebuild the registration transaction plan before running the dry run.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction dry run blocked: transaction_plan_malformed.")
+                    return
+                result = run_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run(
+                    self.current_controlled_registration_transaction_plan,
+                    self.current_controlled_registration_backend_plan,
+                    candidate_record_set,
+                )
+                self.current_controlled_registration_transaction_dry_run_result = dict(result) if isinstance(result, dict) else None
+                self.current_controlled_registration_transaction_dry_run_stale = False
+                self._set_deployed_rule_outcome_truth_status(result)
+                self.status_var.set(f"Controlled registration transaction dry run: {result.get('status', 'unknown')}.")
+            elif action == "copy_deployed_rule_outcome_truth_controlled_registration_transaction_plan_report":
+                candidate_record_set = self._parse_deployed_rule_outcome_truth_candidate_record_set()
+                if candidate_record_set is None:
+                    return
+                if self.current_controlled_registration_backend_plan is None:
+                    blocked = self._controlled_registration_transaction_plan_blocked_payload(
+                        "blocked",
+                        ["backend_plan_required"],
+                        "Build the controlled registration backend plan before copying a transaction-plan report.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction-plan report blocked: backend_plan_required.")
+                    return
+                if not self._controlled_registration_backend_plan_loaded():
+                    blocked = self._controlled_registration_transaction_plan_blocked_payload(
+                        "malformed",
+                        ["backend_plan_malformed"],
+                        "Rebuild the controlled registration backend plan before copying a transaction-plan report.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction-plan report blocked: backend_plan_malformed.")
+                    return
+                text = format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_report(
+                    self.current_controlled_registration_backend_plan,
+                    candidate_record_set,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe controlled registration transaction-plan report copied.")
+            elif action == "copy_deployed_rule_outcome_truth_controlled_registration_transaction_plan_binding_report":
+                candidate_record_set = self._parse_deployed_rule_outcome_truth_candidate_record_set()
+                if candidate_record_set is None:
+                    return
+                if self.current_controlled_registration_backend_plan is None:
+                    blocked = self._controlled_registration_transaction_plan_binding_blocked_payload(
+                        "blocked",
+                        ["backend_plan_required"],
+                        "Build the controlled registration backend plan before copying a transaction-plan binding report.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction-plan binding report blocked: backend_plan_required.")
+                    return
+                if not self._controlled_registration_backend_plan_loaded():
+                    blocked = self._controlled_registration_transaction_plan_binding_blocked_payload(
+                        "malformed",
+                        ["backend_plan_malformed"],
+                        "Rebuild the controlled registration backend plan before copying a transaction-plan binding report.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction-plan binding report blocked: backend_plan_malformed.")
+                    return
+                if self.current_controlled_registration_transaction_plan is None:
+                    blocked = self._controlled_registration_transaction_plan_binding_blocked_payload(
+                        "missing",
+                        ["transaction_plan_required"],
+                        "Build the registration transaction plan before copying a transaction-plan binding report.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction-plan binding report blocked: transaction_plan_required.")
+                    return
+                if not self._controlled_registration_transaction_plan_loaded():
+                    blocked = self._controlled_registration_transaction_plan_binding_blocked_payload(
+                        "malformed",
+                        ["transaction_plan_malformed"],
+                        "Rebuild the registration transaction plan before copying a transaction-plan binding report.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction-plan binding report blocked: transaction_plan_malformed.")
+                    return
+                text = format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding_report(
+                    self.current_controlled_registration_transaction_plan,
+                    self.current_controlled_registration_backend_plan,
+                    candidate_record_set,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe controlled registration transaction-plan binding report copied.")
+            elif action == "copy_deployed_rule_outcome_truth_controlled_registration_transaction_dry_run_report":
+                candidate_record_set = self._parse_deployed_rule_outcome_truth_candidate_record_set()
+                if candidate_record_set is None:
+                    return
+                if self.current_controlled_registration_backend_plan is None:
+                    blocked = self._controlled_registration_transaction_dry_run_blocked_payload(
+                        "blocked",
+                        ["backend_plan_required"],
+                        "Build the controlled registration backend plan before copying a transaction dry-run report.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction dry-run report blocked: backend_plan_required.")
+                    return
+                if not self._controlled_registration_backend_plan_loaded():
+                    blocked = self._controlled_registration_transaction_dry_run_blocked_payload(
+                        "malformed",
+                        ["backend_plan_malformed"],
+                        "Rebuild the controlled registration backend plan before copying a transaction dry-run report.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction dry-run report blocked: backend_plan_malformed.")
+                    return
+                if self.current_controlled_registration_transaction_plan is None:
+                    blocked = self._controlled_registration_transaction_dry_run_blocked_payload(
+                        "missing",
+                        ["transaction_plan_required"],
+                        "Build the registration transaction plan before copying a transaction dry-run report.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction dry-run report blocked: transaction_plan_required.")
+                    return
+                if not self._controlled_registration_transaction_plan_loaded():
+                    blocked = self._controlled_registration_transaction_dry_run_blocked_payload(
+                        "malformed",
+                        ["transaction_plan_malformed"],
+                        "Rebuild the registration transaction plan before copying a transaction dry-run report.",
+                    )
+                    self._set_deployed_rule_outcome_truth_status(blocked)
+                    self.status_var.set("Controlled registration transaction dry-run report blocked: transaction_plan_malformed.")
+                    return
+                text = format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run_report(
+                    self.current_controlled_registration_transaction_plan,
+                    self.current_controlled_registration_backend_plan,
+                    candidate_record_set,
+                )
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                self.status_var.set("Public-safe controlled registration transaction dry-run report copied.")
             elif action == "load_deployed_rule_outcome_truth_result":
                 if not self._validate_deployed_rule_outcome_truth_inputs(action):
                     return
@@ -5623,6 +6031,8 @@ class DesktopRightPanelMixin:
                 "Outcome-Truth Health: blocked\n"
                 "Blocker Count: 1\n"
                 "Warning Count: 0\n"
+                "Blockers: candidate_record_set_required\n"
+                "Warnings: none\n"
                 "Recommended Action: Enter Candidate Outcome-Truth Record Set JSON before running registration-pipeline QA: candidate_record_set_required."
             )
             self.status_var.set("Outcome-truth registration-pipeline QA action blocked: candidate_record_set_required.")
@@ -5652,11 +6062,39 @@ class DesktopRightPanelMixin:
                 "Outcome-Truth Health: blocked\n"
                 "Blocker Count: 1\n"
                 "Warning Count: 0\n"
+                "Blockers: candidate_record_set_malformed\n"
+                "Warnings: none\n"
                 "Recommended Action: Enter valid Candidate Outcome-Truth Record Set JSON before running registration-pipeline QA: candidate_record_set_malformed."
             )
             self.status_var.set("Outcome-truth registration-pipeline QA action blocked: candidate_record_set_malformed.")
             return None
         if not isinstance(parsed, dict):
+            self.deployed_rule_outcome_truth_status_var.set(
+                "Outcome-Truth Source Status: blocked\n"
+                "Source ID: unknown\n"
+                "Source Type: unknown\n"
+                "Source Authority Class: unknown\n"
+                "Source Fingerprint: unknown\n"
+                "Record-Set ID: none\n"
+                "Record Count: 0\n"
+                "Valid Record Count: 0\n"
+                "Incomplete Record Count: 0\n"
+                "Unsupported Record Count: 0\n"
+                "Binding Status: blocked\n"
+                "Expected Outcome Availability: unknown\n"
+                "Actual/Adjudicated Outcome Availability: unknown\n"
+                "Scoring Support Status: blocked\n"
+                "Effectiveness Score Calculated: no\n"
+                "Plan ID: none\n"
+                "Result ID: none\n"
+                "Health Scope: repository-wide\n"
+                "Outcome-Truth Health: blocked\n"
+                "Blocker Count: 1\n"
+                "Warning Count: 0\n"
+                "Blockers: candidate_record_set_malformed\n"
+                "Warnings: none\n"
+                "Recommended Action: Enter valid Candidate Outcome-Truth Record Set JSON before running registration-pipeline QA: candidate_record_set_malformed."
+            )
             self.status_var.set("Outcome-truth registration-pipeline QA action blocked: candidate_record_set_malformed.")
             return None
         return parsed
@@ -5710,9 +6148,45 @@ class DesktopRightPanelMixin:
                 trace_add("write", self._on_deployed_rule_outcome_truth_input_changed)
 
     def _on_deployed_rule_outcome_truth_input_changed(self, *_args: object) -> None:
+        if self.current_controlled_registration_backend_plan is not None:
+            self.current_controlled_registration_backend_plan_stale = True
+        if self.current_controlled_registration_backend_plan_binding_result is not None:
+            self.current_controlled_registration_backend_plan_binding_result = {
+                "status": "backend_plan_candidate_input_stale",
+                "binding_valid": False,
+                "candidate_binding_valid": False,
+                "planning_gate_binding_valid": False,
+                "backend_plan_integrity_valid": False,
+                "stale_candidate_detected": True,
+                "backend_plan_modified_detected": False,
+                "execution_authorized": False,
+                "registration_authorized": False,
+                "confirmation_accepted": False,
+                "confirmation_enforced": False,
+                "automatic_registration_approval_claimed": False,
+                "blockers": ["backend_plan_candidate_input_stale"],
+                "warnings": [],
+                "recommended_action": "Rebuild the controlled registration backend plan or rerun binding validation from the current candidate input.",
+                "limitations": [],
+                "writes_performed": 0,
+            }
+        if self.current_controlled_registration_transaction_plan is not None:
+            self.current_controlled_registration_transaction_plan_stale = True
+        if self.current_controlled_registration_transaction_plan_binding_result is not None:
+            self.current_controlled_registration_transaction_binding_stale = True
+        if self.current_controlled_registration_transaction_dry_run_result is not None:
+            self.current_controlled_registration_transaction_dry_run_stale = True
         self._mark_deployed_rule_outcome_truth_stale()
 
     def _mark_deployed_rule_outcome_truth_stale(self) -> None:
+        stale_blockers = (
+            "backend_plan_candidate_input_stale"
+            if self.current_controlled_registration_backend_plan is not None
+            else "none"
+        )
+        transaction_plan_status = "transaction_plan_candidate_input_stale" if self.current_controlled_registration_transaction_plan is not None else "none"
+        transaction_binding_status = "transaction_plan_binding_candidate_input_stale" if self.current_controlled_registration_transaction_plan_binding_result is not None else "none"
+        transaction_dry_run_status = "transaction_dry_run_candidate_input_stale" if self.current_controlled_registration_transaction_dry_run_result is not None else "none"
         self.deployed_rule_outcome_truth_status_var.set(
             "Outcome-Truth Source Status: stale_due_to_input_change\n"
             "Source ID: unknown\n"
@@ -5725,7 +6199,45 @@ class DesktopRightPanelMixin:
             "Incomplete Record Count: 0\n"
             "Unsupported Record Count: 0\n"
             "Candidate Payload Status: stale_due_to_input_change\n"
+            f"Controlled Registration Backend Plan Status: {'backend_plan_candidate_input_stale' if self.current_controlled_registration_backend_plan is not None else 'none'}\n"
+            "Backend Plan Current: no\n"
+            f"Identity Schema Version: {str((self.current_controlled_registration_backend_plan or {}).get('backend_plan_identity_schema_version', 'none'))}\n"
+            f"Candidate Fingerprint: {str((self.current_controlled_registration_backend_plan or {}).get('candidate_fingerprint', 'unknown'))}\n"
+            f"Planning-Gate Fingerprint: {str((self.current_controlled_registration_backend_plan or {}).get('planning_gate_fingerprint', 'unknown'))}\n"
+            f"Backend-Plan Fingerprint: {str((self.current_controlled_registration_backend_plan or {}).get('backend_plan_fingerprint', 'unknown'))}\n"
+            f"Controlled Registration Transaction Plan Status: {transaction_plan_status}\n"
+            "Transaction Plan Current: no\n"
+            f"Target-Identity Fingerprint: {str((self.current_controlled_registration_transaction_plan or {}).get('target_identity_fingerprint', 'unknown'))}\n"
+            f"Target-State Snapshot Fingerprint: {str((self.current_controlled_registration_transaction_plan or {}).get('target_state_snapshot_fingerprint', 'unknown'))}\n"
+            f"Transaction-Plan Fingerprint: {str((self.current_controlled_registration_transaction_plan or {}).get('transaction_plan_fingerprint', 'unknown'))}\n"
+            f"Non-Authoritative Idempotency Preview: {str((self.current_controlled_registration_transaction_plan or {}).get('idempotency_key_preview', 'unknown'))}\n"
+            f"Target-State Observation Status: {str((self.current_controlled_registration_transaction_plan or {}).get('target_state_observation_status', 'unknown'))}\n"
+            f"Target-State Observation Basis: {str((self.current_controlled_registration_transaction_plan or {}).get('target_state_observation_basis', 'unknown'))}\n"
+            f"Transaction-Plan Binding Status: {transaction_binding_status}\n"
+            "Transaction-Plan Binding Valid: no\n"
+            "Transaction-Plan Integrity Valid: no\n"
+            "Target-State Freshness Status: unknown\n"
+            "Target-State Freshness Proven: no\n"
+            "Stale Target Detected: no\n"
+            "Target-State Changed Detected: no\n"
+            "Target-Conflict Detected: no\n"
+            f"Transaction Dry-Run Status: {transaction_dry_run_status}\n"
+            "Dry Run Passed: no\n"
+            "Would Call Registration Function: no\n"
+            f"Planned Write Count: {str((self.current_controlled_registration_transaction_plan or {}).get('planned_write_count', 1))}\n"
+            "Transaction Writes Performed: 0\n"
             "Binding Status: stale_due_to_input_change\n"
+            "Candidate Binding Valid: no\n"
+            "Planning-Gate Binding Valid: no\n"
+            "Backend-Plan Integrity Valid: no\n"
+            "Stale Candidate Detected: yes\n"
+            "Backend-Plan Modified Detected: no\n"
+            "Structurally Ready For Future Execution Planning: no\n"
+            "Execution Authorized: no\n"
+            "Registration Authorized: no\n"
+            "Confirmation Accepted: no\n"
+            "Confirmation Enforced: no\n"
+            "Automatic Registration Approval Claimed: no\n"
             "Expected Outcome Availability: stale_due_to_input_change\n"
             "Actual/Adjudicated Outcome Availability: stale_due_to_input_change\n"
             "Scoring Support Status: stale_due_to_input_change\n"
@@ -5734,9 +6246,190 @@ class DesktopRightPanelMixin:
             "Result ID: none\n"
             "Health Scope: repository-wide\n"
             "Outcome-Truth Health: stale\n"
-            "Blocker Count: 0\n"
-            "Warning Count: 1\n"
-            "Recommended Action: Refresh outcome-truth workspace, eligibility, plan, result, record set, health, or report after changing inputs."
+            f"Blocker Count: {1 if stale_blockers != 'none' else 0}\n"
+            "Warning Count: 0\n"
+            f"Blockers: {stale_blockers}\n"
+            "Warnings: none\n"
+            "Recommended Action: Rebuild the controlled registration backend plan or rerun deterministic binding validation after changing candidate input. Structural readiness is not execution or registration authorization.\n"
+            "Limitations: The backend plan is a deterministic, read-only, non-executing structural plan.; Structural readiness is not execution authorization.; Structural readiness is not registration authorization.; Phase 13D does not register records.; Phase 13D does not persist plans.; Phase 13D does not accept or enforce confirmation.; Stale or modified plans must be rebuilt rather than repaired in place."
+        )
+
+    def _controlled_registration_backend_plan_blocked_payload(
+        self,
+        status: str,
+        blockers: list[str],
+        recommended_action: str,
+    ) -> dict[str, object]:
+        return {
+            "status": status,
+            "planning_gate_status": "unknown",
+            "candidate_qa_status": "unknown",
+            "candidate_structurally_ready_for_registration": False,
+            "backend_plan_ready_for_future_execution": False,
+            "backend_plan_identity_schema_version": (self.current_controlled_registration_backend_plan or {}).get("backend_plan_identity_schema_version", "none"),
+            "candidate_fingerprint": (self.current_controlled_registration_backend_plan or {}).get("candidate_fingerprint", "unknown"),
+            "planning_gate_fingerprint": (self.current_controlled_registration_backend_plan or {}).get("planning_gate_fingerprint", "unknown"),
+            "backend_plan_fingerprint": (self.current_controlled_registration_backend_plan or {}).get("backend_plan_fingerprint", "unknown"),
+            "binding_valid": False,
+            "candidate_binding_valid": False,
+            "planning_gate_binding_valid": False,
+            "backend_plan_integrity_valid": False,
+            "stale_candidate_detected": status == "backend_plan_candidate_input_stale",
+            "backend_plan_modified_detected": False,
+            "execution_authorized": False,
+            "registration_authorized": False,
+            "confirmation_accepted": False,
+            "confirmation_enforced": False,
+            "automatic_registration_approval_claimed": False,
+            "backend_plan_persisted": False,
+            "controlled_registration_implemented": False,
+            "registration_performed": False,
+            "record_set_written": False,
+            "records_repaired": False,
+            "records_migrated": False,
+            "blockers": blockers,
+            "warnings": [],
+            "recommended_action": recommended_action,
+            "limitations": [
+                "The backend plan is a deterministic, read-only, non-executing structural plan.",
+                "Structural readiness is not execution authorization.",
+                "Structural readiness is not registration authorization.",
+                "Phase 13D does not register records.",
+                "Phase 13D does not persist plans.",
+                "Phase 13D does not accept or enforce confirmation.",
+                "Stale or modified plans must be rebuilt rather than repaired in place.",
+            ],
+            "writes_performed": 0,
+        }
+
+    def _controlled_registration_backend_plan_loaded(self) -> bool:
+        required_fields = {
+            "backend_plan_identity_schema_version",
+            "candidate_fingerprint",
+            "planning_gate_fingerprint",
+            "backend_plan_fingerprint",
+            "status",
+        }
+        return isinstance(self.current_controlled_registration_backend_plan, dict) and required_fields.issubset(
+            set(self.current_controlled_registration_backend_plan)
+        )
+
+    def _controlled_registration_transaction_plan_blocked_payload(
+        self,
+        status: str,
+        blockers: list[str],
+        recommended_action: str,
+    ) -> dict[str, object]:
+        plan = self.current_controlled_registration_transaction_plan or {}
+        return {
+            "status": status,
+            "transaction_plan_status": status,
+            "transaction_plan_ready": False,
+            "dry_run_eligible": False,
+            "transaction_plan_binding_valid": False,
+            "transaction_plan_integrity_valid": False,
+            "candidate_fingerprint": plan.get("candidate_fingerprint", (self.current_controlled_registration_backend_plan or {}).get("candidate_fingerprint", "unknown")),
+            "backend_plan_fingerprint": plan.get("backend_plan_fingerprint", (self.current_controlled_registration_backend_plan or {}).get("backend_plan_fingerprint", "unknown")),
+            "planning_gate_fingerprint": plan.get("planning_gate_fingerprint", (self.current_controlled_registration_backend_plan or {}).get("planning_gate_fingerprint", "unknown")),
+            "target_identity_fingerprint": plan.get("target_identity_fingerprint", "unknown"),
+            "target_state_snapshot_fingerprint": plan.get("target_state_snapshot_fingerprint", "unknown"),
+            "transaction_plan_fingerprint": plan.get("transaction_plan_fingerprint", "unknown"),
+            "idempotency_key_preview": plan.get("idempotency_key_preview", "unknown"),
+            "target_state_observation_status": plan.get("target_state_observation_status", "unknown"),
+            "target_state_observation_basis": plan.get("target_state_observation_basis", "unknown"),
+            "target_state_observation_available": bool(plan.get("target_state_observation_available")),
+            "target_state_freshness_status": "unknown",
+            "target_state_freshness_proven": False,
+            "stale_target_detected": False,
+            "target_state_changed_detected": False,
+            "target_conflict_detected": False,
+            "execution_authorized": False,
+            "registration_authorized": False,
+            "confirmation_accepted": False,
+            "confirmation_enforced": False,
+            "idempotency_enforced": False,
+            "would_call_registration_function": False,
+            "planned_write_count": plan.get("planned_write_count", 1),
+            "writes_performed": 0,
+            "blockers": blockers,
+            "warnings": [],
+            "recommended_action": recommended_action,
+            "limitations": [
+                "Transaction plans remain in memory only.",
+                "Transaction-plan readiness is not execution authorization.",
+                "Transaction-plan readiness is not registration authorization.",
+                "Phase 14D does not call the registration function.",
+                "Phase 14D does not accept or enforce confirmation.",
+                "Phase 14D does not persist transaction plans, binding results, dry-run results, or receipts.",
+            ],
+        }
+
+    def _controlled_registration_transaction_plan_binding_blocked_payload(
+        self,
+        status: str,
+        blockers: list[str],
+        recommended_action: str,
+    ) -> dict[str, object]:
+        plan = self.current_controlled_registration_transaction_plan or {}
+        return {
+            **self._controlled_registration_transaction_plan_blocked_payload(status, blockers, recommended_action),
+            "transaction_plan_binding_valid": False,
+            "transaction_plan_fingerprint_valid": False,
+            "backend_plan_binding_valid": False,
+            "candidate_binding_valid": False,
+            "planning_gate_binding_valid": False,
+            "backend_plan_integrity_valid": False,
+            "target_identity_binding_valid": False,
+            "target_identity_fingerprint_valid": False,
+            "idempotency_preview_valid": False,
+            "target_state_binding_valid": False,
+            "planned_target_state": plan.get("target_state_at_plan_time", "target_state_unknown"),
+            "current_target_state": "target_state_unknown",
+            "planned_target_state_observation_basis": plan.get("target_state_observation_basis", "unknown"),
+            "current_target_state_observation_basis": "unknown",
+            "candidate_stale": status == "stale_due_to_input_change",
+            "backend_plan_modified": False,
+            "transaction_plan_modified": status in {"stale_due_to_input_change", "modified", "malformed"},
+        }
+
+    def _controlled_registration_transaction_dry_run_blocked_payload(
+        self,
+        status: str,
+        blockers: list[str],
+        recommended_action: str,
+    ) -> dict[str, object]:
+        plan = self.current_controlled_registration_transaction_plan or {}
+        return {
+            **self._controlled_registration_transaction_plan_blocked_payload(status, blockers, recommended_action),
+            "dry_run": True,
+            "dry_run_passed": False,
+            "transaction_plan_status": plan.get("status", status),
+            "transaction_plan_fingerprint_valid": False,
+            "target_identity_valid": False,
+            "target_identity_fingerprint_valid": False,
+            "idempotency_preview_valid": False,
+            "backend_plan_binding_valid": False,
+            "candidate_stale": status == "stale_due_to_input_change",
+            "backend_plan_modified": False,
+            "target_state": "target_state_unknown",
+            "target_conflict_detected": False,
+            "pre_write_checks_evaluated": [],
+            "pre_write_checks_passed": [],
+            "pre_write_checks_failed": [],
+        }
+
+    def _controlled_registration_transaction_plan_loaded(self) -> bool:
+        required_fields = {
+            "transaction_plan_schema_version",
+            "candidate_fingerprint",
+            "backend_plan_fingerprint",
+            "target_identity_fingerprint",
+            "target_state_snapshot_fingerprint",
+            "transaction_plan_fingerprint",
+            "status",
+        }
+        return isinstance(self.current_controlled_registration_transaction_plan, dict) and required_fields.issubset(
+            set(self.current_controlled_registration_transaction_plan)
         )
 
     def _validate_deployed_rule_outcome_truth_inputs(self, action: str) -> bool:
@@ -5860,6 +6553,64 @@ class DesktopRightPanelMixin:
             limitations_text = "; ".join(str(item) for item in limitations if str(item).strip()) or "none"
         else:
             limitations_text = str(limitations or "none")
+        blockers = payload.get("blockers", []) if isinstance(payload.get("blockers"), list) else []
+        warnings = payload.get("warnings", []) if isinstance(payload.get("warnings"), list) else []
+        candidate_fingerprint = payload.get("candidate_fingerprint", "unknown")
+        planning_gate_fingerprint = payload.get("planning_gate_fingerprint", "unknown")
+        backend_plan_fingerprint = payload.get("backend_plan_fingerprint", "unknown")
+        binding_status = payload.get("binding_status", payload.get("outcome_truth_binding_status", payload.get("status", "unknown")))
+        structurally_ready = bool(payload.get("backend_plan_ready_for_future_execution", payload.get("structurally_ready_for_registration")))
+        plan_status = payload.get("backend_plan_status", payload.get("status", "unknown"))
+        plan_current = "yes"
+        if self.current_controlled_registration_backend_plan is None:
+            plan_current = "no"
+        elif self.current_controlled_registration_backend_plan_stale:
+            plan_current = "no"
+        elif blockers:
+            plan_current = "no"
+        elif str(plan_status) in {
+            "backend_plan_candidate_input_stale",
+            "stale",
+            "modified",
+            "malformed",
+            "blocked",
+            "backend_plan_required",
+            "backend_plan_malformed",
+        }:
+            plan_current = "no"
+        elif payload.get("stale_candidate_detected") or payload.get("backend_plan_modified_detected"):
+            plan_current = "no"
+        elif "binding_valid" in payload and not payload.get("binding_valid"):
+            plan_current = "no"
+        transaction_plan_payload = payload if (
+            "transaction_plan_fingerprint" in payload
+            or "target_identity_fingerprint" in payload
+            or "target_state_snapshot_fingerprint" in payload
+            or payload.get("transaction_plan_type")
+        ) else (self.current_controlled_registration_transaction_plan or {})
+        transaction_binding_payload = payload if (
+            "transaction_plan_binding_valid" in payload
+            or "target_state_freshness_status" in payload
+            or "stale_target_detected" in payload
+            or "current_target_state" in payload
+        ) else (self.current_controlled_registration_transaction_plan_binding_result or {})
+        transaction_dry_run_payload = payload if (
+            payload.get("dry_run_type")
+            or "dry_run_passed" in payload
+            or "would_call_registration_function" in payload
+        ) else (self.current_controlled_registration_transaction_dry_run_result or {})
+        transaction_plan_status = transaction_plan_payload.get("status", "none") if transaction_plan_payload else "none"
+        transaction_binding_status = transaction_binding_payload.get("status", "none") if transaction_binding_payload else "none"
+        transaction_dry_run_status = transaction_dry_run_payload.get("status", "none") if transaction_dry_run_payload else "none"
+        transaction_plan_current = "yes"
+        if not self.current_controlled_registration_transaction_plan:
+            transaction_plan_current = "no"
+        elif self.current_controlled_registration_transaction_plan_stale:
+            transaction_plan_current = "no"
+        elif str(transaction_plan_status) in {"none", "missing", "malformed", "modified", "stale", "blocked"}:
+            transaction_plan_current = "no"
+        elif payload.get("candidate_stale") or payload.get("transaction_plan_modified"):
+            transaction_plan_current = "no"
         self.deployed_rule_outcome_truth_status_var.set(
             f"Outcome-Truth Source Status: {payload.get('source_status', payload.get('status', 'unknown'))}\n"
             f"Source ID: {payload.get('outcome_truth_source_id', payload.get('source_id', 'unknown'))}\n"
@@ -5880,7 +6631,46 @@ class DesktopRightPanelMixin:
             f"Source Metadata Warning Count: {payload.get('missing_source_metadata_count', 0)}\n"
             f"Mixed-Scope Warning Count: {payload.get('mixed_scope_warning_count', 0)}\n"
             f"Structurally Ready For Registration: {'yes' if payload.get('structurally_ready_for_registration') else 'no'}\n"
-            f"Binding Status: {payload.get('binding_status', payload.get('outcome_truth_binding_status', 'unknown'))}\n"
+            f"Controlled Registration Backend Plan Status: {plan_status}\n"
+            f"Backend Plan Current: {plan_current}\n"
+            f"Identity Schema Version: {payload.get('backend_plan_identity_schema_version', 'none')}\n"
+            f"Candidate Fingerprint: {candidate_fingerprint}\n"
+            f"Planning-Gate Fingerprint: {planning_gate_fingerprint}\n"
+            f"Backend-Plan Fingerprint: {backend_plan_fingerprint}\n"
+            f"Controlled Registration Transaction Plan Status: {transaction_plan_status}\n"
+            f"Transaction Plan Current: {transaction_plan_current}\n"
+            f"Target-Identity Fingerprint: {transaction_plan_payload.get('target_identity_fingerprint', 'unknown')}\n"
+            f"Target-State Snapshot Fingerprint: {transaction_plan_payload.get('target_state_snapshot_fingerprint', 'unknown')}\n"
+            f"Transaction-Plan Fingerprint: {transaction_plan_payload.get('transaction_plan_fingerprint', 'unknown')}\n"
+            f"Non-Authoritative Idempotency Preview: {transaction_plan_payload.get('idempotency_key_preview', 'unknown')}\n"
+            f"Target-State Observation Status: {transaction_plan_payload.get('target_state_observation_status', transaction_binding_payload.get('target_state_observation_status', 'unknown'))}\n"
+            f"Target-State Observation Basis: {transaction_plan_payload.get('target_state_observation_basis', transaction_binding_payload.get('planned_target_state_observation_basis', 'unknown'))}\n"
+            f"Target-State Observation Available: {'yes' if transaction_binding_payload.get('target_state_observation_available', transaction_plan_payload.get('target_state_observation_available')) else 'no'}\n"
+            f"Transaction-Plan Binding Status: {transaction_binding_status}\n"
+            f"Transaction-Plan Binding Valid: {'yes' if transaction_binding_payload.get('transaction_plan_binding_valid') else 'no'}\n"
+            f"Transaction-Plan Integrity Valid: {'yes' if transaction_binding_payload.get('transaction_plan_integrity_valid', transaction_dry_run_payload.get('transaction_plan_integrity_valid')) else 'no'}\n"
+            f"Target-State Freshness Status: {transaction_binding_payload.get('target_state_freshness_status', 'unknown')}\n"
+            f"Target-State Freshness Proven: {'yes' if transaction_binding_payload.get('target_state_freshness_proven') else 'no'}\n"
+            f"Stale Target Detected: {'yes' if transaction_binding_payload.get('stale_target_detected') else 'no'}\n"
+            f"Target-State Changed Detected: {'yes' if transaction_binding_payload.get('target_state_changed_detected') else 'no'}\n"
+            f"Target-Conflict Detected: {'yes' if transaction_binding_payload.get('target_conflict_detected', transaction_dry_run_payload.get('target_conflict_detected')) else 'no'}\n"
+            f"Transaction Dry-Run Status: {transaction_dry_run_status}\n"
+            f"Dry Run Passed: {'yes' if transaction_dry_run_payload.get('dry_run_passed') else 'no'}\n"
+            f"Would Call Registration Function: {'yes' if transaction_dry_run_payload.get('would_call_registration_function') else 'no'}\n"
+            f"Planned Write Count: {transaction_dry_run_payload.get('planned_write_count', transaction_plan_payload.get('planned_write_count', 0))}\n"
+            f"Transaction Writes Performed: {transaction_dry_run_payload.get('writes_performed', transaction_binding_payload.get('writes_performed', transaction_plan_payload.get('writes_performed', 0)))}\n"
+            f"Binding Status: {binding_status}\n"
+            f"Candidate Binding Valid: {'yes' if payload.get('candidate_binding_valid') else 'no'}\n"
+            f"Planning-Gate Binding Valid: {'yes' if payload.get('planning_gate_binding_valid') else 'no'}\n"
+            f"Backend-Plan Integrity Valid: {'yes' if payload.get('backend_plan_integrity_valid') else 'no'}\n"
+            f"Stale Candidate Detected: {'yes' if payload.get('stale_candidate_detected') else 'no'}\n"
+            f"Backend-Plan Modified Detected: {'yes' if payload.get('backend_plan_modified_detected') else 'no'}\n"
+            f"Structurally Ready For Future Execution Planning: {'yes' if structurally_ready else 'no'}\n"
+            f"Execution Authorized: {'yes' if payload.get('execution_authorized') else 'no'}\n"
+            f"Registration Authorized: {'yes' if payload.get('registration_authorized') else 'no'}\n"
+            f"Confirmation Accepted: {'yes' if payload.get('confirmation_accepted') else 'no'}\n"
+            f"Confirmation Enforced: {'yes' if payload.get('confirmation_enforced') else 'no'}\n"
+            f"Automatic Registration Approval Claimed: {'yes' if payload.get('automatic_registration_approval_claimed') else 'no'}\n"
             f"Expected Outcome Availability: {payload.get('expected_value_availability', payload.get('outcome_truth_expected_value_status', 'unknown'))}\n"
             f"Actual/Adjudicated Outcome Availability: {payload.get('actual_or_adjudicated_value_availability', payload.get('outcome_truth_actual_value_status', 'unknown'))}\n"
             f"Scoring Support Status: {payload.get('scoring_support_status', 'unknown')}\n"
@@ -5891,9 +6681,11 @@ class DesktopRightPanelMixin:
             f"Result ID: {payload.get('outcome_truth_source_result_id', self.deployed_rule_outcome_truth_result_record_id_var.get().strip() or 'none')}\n"
             f"Health Scope: {payload.get('health_scope', 'repository-wide')}\n"
             f"Outcome-Truth Health: {payload.get('outcome_truth_health', payload.get('status', 'unknown'))}\n"
-            f"Blocker Count: {len(payload.get('blockers', []) if isinstance(payload.get('blockers'), list) else [])}\n"
-            f"Warning Count: {len(payload.get('warnings', []) if isinstance(payload.get('warnings'), list) else [])}\n"
-            f"Recommended Action: {payload.get('recommended_action', 'Continue deployed-rule outcome-truth source review.')}\n"
+            f"Blocker Count: {len(blockers)}\n"
+            f"Warning Count: {len(warnings)}\n"
+            f"Blockers: {', '.join(str(item) for item in blockers) if blockers else 'none'}\n"
+            f"Warnings: {', '.join(str(item) for item in warnings) if warnings else 'none'}\n"
+            f"Recommended Action: {payload.get('recommended_action', 'Continue deployed-rule outcome-truth source review. Structural readiness is not execution or registration authorization.')}\n"
             f"Limitations: {limitations_text}"
         )
 

@@ -296,10 +296,17 @@ from .deployed_rule_effectiveness_readiness import (
     validate_deployed_rule_effectiveness_readiness_eligibility,
 )
 from .deployed_rule_outcome_truth_source import (
+    build_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan as _build_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_backend,
+    build_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan as _build_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_backend,
     build_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate as _build_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_backend,
     build_deployed_rule_outcome_truth_record_set_qa_gate as _build_deployed_rule_outcome_truth_record_set_qa_gate_backend,
     build_deployed_rule_outcome_truth_source_plan as _build_deployed_rule_outcome_truth_source_plan_backend,
     build_deployed_rule_outcome_truth_source_workspace as _build_deployed_rule_outcome_truth_source_workspace_backend,
+    format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run_report as _format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run_report_backend,
+    format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding_report as _format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding_report_backend,
+    format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_report as _format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_report_backend,
+    format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding_report as _format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding_report_backend,
+    format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_report as _format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_report_backend,
     format_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report as _format_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report_backend,
     format_deployed_rule_outcome_truth_record_set_qa_gate_report as _format_deployed_rule_outcome_truth_record_set_qa_gate_report_backend,
     format_deployed_rule_outcome_truth_source_report as _format_deployed_rule_outcome_truth_source_report_backend,
@@ -310,6 +317,9 @@ from .deployed_rule_outcome_truth_source import (
     load_deployed_rule_outcome_truth_source_result as _load_deployed_rule_outcome_truth_source_result_backend,
     record_deployed_rule_outcome_truth_source_result as _record_deployed_rule_outcome_truth_source_result_backend,
     register_deployed_rule_outcome_truth_record_set as _register_deployed_rule_outcome_truth_record_set_backend,
+    run_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run as _run_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run_backend,
+    validate_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding as _validate_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding_backend,
+    validate_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding as _validate_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding_backend,
     validate_deployed_rule_outcome_truth_record_set as _validate_deployed_rule_outcome_truth_record_set_backend,
     validate_deployed_rule_outcome_truth_source_eligibility as _validate_deployed_rule_outcome_truth_source_eligibility_backend,
 )
@@ -773,6 +783,140 @@ def format_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_
     )
 
 
+def build_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan(
+    candidate_record_set,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _build_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_backend(
+        candidate_record_set,
+        root=root,
+    )
+
+
+def format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_report(
+    candidate_record_set,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_report_backend(
+        candidate_record_set,
+        root=root,
+    )
+
+
+def validate_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding(
+    backend_plan: Mapping[str, object],
+    candidate_record_set,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _validate_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding_backend(
+        backend_plan,
+        candidate_record_set,
+        root=root,
+    )
+
+
+def format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding_report(
+    backend_plan: Mapping[str, object],
+    candidate_record_set,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding_report_backend(
+        backend_plan,
+        candidate_record_set,
+        root=root,
+    )
+
+
+def build_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan(
+    backend_plan: Mapping[str, object],
+    candidate_record_set,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _build_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_backend(
+        backend_plan,
+        candidate_record_set,
+        root=root,
+    )
+
+
+def format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_report(
+    backend_plan: Mapping[str, object],
+    candidate_record_set,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_report_backend(
+        backend_plan,
+        candidate_record_set,
+        root=root,
+    )
+
+
+def validate_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding(
+    transaction_plan: Mapping[str, object],
+    backend_plan: Mapping[str, object],
+    candidate_record_set,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _validate_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding_backend(
+        transaction_plan,
+        backend_plan,
+        candidate_record_set,
+        root=root,
+    )
+
+
+def format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding_report(
+    transaction_plan: Mapping[str, object],
+    backend_plan: Mapping[str, object],
+    candidate_record_set,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding_report_backend(
+        transaction_plan,
+        backend_plan,
+        candidate_record_set,
+        root=root,
+    )
+
+
+def run_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run(
+    transaction_plan: Mapping[str, object],
+    backend_plan: Mapping[str, object],
+    candidate_record_set,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _run_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run_backend(
+        transaction_plan,
+        backend_plan,
+        candidate_record_set,
+        root=root,
+    )
+
+
+def format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run_report(
+    transaction_plan: Mapping[str, object],
+    backend_plan: Mapping[str, object],
+    candidate_record_set,
+    *,
+    root=Path("data/source_documents"),
+):
+    return _format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run_report_backend(
+        transaction_plan,
+        backend_plan,
+        candidate_record_set,
+        root=root,
+    )
+
+
 def get_deployed_rule_effectiveness_scoring_contract_manifest(*, root=Path("data/source_documents")):
     return _get_deployed_rule_effectiveness_scoring_contract_manifest_backend(root=root)
 
@@ -1147,6 +1291,8 @@ __all__ = [
     "analyze_election",
     "backup_reliability_data",
     "build_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate",
+    "build_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan",
+    "build_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan",
     "build_deployed_rule_outcome_truth_source_plan",
     "build_deployed_rule_outcome_truth_record_set_qa_gate",
     "build_deployed_rule_outcome_truth_source_workspace",
@@ -1160,6 +1306,11 @@ __all__ = [
     "format_deployed_rule_effectiveness_scoring_result_public_safe_export_report",
     "format_deployed_rule_effectiveness_scoring_result_summary_surface_report",
     "format_deployed_rule_effectiveness_scoring_result_report",
+    "format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run_report",
+    "format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding_report",
+    "format_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_report",
+    "format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding_report",
+    "format_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_report",
     "format_deployed_rule_outcome_truth_record_set_registration_pipeline_qa_gate_report",
     "format_deployed_rule_outcome_truth_record_set_qa_gate_report",
     "format_deployed_rule_outcome_truth_source_report",
@@ -1190,6 +1341,9 @@ __all__ = [
     "save_audit_snapshot",
     "save_search_profile",
     "search_windows",
+    "run_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_dry_run",
+    "validate_deployed_rule_outcome_truth_record_set_controlled_registration_transaction_plan_binding",
+    "validate_deployed_rule_outcome_truth_record_set_controlled_registration_workflow_backend_plan_binding",
     "validate_deployed_rule_outcome_truth_record_set",
     "validate_deployed_rule_outcome_truth_source_eligibility",
     "validate_deployed_rule_effectiveness_scoring_contract_eligibility",
